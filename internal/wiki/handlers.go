@@ -22,18 +22,14 @@ type Handler struct {
 var secureMacroMatcher = regexp.MustCompile(`\{\{\s*secure:([a-zA-Z0-9_\-]+)\s*\}\}`)
 
 type TemplateData struct {
-	Title         string
-	Sidebar       []PageLink
-	Page          *Page
-	RenderedHTML  template.HTML
-	RawContent    string
-	Query         string
-	Results       []SearchResult
-	SecureBlockID string
-	SecureText    string
-	SecureError   string
-	HasSecureData bool
-	SecureBlocks  []string
+	Title        string
+	Sidebar      []PageLink
+	Page         *Page
+	RenderedHTML template.HTML
+	RawContent   string
+	Query        string
+	Results      []SearchResult
+	SecureBlocks []string
 }
 
 func NewHandler(store *PageStore, secureStore *SecureStore, renderer *MarkdownRenderer, templatesDir string) *Handler {
@@ -51,7 +47,6 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/wiki/", h.handleView)
 	mux.HandleFunc("/edit/", h.handleEdit)
 	mux.HandleFunc("/search", h.handleSearch)
-	mux.HandleFunc("/secure/", h.handleSecure)
 	mux.HandleFunc("/secure-inline/unlock", h.handleInlineSecureUnlock)
 	mux.HandleFunc("/secure-inline/save", h.handleInlineSecureSave)
 	return mux
@@ -246,79 +241,6 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		Query:   query,
 		Results: results,
 	})
-}
-
-func (h *Handler) handleSecure(w http.ResponseWriter, r *http.Request) {
-	trimmed := strings.TrimPrefix(r.URL.Path, "/secure/")
-	parts := strings.Split(trimmed, "/")
-	if len(parts) < 2 {
-		http.Error(w, "invalid secure block route", http.StatusBadRequest)
-		return
-	}
-
-	pageSlug := parts[0]
-	blockID := parts[1]
-	hasData := h.secureStore.Exists(pageSlug, blockID)
-
-	switch {
-	case r.Method == http.MethodGet:
-		h.render(w, "secure", TemplateData{
-			Title:         "Secure block",
-			Page:          &Page{Slug: pageSlug, Title: TitleFromSlug(pageSlug)},
-			SecureBlockID: blockID,
-			HasSecureData: hasData,
-		})
-	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/unlock"):
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		password := r.FormValue("password")
-		plain, err := h.secureStore.Load(pageSlug, blockID, password)
-		if err != nil {
-			h.render(w, "secure", TemplateData{
-				Title:         "Secure block",
-				Page:          &Page{Slug: pageSlug, Title: TitleFromSlug(pageSlug)},
-				SecureBlockID: blockID,
-				SecureError:   "Invalid password.",
-				HasSecureData: hasData,
-			})
-			return
-		}
-
-		h.render(w, "secure", TemplateData{
-			Title:         "Secure block",
-			Page:          &Page{Slug: pageSlug, Title: TitleFromSlug(pageSlug)},
-			SecureBlockID: blockID,
-			SecureText:    plain,
-			HasSecureData: hasData,
-		})
-	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/save"):
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		password := r.FormValue("password")
-		content := r.FormValue("content")
-		if strings.TrimSpace(password) == "" {
-			h.render(w, "secure", TemplateData{
-				Title:         "Secure block",
-				Page:          &Page{Slug: pageSlug, Title: TitleFromSlug(pageSlug)},
-				SecureBlockID: blockID,
-				SecureText:    content,
-				SecureError:   "Password is required to save secure content.",
-				HasSecureData: hasData,
-			})
-			return
-		}
-		if err := h.secureStore.Save(pageSlug, blockID, password, content); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		http.Redirect(w, r, fmt.Sprintf("/secure/%s/%s", pageSlug, blockID), http.StatusFound)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) {
