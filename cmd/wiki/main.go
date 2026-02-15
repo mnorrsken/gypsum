@@ -22,6 +22,7 @@ func main() {
 
 	pagesDir := filepath.Join(workspaceRoot, "data", "pages")
 	secureDir := filepath.Join(workspaceRoot, "data", "secure")
+	dataDir := filepath.Join(workspaceRoot, "data")
 	templatesDir := filepath.Join(workspaceRoot, "web", "templates")
 	staticDir := filepath.Join(workspaceRoot, "web", "static")
 
@@ -38,8 +39,9 @@ func main() {
 	store := wiki.NewPageStore(pagesDir)
 	secureStore := wiki.NewSecureStore(secureDir)
 	renderer := wiki.NewMarkdownRenderer()
+	autoCommitter := wiki.NewGitAutoCommitter(dataDir)
 
-	handler := wiki.NewHandler(store, secureStore, renderer, templatesDir)
+	handler := wiki.NewHandler(store, secureStore, renderer, templatesDir, autoCommitter)
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))

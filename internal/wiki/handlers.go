@@ -17,6 +17,7 @@ type Handler struct {
 	secureStore *SecureStore
 	renderer    *MarkdownRenderer
 	templates   string
+	autoCommit  *GitAutoCommitter
 }
 
 var secureMacroMatcher = regexp.MustCompile(`\{\{\s*secure:([a-zA-Z0-9_\-]+)\s*\}\}`)
@@ -32,12 +33,13 @@ type TemplateData struct {
 	SecureBlocks []string
 }
 
-func NewHandler(store *PageStore, secureStore *SecureStore, renderer *MarkdownRenderer, templatesDir string) *Handler {
+func NewHandler(store *PageStore, secureStore *SecureStore, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter) *Handler {
 	return &Handler{
 		store:       store,
 		secureStore: secureStore,
 		renderer:    renderer,
 		templates:   templatesDir,
+		autoCommit:  autoCommitter,
 	}
 }
 
@@ -133,6 +135,10 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if err := h.autoCommit.CommitPageSave(slug); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		http.Redirect(w, r, fmt.Sprintf("/wiki/%s", slug), http.StatusFound)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -191,6 +197,10 @@ func (h *Handler) handleInlineSecureSave(w http.ResponseWriter, r *http.Request)
 
 	if err := h.secureStore.Save(pageSlug, blockID, password, content); err != nil {
 		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "failed to save secure block"})
+		return
+	}
+	if err := h.autoCommit.CommitSecureBlockSave(pageSlug, blockID); err != nil {
+		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "auto-commit failed"})
 		return
 	}
 

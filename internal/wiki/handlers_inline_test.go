@@ -15,6 +15,7 @@ func TestInlineSecureSaveThenUnlock(t *testing.T) {
 		NewSecureStore(t.TempDir()),
 		NewMarkdownRenderer(),
 		t.TempDir(),
+		nil,
 	).Routes()
 
 	saveForm := url.Values{
@@ -67,6 +68,7 @@ func TestInlineSecureUnlockWrongPassword(t *testing.T) {
 		NewSecureStore(t.TempDir()),
 		NewMarkdownRenderer(),
 		t.TempDir(),
+		nil,
 	).Routes()
 
 	saveForm := url.Values{
