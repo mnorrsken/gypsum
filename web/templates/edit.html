@@ -9,5 +9,91 @@
       <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
     </div>
   </form>
+
+  <hr />
+
+  <h2>Secure block editor</h2>
+  {{if .SecureBlocks}}
+    <p class="hint">Secure blocks found in this page. Unlock a block, edit plaintext, then save it encrypted.</p>
+    {{range .SecureBlocks}}
+      <section class="secure-editor" data-block-id="{{.}}">
+        <h3>{{.}}</h3>
+        <form class="secure-editor-form" data-block-id="{{.}}">
+          <label>Password</label>
+          <input type="password" class="secure-password" required />
+          <div class="page-actions">
+            <button type="button" class="secure-unlock-btn">Unlock</button>
+            <button type="button" class="secure-save-btn">Save encrypted</button>
+          </div>
+          <label>Plaintext content</label>
+          <textarea class="secure-content" rows="10" placeholder="Secure plaintext for block {{.}}"></textarea>
+          <p class="secure-status hint"></p>
+        </form>
+      </section>
+    {{end}}
+  {{else}}
+    <p class="hint">No secure blocks found. Add one in markdown using <code>{{"{{secure:block_id}}"}}</code>.</p>
+  {{end}}
 </article>
+
+<script>
+(() => {
+  const pageSlug = "{{.Page.Slug}}";
+  document.querySelectorAll(".secure-editor-form").forEach((form) => {
+    const blockId = form.dataset.blockId || "";
+    const passwordInput = form.querySelector(".secure-password");
+    const contentInput = form.querySelector(".secure-content");
+    const status = form.querySelector(".secure-status");
+    const unlockBtn = form.querySelector(".secure-unlock-btn");
+    const saveBtn = form.querySelector(".secure-save-btn");
+    if (!passwordInput || !contentInput || !status || !unlockBtn || !saveBtn) {
+      return;
+    }
+
+    const postForm = async (url, extra) => {
+      const body = new URLSearchParams({
+        page_slug: pageSlug,
+        block_id: blockId,
+        password: passwordInput.value,
+        ...extra,
+      });
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Request failed");
+      }
+      return payload;
+    };
+
+    unlockBtn.addEventListener("click", async () => {
+      status.textContent = "Unlocking...";
+      status.className = "secure-status hint";
+      try {
+        const payload = await postForm("/secure-inline/unlock");
+        contentInput.value = payload.content || "";
+        status.textContent = "Unlocked.";
+      } catch (error) {
+        status.textContent = error.message || "Unlock failed";
+        status.className = "secure-status error";
+      }
+    });
+
+    saveBtn.addEventListener("click", async () => {
+      status.textContent = "Saving...";
+      status.className = "secure-status hint";
+      try {
+        await postForm("/secure-inline/save", { content: contentInput.value });
+        status.textContent = "Saved encrypted block.";
+      } catch (error) {
+        status.textContent = error.message || "Save failed";
+        status.className = "secure-status error";
+      }
+    });
+  });
+})();
+</script>
 {{end}}

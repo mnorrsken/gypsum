@@ -5,5 +5,90 @@
     <a class="button" href="/edit/{{.Page.Slug}}">Edit source</a>
   </div>
   <div class="wiki-content">{{.RenderedHTML}}</div>
+
+  <dialog id="secureUnlockDialog">
+    <form id="secureUnlockForm" method="dialog" class="secure-dialog-form">
+      <h3>Unlock secure block</h3>
+      <p id="secureDialogTarget" class="hint"></p>
+      <label>Password</label>
+      <input id="secureUnlockPassword" type="password" required />
+      <p id="secureUnlockError" class="error" hidden></p>
+      <div class="page-actions">
+        <button type="submit">Unlock</button>
+        <button type="button" class="button secondary" id="secureUnlockCancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
 </article>
+
+<script>
+(() => {
+  const dialog = document.getElementById("secureUnlockDialog");
+  const form = document.getElementById("secureUnlockForm");
+  const passwordInput = document.getElementById("secureUnlockPassword");
+  const targetLabel = document.getElementById("secureDialogTarget");
+  const errorBox = document.getElementById("secureUnlockError");
+  const cancelBtn = document.getElementById("secureUnlockCancel");
+
+  if (!dialog || !form || !passwordInput || !targetLabel || !errorBox || !cancelBtn) {
+    return;
+  }
+
+  let activeTrigger = null;
+  document.querySelectorAll(".secure-unlock-trigger").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeTrigger = button;
+      targetLabel.textContent = `Block: ${button.dataset.blockId || ""}`;
+      errorBox.hidden = true;
+      errorBox.textContent = "";
+      passwordInput.value = "";
+      dialog.showModal();
+      passwordInput.focus();
+    });
+  });
+
+  cancelBtn.addEventListener("click", () => dialog.close());
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!activeTrigger) {
+      dialog.close();
+      return;
+    }
+
+    const pageSlug = activeTrigger.dataset.pageSlug || "";
+    const blockId = activeTrigger.dataset.blockId || "";
+    const password = passwordInput.value;
+
+    const body = new URLSearchParams({
+      page_slug: pageSlug,
+      block_id: blockId,
+      password,
+    });
+
+    try {
+      const response = await fetch("/secure-inline/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Invalid password");
+      }
+
+      const wrapper = activeTrigger.closest(".secure-inline");
+      const content = wrapper ? wrapper.querySelector(".secure-inline-content") : null;
+      if (content) {
+        content.textContent = payload.content || "";
+        content.hidden = false;
+      }
+      dialog.close();
+    } catch (error) {
+      errorBox.textContent = error.message || "Failed to unlock secure block";
+      errorBox.hidden = false;
+    }
+  });
+})();
+</script>
 {{end}}

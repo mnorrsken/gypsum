@@ -63,7 +63,14 @@ func (r *MarkdownRenderer) Render(pageSlug, source string) (template.HTML, error
 			return match
 		}
 		blockID := captures[1]
-		return fmt.Sprintf("[🔒 Secure block: %s](/secure/%s/%s)", blockID, pageSlug, blockID)
+		return fmt.Sprintf(
+			`<div class="secure-inline" data-page-slug="%s" data-block-id="%s"><div class="secure-inline-header">🔒 Secure block: %s</div><button type="button" class="button secure-unlock-trigger" data-page-slug="%s" data-block-id="%s">Unlock</button><pre class="secure-inline-content" hidden></pre></div>`,
+			pageSlug,
+			blockID,
+			blockID,
+			pageSlug,
+			blockID,
+		)
 	})
 
 	var rendered bytes.Buffer

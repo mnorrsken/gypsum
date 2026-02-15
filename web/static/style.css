@@ -146,3 +146,48 @@ textarea {
 .wiki-content code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
+
+.secure-inline {
+  border: 1px solid #c8ccd1;
+  background: #f8f9fa;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.secure-inline-header {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.secure-inline-content {
+  border: 1px solid #a2a9b1;
+  background: #fff;
+  padding: 10px;
+  white-space: pre-wrap;
+  margin-top: 10px;
+}
+
+dialog {
+  border: 1px solid #a2a9b1;
+  padding: 16px;
+  width: min(460px, 90vw);
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.secure-dialog-form h3 {
+  margin-top: 0;
+}
+
+.secure-editor {
+  border: 1px solid #c8ccd1;
+  background: #f8f9fa;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.secure-status {
+  margin: 8px 0 0;
+}

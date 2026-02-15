@@ -1,11 +1,14 @@
 package wiki
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -15,6 +18,8 @@ type Handler struct {
 	renderer    *MarkdownRenderer
 	templates   string
 }
+
+var secureMacroMatcher = regexp.MustCompile(`\{\{\s*secure:([a-zA-Z0-9_\-]+)\s*\}\}`)
 
 type TemplateData struct {
 	Title         string
@@ -28,6 +33,7 @@ type TemplateData struct {
 	SecureText    string
 	SecureError   string
 	HasSecureData bool
+	SecureBlocks  []string
 }
 
 func NewHandler(store *PageStore, secureStore *SecureStore, renderer *MarkdownRenderer, templatesDir string) *Handler {
@@ -46,6 +52,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/edit/", h.handleEdit)
 	mux.HandleFunc("/search", h.handleSearch)
 	mux.HandleFunc("/secure/", h.handleSecure)
+	mux.HandleFunc("/secure-inline/unlock", h.handleInlineSecureUnlock)
+	mux.HandleFunc("/secure-inline/save", h.handleInlineSecureSave)
 	return mux
 }
 
@@ -115,9 +123,10 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 		}
 
 		h.render(w, "edit", TemplateData{
-			Title:      "Edit: " + title,
-			Page:       &Page{Slug: slug, Title: title},
-			RawContent: raw,
+			Title:        "Edit: " + title,
+			Page:         &Page{Slug: slug, Title: title},
+			RawContent:   raw,
+			SecureBlocks: extractSecureBlockIDs(raw),
 		})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
@@ -133,6 +142,91 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (h *Handler) handleInlineSecureUnlock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid form"})
+		return
+	}
+
+	pageSlug := strings.TrimSpace(r.FormValue("page_slug"))
+	blockID := strings.TrimSpace(r.FormValue("block_id"))
+	password := r.FormValue("password")
+	if pageSlug == "" || blockID == "" {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing page or block id"})
+		return
+	}
+
+	plain, err := h.secureStore.Load(pageSlug, blockID, password)
+	if err != nil {
+		h.writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "invalid password"})
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "content": plain})
+}
+
+func (h *Handler) handleInlineSecureSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid form"})
+		return
+	}
+
+	pageSlug := strings.TrimSpace(r.FormValue("page_slug"))
+	blockID := strings.TrimSpace(r.FormValue("block_id"))
+	password := r.FormValue("password")
+	content := r.FormValue("content")
+	if pageSlug == "" || blockID == "" {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing page or block id"})
+		return
+	}
+	if strings.TrimSpace(password) == "" {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "password required"})
+		return
+	}
+
+	if err := h.secureStore.Save(pageSlug, blockID, password, content); err != nil {
+		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "failed to save secure block"})
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (h *Handler) writeJSON(w http.ResponseWriter, status int, payload map[string]any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func extractSecureBlockIDs(markdown string) []string {
+	matches := secureMacroMatcher.FindAllStringSubmatch(markdown, -1)
+	if len(matches) == 0 {
+		return []string{}
+	}
+
+	unique := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		if len(match) > 1 {
+			unique[match[1]] = struct{}{}
+		}
+	}
+
+	ids := make([]string, 0, len(unique))
+	for id := range unique {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
