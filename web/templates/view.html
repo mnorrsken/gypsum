@@ -1,0 +1,9 @@
+{{define "content"}}
+<article>
+  <h1>{{.Page.Title}}</h1>
+  <div class="page-actions">
+    <a class="button" href="/edit/{{.Page.Slug}}">Edit source</a>
+  </div>
+  <div class="wiki-content">{{.RenderedHTML}}</div>
+</article>
+{{end}}

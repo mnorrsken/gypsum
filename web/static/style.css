@@ -1,0 +1,148 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #202122;
+  background: #f8f9fa;
+}
+
+a {
+  color: #3366cc;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #ffffff;
+  border-bottom: 1px solid #c8ccd1;
+}
+
+.brand a {
+  font-size: 20px;
+  font-weight: 700;
+  color: #202122;
+}
+
+.search {
+  display: flex;
+  gap: 8px;
+}
+
+.search input {
+  min-width: 260px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  min-height: calc(100vh - 56px);
+}
+
+.sidebar {
+  background: #ffffff;
+  border-right: 1px solid #c8ccd1;
+  padding: 16px;
+}
+
+.sidebar a {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.sidebar h3 {
+  margin: 6px 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #54595d;
+}
+
+.content {
+  padding: 22px;
+}
+
+article {
+  background: #fff;
+  border: 1px solid #c8ccd1;
+  padding: 22px;
+}
+
+h1 {
+  margin-top: 0;
+}
+
+.page-actions {
+  margin: 14px 0;
+  display: flex;
+  gap: 10px;
+}
+
+.button,
+button {
+  border: 1px solid #a2a9b1;
+  background: #f8f9fa;
+  color: #202122;
+  padding: 8px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.button.secondary {
+  background: #ffffff;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid #a2a9b1;
+  padding: 8px;
+  border-radius: 2px;
+  font-size: 14px;
+  margin: 6px 0 12px;
+  font-family: inherit;
+}
+
+textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.hint {
+  color: #54595d;
+}
+
+.error {
+  background: #fdf2f2;
+  color: #9b1c1c;
+  border: 1px solid #f8b4b4;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.result-list {
+  list-style: none;
+  padding: 0;
+}
+
+.result-list li {
+  margin-bottom: 14px;
+}
+
+.wiki-content pre {
+  padding: 12px;
+  overflow: auto;
+}
+
+.wiki-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}

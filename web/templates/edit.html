@@ -1,0 +1,13 @@
+{{define "content"}}
+<article>
+  <h1>{{.Title}}</h1>
+  <p class="hint">Raw markdown editor (no WYSIWYG)</p>
+  <form method="post" action="/edit/{{.Page.Slug}}">
+    <textarea name="content" rows="28">{{.RawContent}}</textarea>
+    <div class="page-actions">
+      <button type="submit">Save</button>
+      <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
+    </div>
+  </form>
+</article>
+{{end}}

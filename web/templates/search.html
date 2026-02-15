@@ -1,0 +1,23 @@
+{{define "content"}}
+<article>
+  <h1>Search</h1>
+  {{if .Query}}
+    <p>Results for <strong>{{.Query}}</strong></p>
+  {{else}}
+    <p>Enter a query in the search box.</p>
+  {{end}}
+
+  {{if .Results}}
+    <ul class="result-list">
+      {{range .Results}}
+      <li>
+        <a href="/wiki/{{.Slug}}">{{.Title}}</a>
+        <p>{{.Excerpt}}</p>
+      </li>
+      {{end}}
+    </ul>
+  {{else if .Query}}
+    <p>No results found.</p>
+  {{end}}
+</article>
+{{end}}

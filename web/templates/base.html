@@ -1,0 +1,41 @@
+{{define "base"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{.Title}} - Gypsum Wiki</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><a href="/wiki/Home">Gypsum Wiki</a></div>
+    <form class="search" action="/search" method="get">
+      <input type="search" name="q" value="{{.Query}}" placeholder="Search pages" />
+      <button type="submit">Search</button>
+    </form>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <h3>Navigation</h3>
+      <a href="/wiki/Home">Main Page</a>
+      <a href="/search">Search</a>
+      <hr />
+      <h3>Pages</h3>
+      {{if .Sidebar}}
+        {{range .Sidebar}}
+          <a href="/wiki/{{.Slug}}">{{.Title}}</a>
+        {{end}}
+      {{else}}
+        <p>No pages yet.</p>
+      {{end}}
+    </aside>
+
+    <main class="content">
+      {{template "content" .}}
+    </main>
+  </div>
+</body>
+</html>
+{{end}}
