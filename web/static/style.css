@@ -4,13 +4,15 @@
 
 body {
   margin: 0;
-  font-family: Arial, Helvetica, sans-serif;
-  color: #202122;
-  background: #f8f9fa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1a1a1a;
+  background: #f5f5f5;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 a {
-  color: #3366cc;
+  color: #2563eb;
   text-decoration: none;
 }
 
@@ -18,68 +20,139 @@ a:hover {
   text-decoration: underline;
 }
 
+/* --- Top bar --- */
+
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
-  background: #ffffff;
-  border-bottom: 1px solid #c8ccd1;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e5e5e5;
 }
 
 .brand a {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  color: #202122;
+  color: #1a1a1a;
+  letter-spacing: -0.02em;
 }
 
 .search {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .search input {
-  min-width: 260px;
+  min-width: 240px;
 }
+
+/* --- Layout --- */
 
 .layout {
   display: grid;
-  grid-template-columns: 250px 1fr;
-  min-height: calc(100vh - 56px);
+  grid-template-columns: 220px 1fr;
+  min-height: calc(100vh - 49px);
 }
 
+/* --- Sidebar --- */
+
 .sidebar {
-  background: #ffffff;
-  border-right: 1px solid #c8ccd1;
-  padding: 16px;
+  background: #fff;
+  border-right: 1px solid #e5e5e5;
+  padding: 16px 14px;
+  font-size: 13px;
 }
 
 .sidebar a {
   display: block;
-  margin-bottom: 8px;
+  padding: 3px 8px;
+  margin: 0 -8px;
+  border-radius: 4px;
+  color: #374151;
+}
+
+.sidebar a:hover {
+  background: #f3f4f6;
+  text-decoration: none;
 }
 
 .sidebar h3 {
-  margin: 6px 0 10px;
-  font-size: 13px;
+  margin: 16px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #54595d;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
 }
 
+.sidebar h3:first-child {
+  margin-top: 4px;
+}
+
+.sidebar .create-link {
+  color: #2563eb;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.sidebar-edit {
+  font-size: 11px;
+  color: #9ca3af !important;
+  padding: 2px 8px !important;
+}
+
+.sidebar-hint {
+  color: #9ca3af;
+  font-size: 12px;
+  margin: 2px 0;
+  padding: 0 8px;
+}
+
+/* --- Content area --- */
+
 .content {
-  padding: 22px;
+  padding: 24px 32px;
+  max-width: 900px;
 }
 
 article {
   background: #fff;
-  border: 1px solid #c8ccd1;
-  padding: 22px;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  padding: 28px 32px;
+}
+
+/* --- Page header (title + edit link) --- */
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: 1.6em;
+  font-weight: 700;
+}
+
+.edit-link {
+  font-size: 13px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.edit-link:hover {
+  color: #2563eb;
 }
 
 h1 {
   margin-top: 0;
 }
+
+/* --- Buttons & form elements --- */
 
 .page-actions {
   margin: 14px 0;
@@ -89,45 +162,67 @@ h1 {
 
 .button,
 button {
-  border: 1px solid #a2a9b1;
-  background: #f8f9fa;
-  color: #202122;
-  padding: 8px 12px;
-  border-radius: 2px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  padding: 7px 14px;
+  border-radius: 5px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.1s;
+}
+
+.button:hover,
+button:hover {
+  background: #f9fafb;
 }
 
 .button.secondary {
-  background: #ffffff;
+  background: #fff;
 }
 
 input,
 textarea {
   width: 100%;
-  border: 1px solid #a2a9b1;
-  padding: 8px;
-  border-radius: 2px;
+  border: 1px solid #d1d5db;
+  padding: 8px 10px;
+  border-radius: 5px;
   font-size: 14px;
   margin: 6px 0 12px;
   font-family: inherit;
 }
 
-textarea {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 
+textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+}
+
+/* --- Misc --- */
+
 .hint {
-  color: #54595d;
+  color: #6b7280;
+  font-size: 13px;
 }
 
 .error {
-  background: #fdf2f2;
-  color: #9b1c1c;
-  border: 1px solid #f8b4b4;
-  padding: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  padding: 10px 14px;
   margin: 10px 0;
+  border-radius: 5px;
+  font-size: 13px;
 }
+
+/* --- Search results --- */
 
 .result-list {
   list-style: none;
@@ -135,59 +230,85 @@ textarea {
 }
 
 .result-list li {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
+.result-list li a {
+  font-weight: 500;
+}
+
+.result-list li p {
+  margin: 2px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+/* --- All pages list --- */
+
+.page-list {
+  list-style: none;
+  padding: 0;
+  columns: 2;
+  column-gap: 32px;
+}
+
+.page-list li {
+  padding: 4px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+/* --- Wiki content --- */
+
 .wiki-content pre {
-  padding: 12px;
+  padding: 14px;
   overflow: auto;
+  border-radius: 5px;
 }
 
 .wiki-content code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
 }
+
+.wiki-content h2 {
+  border-bottom: 1px solid #e5e5e5;
+  padding-bottom: 6px;
+}
+
+/* --- Secure inline fields --- */
 
 .secure-inline {
-  border: 1px solid #c8ccd1;
-  background: #f8f9fa;
-  padding: 10px;
-  margin: 10px 0;
+  cursor: pointer;
+  margin: 0 2px;
+  padding: 2px 6px;
+  color: #999;
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.85em;
+  letter-spacing: 1px;
 }
 
-.secure-inline-header {
-  font-weight: 700;
-  margin-bottom: 8px;
+.secure-inline:hover {
+  color: #666;
 }
 
-.secure-inline-content {
-  border: 1px solid #a2a9b1;
-  background: #fff;
-  padding: 10px;
-  white-space: pre-wrap;
-  margin-top: 10px;
+.secure-inline.unlocked {
+  cursor: default;
+  color: inherit;
+  letter-spacing: normal;
+  background: #f5f5f5;
+  border-radius: 3px;
 }
 
-dialog {
-  border: 1px solid #a2a9b1;
-  padding: 16px;
-  width: min(460px, 90vw);
+.secure-copy-btn {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0 0 0 4px;
+  font-size: 0.85em;
+  color: #999;
+  vertical-align: baseline;
 }
 
-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.35);
-}
-
-.secure-dialog-form h3 {
-  margin-top: 0;
-}
-
-.secure-editor {
-  border: 1px solid #c8ccd1;
-  background: #f8f9fa;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.secure-status {
-  margin: 8px 0 0;
+.secure-copy-btn:hover {
+  color: #333;
 }

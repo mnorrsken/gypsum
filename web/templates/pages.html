@@ -1,0 +1,17 @@
+{{define "content"}}
+<article>
+  <div class="page-header">
+    <h1>All Pages</h1>
+    <a class="edit-link" href="/edit/New_Page">+ New Page</a>
+  </div>
+  {{if .AllPages}}
+    <ul class="page-list">
+      {{range .AllPages}}
+      <li><a href="/wiki/{{.Slug}}">{{.Title}}</a></li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p class="hint">No pages yet. Create one to get started.</p>
+  {{end}}
+</article>
+{{end}}

@@ -1,0 +1,2 @@
+[[Home]]
+[[Scratch Pad]]

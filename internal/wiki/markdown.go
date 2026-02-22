@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"regexp"
+	"strings"
 
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
@@ -14,7 +15,7 @@ import (
 )
 
 var wikiLinkPattern = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
-var secureMacroPattern = regexp.MustCompile(`\{\{\s*secure:([a-zA-Z0-9_\-]+)\s*\}\}`)
+var secureMacroPattern = regexp.MustCompile(`\{\{secure:([\w+/=]+)\}\}`)
 
 type MarkdownRenderer struct {
 	engine goldmark.Markdown
@@ -46,7 +47,7 @@ func NewMarkdownRenderer() *MarkdownRenderer {
 	return &MarkdownRenderer{engine: engine}
 }
 
-func (r *MarkdownRenderer) Render(pageSlug, source string) (template.HTML, error) {
+func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 	withLinks := wikiLinkPattern.ReplaceAllStringFunc(source, func(match string) string {
 		captures := wikiLinkPattern.FindStringSubmatch(match)
 		if len(captures) < 2 {
@@ -57,26 +58,34 @@ func (r *MarkdownRenderer) Render(pageSlug, source string) (template.HTML, error
 		return fmt.Sprintf("[%s](/wiki/%s)", title, slug)
 	})
 
-	withSecureLinks := secureMacroPattern.ReplaceAllStringFunc(withLinks, func(match string) string {
+	// Replace secure macros with placeholder tokens before goldmark so they
+	// don't get wrapped in their own <p> blocks. The tokens survive HTML
+	// rendering and are swapped for real HTML afterwards.
+	var securePlaceholders []string
+	withPlaceholders := secureMacroPattern.ReplaceAllStringFunc(withLinks, func(match string) string {
 		captures := secureMacroPattern.FindStringSubmatch(match)
 		if len(captures) < 2 {
 			return match
 		}
-		blockID := captures[1]
-		return fmt.Sprintf(
-			`<div class="secure-inline" data-page-slug="%s" data-block-id="%s"><div class="secure-inline-header">🔒 Secure block: %s</div><button type="button" class="button secure-unlock-trigger" data-page-slug="%s" data-block-id="%s">Unlock</button><pre class="secure-inline-content" hidden></pre></div>`,
-			pageSlug,
-			blockID,
-			blockID,
-			pageSlug,
-			blockID,
-		)
+		idx := len(securePlaceholders)
+		securePlaceholders = append(securePlaceholders, captures[1])
+		return fmt.Sprintf("SECURE_PLACEHOLDER_%d", idx)
 	})
 
 	var rendered bytes.Buffer
-	if err := r.engine.Convert([]byte(withSecureLinks), &rendered); err != nil {
+	if err := r.engine.Convert([]byte(withPlaceholders), &rendered); err != nil {
 		return "", err
 	}
 
-	return template.HTML(rendered.String()), nil
+	result := rendered.String()
+	for i, ciphertext := range securePlaceholders {
+		placeholder := fmt.Sprintf("SECURE_PLACEHOLDER_%d", i)
+		replacement := fmt.Sprintf(
+			`<span class="secure-inline" data-ciphertext="%s" title="Click to reveal">🔒****</span>`,
+			ciphertext,
+		)
+		result = strings.Replace(result, placeholder, replacement, 1)
+	}
+
+	return template.HTML(result), nil
 }

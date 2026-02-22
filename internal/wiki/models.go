@@ -24,7 +24,7 @@ type SearchResult struct {
 	Excerpt string
 }
 
-var nonSlugChar = regexp.MustCompile(`[^a-zA-Z0-9_\-]+`)
+var nonSlugChar = regexp.MustCompile(`[^\p{L}\p{N}_\-]+`)
 
 func SlugFromTitle(input string) string {
 	trimmed := strings.TrimSpace(input)

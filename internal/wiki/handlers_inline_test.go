@@ -9,48 +9,31 @@ import (
 	"testing"
 )
 
-func TestInlineSecureSaveThenUnlock(t *testing.T) {
+func TestInlineSecureUnlock(t *testing.T) {
+	crypto := NewServerCrypto("test-key")
 	handler := NewHandler(
 		NewPageStore(t.TempDir()),
-		NewSecureStore(t.TempDir()),
+		crypto,
 		NewMarkdownRenderer(),
 		t.TempDir(),
 		nil,
 	).Routes()
 
-	saveForm := url.Values{
-		"page_slug": {"Home"},
-		"block_id":  {"ops_notes"},
-		"password":  {"secret-pass"},
-		"content":   {"sensitive plaintext"},
-	}
-	saveReq := httptest.NewRequest(http.MethodPost, "/secure-inline/save", strings.NewReader(saveForm.Encode()))
-	saveReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	saveRec := httptest.NewRecorder()
-	handler.ServeHTTP(saveRec, saveReq)
-	if saveRec.Code != http.StatusOK {
-		t.Fatalf("save status = %d, want %d", saveRec.Code, http.StatusOK)
-	}
-
-	var savePayload map[string]any
-	if err := json.Unmarshal(saveRec.Body.Bytes(), &savePayload); err != nil {
-		t.Fatalf("failed to decode save payload: %v", err)
-	}
-	if ok, _ := savePayload["ok"].(bool); !ok {
-		t.Fatalf("save payload not ok: %#v", savePayload)
+	// Encrypt some content
+	ciphertext, err := crypto.Encrypt("sensitive plaintext")
+	if err != nil {
+		t.Fatalf("encrypt failed: %v", err)
 	}
 
 	unlockForm := url.Values{
-		"page_slug": {"Home"},
-		"block_id":  {"ops_notes"},
-		"password":  {"secret-pass"},
+		"ciphertext": {ciphertext},
 	}
 	unlockReq := httptest.NewRequest(http.MethodPost, "/secure-inline/unlock", strings.NewReader(unlockForm.Encode()))
 	unlockReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	unlockRec := httptest.NewRecorder()
 	handler.ServeHTTP(unlockRec, unlockReq)
 	if unlockRec.Code != http.StatusOK {
-		t.Fatalf("unlock status = %d, want %d", unlockRec.Code, http.StatusOK)
+		t.Fatalf("unlock status = %d, want %d; body: %s", unlockRec.Code, http.StatusOK, unlockRec.Body.String())
 	}
 
 	var unlockPayload map[string]any
@@ -62,40 +45,24 @@ func TestInlineSecureSaveThenUnlock(t *testing.T) {
 	}
 }
 
-func TestInlineSecureUnlockWrongPassword(t *testing.T) {
+func TestInlineSecureUnlockBadCiphertext(t *testing.T) {
 	handler := NewHandler(
 		NewPageStore(t.TempDir()),
-		NewSecureStore(t.TempDir()),
+		NewServerCrypto("test-key"),
 		NewMarkdownRenderer(),
 		t.TempDir(),
 		nil,
 	).Routes()
 
-	saveForm := url.Values{
-		"page_slug": {"Home"},
-		"block_id":  {"ops_notes"},
-		"password":  {"correct"},
-		"content":   {"secret"},
-	}
-	saveReq := httptest.NewRequest(http.MethodPost, "/secure-inline/save", strings.NewReader(saveForm.Encode()))
-	saveReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	saveRec := httptest.NewRecorder()
-	handler.ServeHTTP(saveRec, saveReq)
-	if saveRec.Code != http.StatusOK {
-		t.Fatalf("save status = %d, want %d", saveRec.Code, http.StatusOK)
-	}
-
 	unlockForm := url.Values{
-		"page_slug": {"Home"},
-		"block_id":  {"ops_notes"},
-		"password":  {"wrong"},
+		"ciphertext": {"not-valid-base64-ciphertext"},
 	}
 	unlockReq := httptest.NewRequest(http.MethodPost, "/secure-inline/unlock", strings.NewReader(unlockForm.Encode()))
 	unlockReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	unlockRec := httptest.NewRecorder()
 	handler.ServeHTTP(unlockRec, unlockReq)
-	if unlockRec.Code != http.StatusUnauthorized {
-		t.Fatalf("unlock status = %d, want %d", unlockRec.Code, http.StatusUnauthorized)
+	if unlockRec.Code != http.StatusBadRequest {
+		t.Fatalf("unlock status = %d, want %d", unlockRec.Code, http.StatusBadRequest)
 	}
 
 	var unlockPayload map[string]any

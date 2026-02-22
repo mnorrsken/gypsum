@@ -52,6 +52,9 @@ func (s *PageStore) List() ([]PageLink, error) {
 			continue
 		}
 		slug := SlugFromFilename(entry.Name())
+		if strings.HasPrefix(slug, "_") {
+			continue // skip special files like _favorites
+		}
 		links = append(links, PageLink{Slug: slug, Title: TitleFromSlug(slug)})
 	}
 
@@ -60,6 +63,80 @@ func (s *PageStore) List() ([]PageLink, error) {
 	})
 
 	return links, nil
+}
+
+// RecentPages returns the n most recently modified pages.
+func (s *PageStore) RecentPages(n int) ([]PageLink, error) {
+	entries, err := os.ReadDir(s.pagesDir)
+	if err != nil {
+		return nil, err
+	}
+
+	type fileEntry struct {
+		slug    string
+		modTime int64
+	}
+
+	var files []fileEntry
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		slug := SlugFromFilename(entry.Name())
+		if strings.HasPrefix(slug, "_") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, fileEntry{slug: slug, modTime: info.ModTime().UnixNano()})
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].modTime > files[j].modTime
+	})
+
+	if len(files) > n {
+		files = files[:n]
+	}
+
+	links := make([]PageLink, len(files))
+	for i, f := range files {
+		links[i] = PageLink{Slug: f.slug, Title: TitleFromSlug(f.slug)}
+	}
+	return links, nil
+}
+
+// LoadFavorites reads the _favorites.md file and returns wiki links as PageLinks.
+func (s *PageStore) LoadFavorites() ([]PageLink, error) {
+	content, err := os.ReadFile(filepath.Join(s.pagesDir, "_favorites.md"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var favs []PageLink
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Support "- [[Page Title]]" and "[[Page Title]]" and plain "Page Title"
+		line = strings.TrimPrefix(line, "-")
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "[[")
+		line = strings.TrimSuffix(line, "]]")
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		slug := SlugFromTitle(line)
+		favs = append(favs, PageLink{Slug: slug, Title: line})
+	}
+	return favs, nil
 }
 
 func (s *PageStore) Search(query string) ([]SearchResult, error) {
@@ -80,6 +157,9 @@ func (s *PageStore) Search(query string) ([]SearchResult, error) {
 			continue
 		}
 		slug := SlugFromFilename(entry.Name())
+		if strings.HasPrefix(slug, "_") {
+			continue
+		}
 		title := TitleFromSlug(slug)
 
 		contentBytes, err := os.ReadFile(filepath.Join(s.pagesDir, entry.Name()))

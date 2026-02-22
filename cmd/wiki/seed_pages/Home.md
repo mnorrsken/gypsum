@@ -30,6 +30,6 @@ You can use fenced blocks with language labels.
 
 Use this notation in any page:
 
-{{secure:ops_notes}}
+{{plain:my secret notes}}
 
-It creates a locked entry point where users can unlock/edit plaintext using a password.
+It creates an encrypted inline field. Secure content is encrypted on save and decrypted on edit.

@@ -20,8 +20,13 @@ func main() {
 		log.Fatalf("failed to get working directory: %v", err)
 	}
 
+	secretKey := os.Getenv("GYPSUM_SECRET_KEY")
+	if secretKey == "" {
+		secretKey = "change-me-in-production"
+		log.Println("WARNING: GYPSUM_SECRET_KEY not set, using default key")
+	}
+
 	pagesDir := filepath.Join(workspaceRoot, "data", "pages")
-	secureDir := filepath.Join(workspaceRoot, "data", "secure")
 	dataDir := filepath.Join(workspaceRoot, "data")
 	templatesDir := filepath.Join(workspaceRoot, "web", "templates")
 	staticDir := filepath.Join(workspaceRoot, "web", "static")
@@ -29,19 +34,16 @@ func main() {
 	if err := os.MkdirAll(pagesDir, 0o755); err != nil {
 		log.Fatalf("failed to create pages directory: %v", err)
 	}
-	if err := os.MkdirAll(secureDir, 0o755); err != nil {
-		log.Fatalf("failed to create secure directory: %v", err)
-	}
 	if err := seedPagesIfEmpty(pagesDir); err != nil {
 		log.Fatalf("failed to seed default pages: %v", err)
 	}
 
 	store := wiki.NewPageStore(pagesDir)
-	secureStore := wiki.NewSecureStore(secureDir)
+	crypto := wiki.NewServerCrypto(secretKey)
 	renderer := wiki.NewMarkdownRenderer()
 	autoCommitter := wiki.NewGitAutoCommitter(dataDir)
 
-	handler := wiki.NewHandler(store, secureStore, renderer, templatesDir, autoCommitter)
+	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter)
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))

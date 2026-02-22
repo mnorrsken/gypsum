@@ -1,49 +1,69 @@
 package wiki
 
 import (
-	"errors"
+	"strings"
 	"testing"
 )
 
-func TestSecureStoreSaveLoadAndWrongPassword(t *testing.T) {
-	dir := t.TempDir()
-	store := NewSecureStore(dir)
-
-	pageSlug := "Home"
-	blockID := "ops_notes"
-	password := "correct horse battery staple"
+func TestServerCryptoEncryptDecrypt(t *testing.T) {
+	sc := NewServerCrypto("test-passphrase")
 	plaintext := "top secret text"
 
-	if err := store.Save(pageSlug, blockID, password, plaintext); err != nil {
-		t.Fatalf("Save failed: %v", err)
+	encoded, err := sc.Encrypt(plaintext)
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
 	}
-	if !store.Exists(pageSlug, blockID) {
-		t.Fatalf("expected secure block to exist")
+	if encoded == "" {
+		t.Fatal("expected non-empty ciphertext")
 	}
 
-	got, err := store.Load(pageSlug, blockID, password)
+	got, err := sc.Decrypt(encoded)
 	if err != nil {
-		t.Fatalf("Load failed: %v", err)
+		t.Fatalf("Decrypt failed: %v", err)
 	}
 	if got != plaintext {
 		t.Fatalf("unexpected plaintext: got %q want %q", got, plaintext)
 	}
+}
 
-	_, err = store.Load(pageSlug, blockID, "wrong password")
-	if !errors.Is(err, ErrWrongPassword) {
-		t.Fatalf("expected ErrWrongPassword, got %v", err)
+func TestServerCryptoDecryptWrongKey(t *testing.T) {
+	sc1 := NewServerCrypto("key-one")
+	sc2 := NewServerCrypto("key-two")
+
+	encoded, err := sc1.Encrypt("secret")
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
+	}
+
+	_, err = sc2.Decrypt(encoded)
+	if err == nil {
+		t.Fatal("expected error decrypting with wrong key")
 	}
 }
 
-func TestSecureStoreMissingBlockReturnsEmpty(t *testing.T) {
-	dir := t.TempDir()
-	store := NewSecureStore(dir)
+func TestDecryptForEditAndEncryptForSave(t *testing.T) {
+	sc := NewServerCrypto("roundtrip-key")
 
-	got, err := store.Load("Home", "missing", "pw")
+	// Start with plaintext macros and encrypt
+	original := "Hello {{plain:secret value}} world"
+	encrypted, err := sc.EncryptForSave(original)
 	if err != nil {
-		t.Fatalf("unexpected error loading missing block: %v", err)
+		t.Fatalf("EncryptForSave failed: %v", err)
 	}
-	if got != "" {
-		t.Fatalf("expected empty content for missing block, got %q", got)
+
+	if strings.Contains(encrypted, "secret value") {
+		t.Fatal("encrypted markdown should not contain plaintext")
+	}
+	if !strings.Contains(encrypted, "{{secure:") {
+		t.Fatal("encrypted markdown should contain {{secure:...}}")
+	}
+
+	// Now decrypt for editing
+	decrypted := sc.DecryptForEdit(encrypted)
+	if !strings.Contains(decrypted, "{{plain:secret value}}") {
+		t.Fatalf("decrypted markdown should contain {{plain:secret value}}, got: %s", decrypted)
+	}
+	if !strings.Contains(decrypted, "Hello ") {
+		t.Fatal("surrounding text should be preserved")
 	}
 }

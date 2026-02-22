@@ -4,139 +4,111 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-
-	"golang.org/x/crypto/scrypt"
+	"regexp"
 )
 
-var ErrWrongPassword = errors.New("wrong password or corrupted secure block")
+// secureMacroRe matches {{secure:PAYLOAD}} where PAYLOAD is base64 ciphertext.
+var secureMacroRe = regexp.MustCompile(`\{\{secure:([\w+/=]+)\}\}`)
 
-type encryptedBlock struct {
-	Salt       string `json:"salt"`
-	Nonce      string `json:"nonce"`
-	Ciphertext string `json:"ciphertext"`
+// plainMacroRe matches {{plain:CONTENT}} used in the editor for decrypted blocks.
+var plainMacroRe = regexp.MustCompile(`(?s)\{\{plain:(.*?)\}\}`)
+
+// ServerCrypto provides AES-256-GCM encryption using a single server key.
+type ServerCrypto struct {
+	key [32]byte
 }
 
-type SecureStore struct {
-	secureDir string
+// NewServerCrypto derives a 256-bit key from the supplied passphrase.
+func NewServerCrypto(passphrase string) *ServerCrypto {
+	sc := &ServerCrypto{}
+	sc.key = sha256.Sum256([]byte(passphrase))
+	return sc
 }
 
-func NewSecureStore(secureDir string) *SecureStore {
-	return &SecureStore{secureDir: secureDir}
+// Encrypt encrypts plaintext and returns a base64 string (nonce + ciphertext).
+func (sc *ServerCrypto) Encrypt(plaintext string) (string, error) {
+	block, err := aes.NewCipher(sc.key[:])
+	if err != nil {
+		return "", err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+
+	sealed := aead.Seal(nonce, nonce, []byte(plaintext), nil) // prepend nonce
+	return base64.StdEncoding.EncodeToString(sealed), nil
 }
 
-func (s *SecureStore) Exists(pageSlug, blockID string) bool {
-	_, err := os.Stat(s.pathFor(pageSlug, blockID))
-	return err == nil
-}
-
-func (s *SecureStore) Load(pageSlug, blockID, password string) (string, error) {
-	path := s.pathFor(pageSlug, blockID)
-	body, err := os.ReadFile(path)
+// Decrypt decodes a base64 string (nonce + ciphertext) and returns plaintext.
+func (sc *ServerCrypto) Decrypt(encoded string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
-		}
-		return "", err
+		return "", fmt.Errorf("invalid base64: %w", err)
 	}
 
-	var block encryptedBlock
-	if err := json.Unmarshal(body, &block); err != nil {
-		return "", err
-	}
-
-	salt, err := base64.StdEncoding.DecodeString(block.Salt)
+	block, err := aes.NewCipher(sc.key[:])
 	if err != nil {
 		return "", err
 	}
-	nonce, err := base64.StdEncoding.DecodeString(block.Nonce)
-	if err != nil {
-		return "", err
-	}
-	cipherBytes, err := base64.StdEncoding.DecodeString(block.Ciphertext)
+	aead, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
 
-	key, err := deriveKey(password, salt)
-	if err != nil {
-		return "", err
+	nonceSize := aead.NonceSize()
+	if len(raw) < nonceSize {
+		return "", fmt.Errorf("ciphertext too short")
 	}
 
-	plain, err := decrypt(key, nonce, cipherBytes)
+	nonce, ciphertext := raw[:nonceSize], raw[nonceSize:]
+	plain, err := aead.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return "", ErrWrongPassword
+		return "", fmt.Errorf("decryption failed: %w", err)
 	}
-
 	return string(plain), nil
 }
 
-func (s *SecureStore) Save(pageSlug, blockID, password, content string) error {
-	salt := make([]byte, 16)
-	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-		return err
-	}
-	key, err := deriveKey(password, salt)
-	if err != nil {
-		return err
-	}
-	nonce := make([]byte, 12)
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return err
-	}
-
-	encrypted, err := encrypt(key, nonce, []byte(content))
-	if err != nil {
-		return err
-	}
-
-	body, err := json.MarshalIndent(encryptedBlock{
-		Salt:       base64.StdEncoding.EncodeToString(salt),
-		Nonce:      base64.StdEncoding.EncodeToString(nonce),
-		Ciphertext: base64.StdEncoding.EncodeToString(encrypted),
-	}, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(s.pathFor(pageSlug, blockID), body, 0o600)
+// DecryptForEdit replaces every {{secure:CIPHERTEXT}} in markdown with
+// {{plain:DECRYPTED}} so the editor shows cleartext.
+func (sc *ServerCrypto) DecryptForEdit(markdown string) string {
+	return secureMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
+		captures := secureMacroRe.FindStringSubmatch(match)
+		if len(captures) < 2 || captures[1] == "" {
+			return match
+		}
+		plain, err := sc.Decrypt(captures[1])
+		if err != nil {
+			return match // leave as-is if decryption fails
+		}
+		return fmt.Sprintf("{{plain:%s}}", plain)
+	})
 }
 
-func (s *SecureStore) pathFor(pageSlug, blockID string) string {
-	filename := fmt.Sprintf("%s__%s.json", pageSlug, blockID)
-	return filepath.Join(s.secureDir, filename)
-}
-
-func deriveKey(password string, salt []byte) ([]byte, error) {
-	return scrypt.Key([]byte(password), salt, 32768, 8, 1, 32)
-}
-
-func encrypt(key, nonce, plaintext []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	return aead.Seal(nil, nonce, plaintext, nil), nil
-}
-
-func decrypt(key, nonce, ciphertext []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	return aead.Open(nil, nonce, ciphertext, nil)
+// EncryptForSave replaces every {{plain:CONTENT}} in markdown with
+// {{secure:CIPHERTEXT}} for storage.
+func (sc *ServerCrypto) EncryptForSave(markdown string) (string, error) {
+	var encryptErr error
+	result := plainMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
+		captures := plainMacroRe.FindStringSubmatch(match)
+		if len(captures) < 2 {
+			return match
+		}
+		encoded, err := sc.Encrypt(captures[1])
+		if err != nil {
+			encryptErr = err
+			return match
+		}
+		return fmt.Sprintf("{{secure:%s}}", encoded)
+	})
+	return result, encryptErr
 }

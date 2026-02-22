@@ -11,6 +11,8 @@ func TestSlugFromTitle(t *testing.T) {
 		{name: "basic words", input: "Hello World", want: "Hello_World"},
 		{name: "trims spaces", input: "  Project Notes  ", want: "Project_Notes"},
 		{name: "drops special chars", input: "A/B:C*D?", want: "ABCD"},
+		{name: "unicode chars", input: "Lösenord", want: "Lösenord"},
+		{name: "unicode multi-word", input: "Mina Anteckningar", want: "Mina_Anteckningar"},
 		{name: "empty falls back", input: "   ", want: "Untitled"},
 	}
 

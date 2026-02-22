@@ -8,7 +8,11 @@ import (
 	"testing"
 )
 
-func TestGitAutoCommitterNoRepoIsNoop(t *testing.T) {
+func TestGitAutoCommitterAutoInitsRepo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
 	dataDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dataDir, "pages"), 0o755); err != nil {
 		t.Fatalf("failed to create pages dir: %v", err)
@@ -18,8 +22,15 @@ func TestGitAutoCommitterNoRepoIsNoop(t *testing.T) {
 	}
 
 	committer := NewGitAutoCommitter(dataDir)
+
+	// ensureRepo should have created a .git directory
+	info, err := os.Stat(filepath.Join(dataDir, ".git"))
+	if err != nil || !info.IsDir() {
+		t.Fatalf("expected .git directory to be auto-created in data dir")
+	}
+
 	if err := committer.CommitPageSave("Home"); err != nil {
-		t.Fatalf("expected no error for non-repo data dir, got %v", err)
+		t.Fatalf("CommitPageSave failed after auto-init: %v", err)
 	}
 }
 
@@ -33,14 +44,12 @@ func TestGitAutoCommitterCommitsChangedFile(t *testing.T) {
 		t.Fatalf("failed to create pages dir: %v", err)
 	}
 
-	runGit(t, dataDir, "init")
-
 	pagePath := filepath.Join(dataDir, "pages", "Home.md")
 	if err := os.WriteFile(pagePath, []byte("# Home\nhello"), 0o644); err != nil {
 		t.Fatalf("failed to write page: %v", err)
 	}
 
-	committer := NewGitAutoCommitter(dataDir)
+	committer := NewGitAutoCommitter(dataDir) // auto-initializes repo
 	if err := committer.CommitPageSave("Home"); err != nil {
 		t.Fatalf("CommitPageSave failed: %v", err)
 	}

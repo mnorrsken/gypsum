@@ -9,9 +9,9 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><a href="/wiki/Home">Gypsum Wiki</a></div>
+    <div class="brand"><a href="/wiki/Home">Gypsum</a></div>
     <form class="search" action="/search" method="get">
-      <input type="search" name="q" value="{{.Query}}" placeholder="Search pages" />
+      <input type="search" name="q" value="{{.Query}}" placeholder="Search pages..." />
       <button type="submit">Search</button>
     </form>
   </header>
@@ -19,16 +19,28 @@
   <div class="layout">
     <aside class="sidebar">
       <h3>Navigation</h3>
-      <a href="/wiki/Home">Main Page</a>
+      <a href="/wiki/Home">Home</a>
+      <a href="/pages">All Pages</a>
       <a href="/search">Search</a>
-      <hr />
-      <h3>Pages</h3>
-      {{if .Sidebar}}
-        {{range .Sidebar}}
-          <a href="/wiki/{{.Slug}}">{{.Title}}</a>
-        {{end}}
+      <a href="/edit/New_Page" class="create-link">+ New Page</a>
+
+      {{if .Favorites}}
+      <h3>Favorites</h3>
+      {{range .Favorites}}
+        <a href="/wiki/{{.Slug}}">{{.Title}}</a>
+      {{end}}
+      <a href="/edit/_favorites" class="sidebar-edit">edit</a>
       {{else}}
-        <p>No pages yet.</p>
+      <h3>Favorites</h3>
+      <p class="sidebar-hint">No favorites yet.</p>
+      <a href="/edit/_favorites" class="sidebar-edit">edit</a>
+      {{end}}
+
+      {{if .RecentPages}}
+      <h3>Recently Edited</h3>
+      {{range .RecentPages}}
+        <a href="/wiki/{{.Slug}}">{{.Title}}</a>
+      {{end}}
       {{end}}
     </aside>
 

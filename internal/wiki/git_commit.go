@@ -2,6 +2,7 @@ package wiki
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 )
@@ -11,20 +12,17 @@ type GitAutoCommitter struct {
 }
 
 func NewGitAutoCommitter(dataDir string) *GitAutoCommitter {
-	return &GitAutoCommitter{dataDir: dataDir}
+	c := &GitAutoCommitter{dataDir: dataDir}
+	c.ensureRepo()
+	return c
 }
 
 func (c *GitAutoCommitter) CommitPageSave(slug string) error {
 	return c.commitFile(filepath.Join("pages", MarkdownFilename(slug)), fmt.Sprintf("wiki: update page %s", slug))
 }
 
-func (c *GitAutoCommitter) CommitSecureBlockSave(pageSlug, blockID string) error {
-	filename := fmt.Sprintf("%s__%s.json", pageSlug, blockID)
-	return c.commitFile(filepath.Join("secure", filename), fmt.Sprintf("wiki: update secure block %s/%s", pageSlug, blockID))
-}
-
 func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
-	if c == nil || c.dataDir == "" || !c.isRepo() {
+	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
 		return nil
 	}
 
@@ -48,9 +46,24 @@ func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 	)
 }
 
-func (c *GitAutoCommitter) isRepo() bool {
-	cmd := exec.Command("git", "-C", c.dataDir, "rev-parse", "--is-inside-work-tree")
-	return cmd.Run() == nil
+// ensureRepo initializes a git repo inside dataDir if one doesn't exist there.
+func (c *GitAutoCommitter) ensureRepo() {
+	if c == nil || c.dataDir == "" {
+		return
+	}
+	if c.isOwnRepo() {
+		return
+	}
+	// Initialize a new repo inside dataDir
+	cmd := exec.Command("git", "init", c.dataDir)
+	_ = cmd.Run()
+}
+
+// isOwnRepo checks whether dataDir itself contains a .git directory
+// (as opposed to being inside a parent repo that may gitignore it).
+func (c *GitAutoCommitter) isOwnRepo() bool {
+	info, err := os.Stat(filepath.Join(c.dataDir, ".git"))
+	return err == nil && info.IsDir()
 }
 
 func (c *GitAutoCommitter) hasStagedChanges(relativeFilePath string) (bool, error) {
