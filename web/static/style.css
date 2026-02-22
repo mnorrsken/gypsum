@@ -312,3 +312,64 @@ textarea {
 .secure-copy-btn:hover {
   color: #333;
 }
+
+/* --- Image index --- */
+
+.image-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.image-table th {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 2px solid #e5e5e5;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+}
+
+.image-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+
+.image-thumb {
+  max-width: 80px;
+  max-height: 50px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.image-name code {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.image-size {
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.image-usage .unused {
+  color: #d97706;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.btn-delete {
+  background: none;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-delete:hover {
+  background: #fef2f2;
+}

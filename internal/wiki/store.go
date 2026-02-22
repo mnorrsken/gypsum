@@ -11,11 +11,90 @@ import (
 var ErrPageNotFound = errors.New("page not found")
 
 type PageStore struct {
-	pagesDir string
+	pagesDir  string
+	imagesDir string
 }
 
 func NewPageStore(pagesDir string) *PageStore {
-	return &PageStore{pagesDir: pagesDir}
+	imagesDir := filepath.Join(filepath.Dir(pagesDir), "images")
+	_ = os.MkdirAll(imagesDir, 0o755)
+	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir}
+}
+
+func (s *PageStore) ImagesDir() string {
+	return s.imagesDir
+}
+
+func (s *PageStore) ListImages() ([]ImageInfo, error) {
+	entries, err := os.ReadDir(s.imagesDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Build a map of image filename -> list of pages referencing it
+	usageMap := s.findImageUsage()
+
+	var images []ImageInfo
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp" && ext != ".svg" {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		images = append(images, ImageInfo{
+			Name:    entry.Name(),
+			URL:     "/uploads/" + entry.Name(),
+			Size:    info.Size(),
+			ModTime: info.ModTime(),
+			UsedBy:  usageMap[entry.Name()],
+		})
+	}
+
+	sort.Slice(images, func(i, j int) bool {
+		return images[i].ModTime.After(images[j].ModTime)
+	})
+
+	return images, nil
+}
+
+func (s *PageStore) findImageUsage() map[string][]string {
+	usage := make(map[string][]string)
+
+	entries, err := os.ReadDir(s.pagesDir)
+	if err != nil {
+		return usage
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(s.pagesDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		slug := SlugFromFilename(entry.Name())
+		text := string(content)
+
+		// Find all /uploads/FILENAME references
+		imgEntries, _ := os.ReadDir(s.imagesDir)
+		for _, img := range imgEntries {
+			if strings.Contains(text, "/uploads/"+img.Name()) {
+				usage[img.Name()] = append(usage[img.Name()], slug)
+			}
+		}
+	}
+
+	return usage
 }
 
 func (s *PageStore) Load(slug string) (*Page, error) {

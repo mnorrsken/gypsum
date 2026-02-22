@@ -1,13 +1,18 @@
 package wiki
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Handler struct {
@@ -16,6 +21,14 @@ type Handler struct {
 	renderer   *MarkdownRenderer
 	templates  string
 	autoCommit *GitAutoCommitter
+}
+
+type ImageInfo struct {
+	Name    string
+	URL     string
+	Size    int64
+	ModTime time.Time
+	UsedBy  []string // page slugs referencing this image
 }
 
 type TemplateData struct {
@@ -29,6 +42,7 @@ type TemplateData struct {
 	RawContent   string
 	Query        string
 	Results      []SearchResult
+	Images       []ImageInfo
 }
 
 func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter) *Handler {
@@ -49,6 +63,10 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/edit/", h.handleEdit)
 	mux.HandleFunc("/search", h.handleSearch)
 	mux.HandleFunc("/secure-inline/unlock", h.handleInlineSecureUnlock)
+	mux.HandleFunc("/images", h.handleImages)
+	mux.HandleFunc("/images/upload", h.handleImageUpload)
+	mux.HandleFunc("/images/delete", h.handleImageDelete)
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(h.store.ImagesDir()))))
 	return mux
 }
 
@@ -213,6 +231,100 @@ func (h *Handler) handlePages(w http.ResponseWriter, r *http.Request) {
 		Title:    "All Pages",
 		AllPages: allPages,
 	})
+}
+
+func (h *Handler) handleImages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	images, err := h.store.ListImages()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.render(w, "images", TemplateData{
+		Title:  "Images",
+		Images: images,
+	})
+}
+
+func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB max
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file too large or invalid"})
+		return
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing image"})
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	allowed := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true}
+	if !allowed[ext] {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "unsupported image type"})
+		return
+	}
+
+	// Generate unique filename
+	randBytes := make([]byte, 8)
+	_, _ = rand.Read(randBytes)
+	filename := fmt.Sprintf("%s-%s%s", time.Now().Format("20060102-150405"), hex.EncodeToString(randBytes), ext)
+
+	dstPath := filepath.Join(h.store.ImagesDir(), filename)
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "failed to save image"})
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "failed to write image"})
+		return
+	}
+
+	_ = h.autoCommit.CommitImageSave(filename)
+
+	url := "/uploads/" + filename
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": url, "filename": filename})
+}
+
+func (h *Handler) handleImageDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	filename := strings.TrimSpace(r.FormValue("filename"))
+	if filename == "" || strings.Contains(filename, "/") || strings.Contains(filename, "..") {
+		http.Error(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+
+	if err := os.Remove(filepath.Join(h.store.ImagesDir(), filename)); err != nil {
+		http.Error(w, "failed to delete image", http.StatusInternalServerError)
+		return
+	}
+
+	_ = h.autoCommit.CommitImageDelete(filename)
+
+	http.Redirect(w, r, "/images", http.StatusFound)
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) {

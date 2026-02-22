@@ -1,0 +1,45 @@
+{{define "content"}}
+<article>
+  <div class="page-header">
+    <h1>Images</h1>
+  </div>
+
+  {{if .Images}}
+  <table class="image-table">
+    <thead>
+      <tr>
+        <th>Preview</th>
+        <th>Filename</th>
+        <th>Size</th>
+        <th>Used By</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Images}}
+      <tr>
+        <td><a href="{{.URL}}" target="_blank"><img class="image-thumb" src="{{.URL}}" alt="{{.Name}}" /></a></td>
+        <td class="image-name"><code>{{.Name}}</code></td>
+        <td class="image-size">{{.Size}} B</td>
+        <td class="image-usage">
+          {{if .UsedBy}}
+            {{range .UsedBy}}<a href="/wiki/{{.}}">{{.}}</a> {{end}}
+          {{else}}
+            <span class="unused">unused</span>
+          {{end}}
+        </td>
+        <td>
+          <form method="post" action="/images/delete" onsubmit="return confirm('Delete this image?');">
+            <input type="hidden" name="filename" value="{{.Name}}" />
+            <button type="submit" class="btn-delete" title="Delete image">✕</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No images uploaded yet. Paste an image in the editor to upload.</p>
+  {{end}}
+</article>
+{{end}}

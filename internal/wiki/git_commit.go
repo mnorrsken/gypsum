@@ -21,6 +21,26 @@ func (c *GitAutoCommitter) CommitPageSave(slug string) error {
 	return c.commitFile(filepath.Join("pages", MarkdownFilename(slug)), fmt.Sprintf("wiki: update page %s", slug))
 }
 
+func (c *GitAutoCommitter) CommitImageSave(filename string) error {
+	return c.commitFile(filepath.Join("images", filename), fmt.Sprintf("wiki: upload image %s", filename))
+}
+
+func (c *GitAutoCommitter) CommitImageDelete(filename string) error {
+	relPath := filepath.Join("images", filename)
+	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
+		return nil
+	}
+	if err := c.runGit("rm", "--cached", "--ignore-unmatch", "--", relPath); err != nil {
+		return err
+	}
+	return c.runGit(
+		"-c", "user.name=Gypsum",
+		"-c", "user.email=gypsum@local",
+		"commit", "-m", fmt.Sprintf("wiki: delete image %s", filename),
+		"--allow-empty",
+	)
+}
+
 func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
 		return nil

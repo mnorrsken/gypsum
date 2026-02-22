@@ -1,13 +1,50 @@
 {{define "content"}}
 <article>
   <h1>{{.Title}}</h1>
-  <p class="hint">Raw markdown editor. Secure blocks appear as <code>{{"{{plain:your secret}}"}}</code> while editing and are encrypted on save.</p>
+  <p class="hint">Raw markdown editor. Secure blocks appear as <code>{{"{{plain:your secret}}"}}</code> while editing and are encrypted on save. Paste images directly to upload.</p>
   <form method="post" action="/edit/{{.Page.Slug}}">
-    <textarea name="content" rows="28">{{.RawContent}}</textarea>
+    <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
     <div class="page-actions">
       <button type="submit">Save</button>
       <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
     </div>
   </form>
 </article>
+
+<script>
+(() => {
+  const textarea = document.getElementById("editor");
+  textarea.addEventListener("paste", async (e) => {
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (!imageItem) return;
+
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    const ext = file.type.split("/")[1] || "png";
+    const formData = new FormData();
+    formData.append("image", file, "pasted-image." + ext);
+
+    const pos = textarea.selectionStart;
+    const placeholder = "![Uploading image...]()";
+    textarea.setRangeText(placeholder, pos, pos, "end");
+
+    try {
+      const resp = await fetch("/images/upload", { method: "POST", body: formData });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || "Upload failed");
+
+      const markdown = "![image](" + data.url + ")";
+      const current = textarea.value;
+      textarea.value = current.replace(placeholder, markdown);
+    } catch (err) {
+      const current = textarea.value;
+      textarea.value = current.replace(placeholder, "");
+      alert("Image upload failed: " + err.message);
+    }
+  });
+})();
+</script>
 {{end}}
