@@ -91,6 +91,10 @@ func (sc *ServerCrypto) DecryptForEdit(markdown string) string {
 		if err != nil {
 			return match // leave as-is if decryption fails
 		}
+		// If content contains newlines, format as multiline block.
+		if strings.Contains(plain, "\n") {
+			return fmt.Sprintf("{{plain:\n%s\n}}", plain)
+		}
 		return fmt.Sprintf("{{plain:%s}}", plain)
 	})
 }
@@ -104,7 +108,14 @@ func (sc *ServerCrypto) EncryptForSave(markdown string) (string, error) {
 		if len(captures) < 2 {
 			return match
 		}
-		encoded, err := sc.Encrypt(captures[1])
+		content := captures[1]
+		// For multiline blocks, strip the leading and trailing linebreaks
+		// so {{plain:\nxxx\nyyy\n}} stores only "xxx\nyyy".
+		if strings.HasPrefix(content, "\n") && strings.HasSuffix(content, "\n") {
+			content = strings.TrimPrefix(content, "\n")
+			content = strings.TrimSuffix(content, "\n")
+		}
+		encoded, err := sc.Encrypt(content)
 		if err != nil {
 			encryptErr = err
 			return match

@@ -433,8 +433,10 @@ textarea {
   cursor: default;
   color: inherit;
   letter-spacing: normal;
+  display: inline-block;
   background: #f5f5f5;
   border-radius: 3px;
+  padding: 4px 8px;
 }
 
 .secure-copy-btn {

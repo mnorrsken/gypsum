@@ -2,7 +2,13 @@
 
 All notable changes to Gypsum are documented in this file.
 
-## Unreleased
+## v0.1.1
+
+### Fixed
+- **Multiline secure block linebreaks** — multiline `{{plain:\n...\n}}` blocks now strip the leading and trailing linebreaks before encrypting, so the stored content matches what the user typed. `DecryptForEdit` re-wraps multiline content with the surrounding linebreaks for correct round-tripping.
+- **Unlocked secure field styling** — revealed secure fields now render as `inline-block` with padding so the grey background forms a continuous area instead of breaking across lines.
+
+## v0.1.0
 
 ### Added
 - **Responsive layout** — mobile-friendly design with media queries at 768px and 480px breakpoints. On small screens the sidebar becomes a slide-out drawer toggled by a hamburger menu button, with a semi-transparent overlay.

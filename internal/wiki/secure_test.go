@@ -67,3 +67,39 @@ func TestDecryptForEditAndEncryptForSave(t *testing.T) {
 		t.Fatal("surrounding text should be preserved")
 	}
 }
+
+func TestMultilineSecureMacroStripsLinebreaks(t *testing.T) {
+	sc := NewServerCrypto("multiline-key")
+
+	// Multiline block with leading/trailing newlines around content.
+	original := "before\n{{plain:\nline1\nline2\n}}\nafter"
+	encrypted, err := sc.EncryptForSave(original)
+	if err != nil {
+		t.Fatalf("EncryptForSave failed: %v", err)
+	}
+
+	if strings.Contains(encrypted, "line1") {
+		t.Fatal("encrypted markdown should not contain plaintext")
+	}
+
+	// Decrypt the ciphertext directly to verify stored content has no
+	// leading/trailing linebreaks.
+	captures := secureMacroRe.FindStringSubmatch(encrypted)
+	if len(captures) < 2 {
+		t.Fatalf("expected {{secure:...}} in %q", encrypted)
+	}
+	raw, err := sc.Decrypt(captures[1])
+	if err != nil {
+		t.Fatalf("Decrypt failed: %v", err)
+	}
+	if raw != "line1\nline2" {
+		t.Fatalf("expected stored plaintext %q, got %q", "line1\nline2", raw)
+	}
+
+	// DecryptForEdit should re-format as a multiline block.
+	decrypted := sc.DecryptForEdit(encrypted)
+	expected := "before\n{{plain:\nline1\nline2\n}}\nafter"
+	if decrypted != expected {
+		t.Fatalf("round-trip mismatch:\n got: %q\nwant: %q", decrypted, expected)
+	}
+}
