@@ -34,6 +34,26 @@ a:hover {
   padding: 10px 20px;
 }
 
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-toggle {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 22px;
+  padding: 2px 6px;
+  cursor: pointer;
+  color: #374151;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
 .topbar-rules {
   display: flex;
   flex-direction: column;
@@ -132,7 +152,6 @@ a:hover {
 
 .content {
   padding: 24px 32px;
-  max-width: 900px;
 }
 
 article {
@@ -533,4 +552,103 @@ textarea {
 
 .history-message {
   color: #374151;
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 768px) {
+  .sidebar-toggle {
+    display: block;
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 260px;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    overflow-y: auto;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay.open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 99;
+  }
+
+  .content {
+    padding: 16px;
+  }
+
+  article {
+    padding: 16px;
+  }
+
+  .search input {
+    min-width: 0;
+    width: 120px;
+  }
+
+  .page-list {
+    columns: 1;
+  }
+
+  .editor-layout {
+    flex-direction: column;
+  }
+
+  .editor-help {
+    width: 100%;
+    max-height: none;
+  }
+
+  .image-table th:nth-child(3),
+  .image-table td:nth-child(3) {
+    display: none;
+  }
+
+  .history-table th:nth-child(3),
+  .history-table td:nth-child(3) {
+    display: none;
+  }
+
+  .page-title-area h1 {
+    font-size: 1.4em;
+  }
+
+  .topbar-inner {
+    padding: 8px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .search input {
+    width: 90px;
+  }
+
+  .brand a {
+    font-size: 16px;
+  }
+
+  .page-tabs a {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  .page-actions {
+    flex-wrap: wrap;
+  }
 }
