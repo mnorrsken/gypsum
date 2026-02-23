@@ -14,6 +14,8 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Full-text search** — searches page titles and content
 - **Auto git commits** — every page save and image upload is committed to a git repo inside `data/`
 - **Docker-ready** — single-container deployment with optional git remote sync
+- **Responsive layout** — mobile-friendly with a hamburger menu sidebar on small screens
+- **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
 
 ## Quick Start

@@ -10,9 +10,12 @@
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand"><a href="/wiki/Home">Gypsum</a></div>
+      <div class="topbar-left">
+        <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Menu">&#9776;</button>
+        <div class="brand"><a href="/wiki/Home">Gypsum</a></div>
+      </div>
       <form class="search" action="/search" method="get">
-        <input type="search" name="q" value="{{.Query}}" placeholder="Search pages..." />
+        <input type="search" name="q" value="{{.Query}}" placeholder="Search..." />
         <button type="submit">Search</button>
       </form>
     </div>
@@ -23,7 +26,8 @@
   </header>
 
   <div class="layout">
-    <aside class="sidebar">
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    <aside class="sidebar" id="sidebar">
       <h3>Navigation</h3>
       <a href="/wiki/Home">Home</a>
       <a href="/pages">All Pages</a>
@@ -55,6 +59,23 @@
       {{template "content" .}}
     </main>
   </div>
+
+  <script>
+  (() => {
+    const toggle = document.getElementById("sidebar-toggle");
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebar-overlay");
+    function closeSidebar() {
+      sidebar.classList.remove("open");
+      overlay.classList.remove("open");
+    }
+    toggle.addEventListener("click", () => {
+      sidebar.classList.toggle("open");
+      overlay.classList.toggle("open");
+    });
+    overlay.addEventListener("click", closeSidebar);
+  })();
+  </script>
 </body>
 </html>
 {{end}}

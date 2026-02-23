@@ -5,6 +5,8 @@ All notable changes to Gypsum are documented in this file.
 ## Unreleased
 
 ### Added
+- **Responsive layout** — mobile-friendly design with media queries at 768px and 480px breakpoints. On small screens the sidebar becomes a slide-out drawer toggled by a hamburger menu button, with a semi-transparent overlay.
+- **Editor help panel** — an expandable reference panel to the right of the editor with a quick-reference table for markdown syntax, wiki links, secure field syntax (single-line and multiline), and image usage.
 - **Page history** — `/history/{slug}` shows the git commit log for a page (hash, date, author, message). Accessible via the "History" tab on every page.
 - **Page/Edit/History tabs** — every page now has MediaWiki-style tabs below the title for quick navigation between view, edit, and history.
 - **MediaWiki-style topbar** — brand and search bar with red and blue horizontal rulers underneath, inspired by MediaWiki.
