@@ -5,7 +5,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 )
+
+type HistoryEntry struct {
+	Hash    string
+	Author  string
+	Date    time.Time
+	Message string
+}
 
 type GitAutoCommitter struct {
 	dataDir string
@@ -107,4 +116,42 @@ func (c *GitAutoCommitter) runGit(args ...string) error {
 		return fmt.Errorf("git %v failed: %v (%s)", args, err, string(out))
 	}
 	return nil
+}
+
+// PageHistory returns the git log for a page file.
+func (c *GitAutoCommitter) PageHistory(slug string, maxEntries int) ([]HistoryEntry, error) {
+	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
+		return nil, nil
+	}
+
+	relPath := filepath.Join("pages", MarkdownFilename(slug))
+	format := "%H%n%an%n%aI%n%s%n---" // hash, author, ISO date, subject, separator
+
+	cmd := exec.Command("git", "-C", c.dataDir,
+		"log", fmt.Sprintf("--max-count=%d", maxEntries),
+		fmt.Sprintf("--format=%s", format),
+		"--", relPath,
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, nil // no history or file not tracked
+	}
+
+	var entries []HistoryEntry
+	blocks := strings.Split(strings.TrimSpace(string(out)), "---")
+	for _, block := range blocks {
+		lines := strings.Split(strings.TrimSpace(block), "\n")
+		if len(lines) < 4 {
+			continue
+		}
+		t, _ := time.Parse(time.RFC3339, strings.TrimSpace(lines[2]))
+		entries = append(entries, HistoryEntry{
+			Hash:    strings.TrimSpace(lines[0]),
+			Author:  strings.TrimSpace(lines[1]),
+			Date:    t,
+			Message: strings.TrimSpace(lines[3]),
+		})
+	}
+
+	return entries, nil
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
 )
 
 // secureMacroRe matches {{secure:PAYLOAD}} where PAYLOAD is base64 ciphertext.
@@ -111,4 +112,88 @@ func (sc *ServerCrypto) EncryptForSave(markdown string) (string, error) {
 		return fmt.Sprintf("{{secure:%s}}", encoded)
 	})
 	return result, encryptErr
+}
+
+// unknownTagRe matches any {{word:...}} or {{word that isn't a known tag.
+var unknownTagRe = regexp.MustCompile(`\{\{(?:plain|secure)\b`)
+var anyDoubleBraceOpen = regexp.MustCompile(`\{\{`)
+var anyDoubleBraceClose = regexp.MustCompile(`\}\}`)
+
+// ValidateContent checks the content for malformed custom tags.
+// Returns a user-friendly error message or empty string if valid.
+func ValidateContent(content string) string {
+	lines := strings.Split(content, "\n")
+
+	// Check for unknown {{tag:...}} patterns
+	for i, line := range lines {
+		lineNum := i + 1
+		for _, loc := range anyDoubleBraceOpen.FindAllStringIndex(line, -1) {
+			rest := line[loc[0]:]
+			if strings.HasPrefix(rest, "{{plain:") || strings.HasPrefix(rest, "{{secure:") {
+				continue
+			}
+			if len(rest) > 2 && rest[2] != '{' && rest[2] != ' ' && rest[2] != '\n' {
+				colonIdx := strings.Index(rest, ":")
+				closeIdx := strings.Index(rest, "}}")
+				if colonIdx > 2 && (closeIdx < 0 || colonIdx < closeIdx) {
+					tag := rest[2:colonIdx]
+					if !strings.ContainsAny(tag, " \t\n") {
+						return fmt.Sprintf("Line %d: unknown tag {{%s:...}}. Only {{plain:...}} is supported.", lineNum, tag)
+					}
+				}
+			}
+		}
+	}
+
+	// Track structure
+	inBlock := false
+	blockStartLine := 0
+
+	for i, line := range lines {
+		lineNum := i + 1
+		trimmed := strings.TrimSpace(line)
+
+		if !inBlock {
+			// Look for {{plain: on this line
+			idx := strings.Index(line, "{{plain:")
+			if idx < 0 {
+				// Check for stray }}
+				if strings.Contains(line, "}}") && !strings.Contains(line, "{{secure:") {
+					// Only flag if it's not part of something else (template syntax etc)
+					// We allow }} in normal text, only flag in context of plain blocks
+				}
+				continue
+			}
+
+			// Check if it closes on the same line (single-line block)
+			after := line[idx+8:] // after "{{plain:"
+			closeIdx := strings.Index(after, "}}")
+			if closeIdx >= 0 {
+				// Single-line: {{plain:content}} — valid
+				continue
+			}
+
+			// Multiline block: {{plain: must be the entire trimmed content of this line
+			if trimmed != "{{plain:" {
+				return fmt.Sprintf("Line %d: multiline {{plain: must be on its own line with no other text.", lineNum)
+			}
+
+			inBlock = true
+			blockStartLine = lineNum
+		} else {
+			// Inside a multiline block — look for closing }}
+			if strings.Contains(line, "}}") {
+				if trimmed != "}}" {
+					return fmt.Sprintf("Line %d: closing }} of a multiline secure block must be on its own line.", lineNum)
+				}
+				inBlock = false
+			}
+		}
+	}
+
+	if inBlock {
+		return fmt.Sprintf("Line %d: unclosed {{plain: block — missing closing }}.", blockStartLine)
+	}
+
+	return ""
 }

@@ -1,8 +1,13 @@
 {{define "content"}}
 <article>
-  <div class="page-header">
+  <div class="page-title-area">
     <h1>{{.Page.Title}}</h1>
-    <a class="edit-link" href="/edit/{{.Page.Slug}}">Edit</a>
+    <hr class="title-rule" />
+    <div class="page-tabs">
+      <a href="/wiki/{{.Page.Slug}}" class="active">Page</a>
+      <a href="/edit/{{.Page.Slug}}">Edit</a>
+      <a href="/history/{{.Page.Slug}}">History</a>
+    </div>
   </div>
   <div class="wiki-content">{{.RenderedHTML}}</div>
 </article>
@@ -27,7 +32,16 @@
           throw new Error(payload.error || "Decryption failed");
         }
 
-        el.textContent = payload.content || "";
+        el.textContent = "";
+        const text = payload.content || "";
+        if (text.includes("\n")) {
+          text.split("\n").forEach((part, i, arr) => {
+            el.appendChild(document.createTextNode(part));
+            if (i < arr.length - 1) el.appendChild(document.createElement("br"));
+          });
+        } else {
+          el.textContent = text;
+        }
         el.classList.add("unlocked");
 
         const btn = document.createElement("button");

@@ -5,6 +5,14 @@ All notable changes to Gypsum are documented in this file.
 ## Unreleased
 
 ### Added
+- **Page history** — `/history/{slug}` shows the git commit log for a page (hash, date, author, message). Accessible via the "History" tab on every page.
+- **Page/Edit/History tabs** — every page now has MediaWiki-style tabs below the title for quick navigation between view, edit, and history.
+- **MediaWiki-style topbar** — brand and search bar with red and blue horizontal rulers underneath, inspired by MediaWiki.
+- **Blue title ruler** — a blue horizontal rule appears under every page title.
+- **New Page flow** — the "+ New Page" sidebar link now opens a title input form. The title must be unique; duplicate names are rejected with an error message.
+- **Content validation** — on save, the editor validates custom tags: unknown `{{tag:...}}` patterns are rejected, unclosed `{{plain:` blocks are caught, and multiline blocks require `{{plain:` and `}}` each on their own line.
+- **Multiline secure blocks** — `{{plain:` blocks can span multiple lines. The opening `{{plain:` and closing `}}` must each be on their own line.
+- **Multiline decrypted display** — decrypted secure fields with line breaks now render with `<br>` tags instead of collapsing to a single line.
 - **Image support** — paste images directly into the editor to upload. Images are stored in `data/images/` and referenced as standard markdown images. An image index page (`/images`) lists all uploaded images with thumbnails, file sizes, page usage, and a delete button for cleanup.
 - **Image git integration** — image uploads and deletions are auto-committed to the data repo.
 - **Secure field auto-hide** — decrypted secure fields automatically revert to `🔒****` after 60 seconds.

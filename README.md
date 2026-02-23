@@ -6,7 +6,9 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 
 - **Markdown pages** — stored as `.md` files, rendered with [goldmark](https://github.com/yuin/goldmark) (GFM tables, syntax highlighting)
 - **Wiki links** — `[[Page Title]]` creates inter-page links; clicking a link to a non-existent page opens the editor
-- **Inline encryption** — `{{plain:secret}}` in the editor is AES-256-GCM encrypted on save; click the lock icon on a page to temporarily reveal the value
+- **Inline encryption** — `{{plain:secret}}` in the editor is AES-256-GCM encrypted on save; click the lock icon on a page to temporarily reveal the value (auto-hides after 60 seconds). Supports multiline blocks.
+- **Content validation** — malformed or unknown custom tags are rejected on save with clear error messages
+- **Page history** — view the git commit history for any page via the History tab
 - **Image uploads** — paste images directly into the editor; managed via an image index page
 - **Favorites sidebar** — edit `_favorites.md` to pin pages in the sidebar
 - **Full-text search** — searches page titles and content
@@ -48,8 +50,9 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 ### Pages
 
 - All pages live in `data/pages/` as `.md` files.
-- Click **+ New Page** in the sidebar or navigate to `/edit/Page_Name` to create a page.
+- Click **+ New Page** in the sidebar to create a page. You'll be prompted for a unique title.
 - Use `[[Page Title]]` to link between pages. The title is converted to a slug (`Page_Title`) automatically.
+- Each page has **Page**, **Edit**, and **History** tabs for quick navigation.
 
 ### Secure Fields
 
@@ -59,13 +62,28 @@ Store sensitive values inline in your markdown:
 WiFi password: {{plain:my-secret-password}}
 ```
 
+For multiline secrets, place `{{plain:` and `}}` on their own lines:
+
+```
+{{plain:
+username: admin
+password: s3cret
+}}
+```
+
 On save, the `{{plain:...}}` block is encrypted with AES-256-GCM:
 
 ```
 WiFi password: {{secure:BASE64_CIPHERTEXT}}
 ```
 
-When viewing the page, encrypted fields appear as `🔒****`. Click to decrypt and reveal the value for 60 seconds, then it auto-hides. A clipboard copy button appears next to revealed values.
+When viewing the page, encrypted fields appear as `🔒****`. Click to decrypt and reveal the value for 60 seconds, then it auto-hides. A clipboard copy button appears next to revealed values. Multiline content renders with proper line breaks.
+
+The editor validates custom tags on save — unknown tags, unclosed blocks, and improperly formatted multiline blocks are rejected with clear error messages.
+
+### Page History
+
+Click the **History** tab on any page to view its git commit log, showing revision hashes, dates, authors, and commit messages.
 
 ### Images
 

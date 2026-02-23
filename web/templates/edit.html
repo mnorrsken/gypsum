@@ -1,19 +1,82 @@
 {{define "content"}}
 <article>
-  <h1>{{.Title}}</h1>
-  <p class="hint">Raw markdown editor. Secure blocks appear as <code>{{"{{plain:your secret}}"}}</code> while editing and are encrypted on save. Paste images directly to upload.</p>
-  <form method="post" action="/edit/{{.Page.Slug}}">
-    <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
-    <div class="page-actions">
-      <button type="submit">Save</button>
-      <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
+  <div class="page-title-area">
+    <h1>{{.Page.Title}}</h1>
+    <hr class="title-rule" />
+    <div class="page-tabs">
+      <a href="/wiki/{{.Page.Slug}}">Page</a>
+      <a href="/edit/{{.Page.Slug}}" class="active">Edit</a>
+      <a href="/history/{{.Page.Slug}}">History</a>
     </div>
-  </form>
+  </div>
+  {{if .Query}}<p class="error">{{.Query}}</p>{{end}}
+  <p class="hint">{{if .IsNew}}Creating a new page.{{else}}Editing page.{{end}} Secure blocks: <code>{{"{{plain:your secret}}"}}</code>. Paste images to upload.</p>
+  <div class="editor-layout">
+    <form method="post" action="/edit/{{.Page.Slug}}" class="editor-form">
+      <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
+      <div class="page-actions">
+        <button type="submit">Save</button>
+        <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
+        <button type="button" class="button secondary" id="help-toggle">Help</button>
+      </div>
+    </form>
+    <aside class="editor-help" id="editor-help">
+      <h3>Markdown Reference</h3>
+      <table class="help-table">
+        <tr><td><code># Heading 1</code></td><td>Top-level heading</td></tr>
+        <tr><td><code>## Heading 2</code></td><td>Section heading</td></tr>
+        <tr><td><code>### Heading 3</code></td><td>Subsection heading</td></tr>
+        <tr><td><code>**bold**</code></td><td><strong>bold</strong></td></tr>
+        <tr><td><code>*italic*</code></td><td><em>italic</em></td></tr>
+        <tr><td><code>~~strikethrough~~</code></td><td><s>strikethrough</s></td></tr>
+        <tr><td><code>`inline code`</code></td><td><code>inline code</code></td></tr>
+        <tr><td><code>```lang</code></td><td>Fenced code block</td></tr>
+        <tr><td><code>[text](url)</code></td><td>Link</td></tr>
+        <tr><td><code>![alt](url)</code></td><td>Image</td></tr>
+        <tr><td><code>- item</code></td><td>Unordered list</td></tr>
+        <tr><td><code>1. item</code></td><td>Ordered list</td></tr>
+        <tr><td><code>- [ ] task</code></td><td>Task list</td></tr>
+        <tr><td><code>> quote</code></td><td>Blockquote</td></tr>
+        <tr><td><code>---</code></td><td>Horizontal rule</td></tr>
+        <tr><td><code>| A | B |</code></td><td>Table (GFM)</td></tr>
+        <tr><td><code>[^1]</code></td><td>Footnote reference</td></tr>
+      </table>
+
+      <h3>Wiki Links</h3>
+      <table class="help-table">
+        <tr><td><code>[[Page Title]]</code></td><td>Link to a wiki page</td></tr>
+      </table>
+
+      <h3>Secure Fields</h3>
+      <table class="help-table">
+        <tr><td colspan="2"><strong>Single-line:</strong></td></tr>
+        <tr><td colspan="2"><code>{{"{{plain:my secret}}"}}</code></td></tr>
+        <tr><td colspan="2"><strong>Multiline:</strong></td></tr>
+        <tr><td colspan="2"><pre>{{"{{plain:"}}
+username: admin
+password: s3cret
+{{"}}"}}</pre></td></tr>
+      </table>
+      <p class="help-note">Encrypted with AES-256-GCM on save. Multiline blocks require <code>{{"{{plain:"}}</code> and <code>{{"}}"}}</code> on their own lines.</p>
+
+      <h3>Images</h3>
+      <p class="help-note">Paste an image from the clipboard to upload automatically.</p>
+    </aside>
+  </div>
 </article>
 
 <script>
 (() => {
   const textarea = document.getElementById("editor");
+
+  // Help panel toggle
+  const helpBtn = document.getElementById("help-toggle");
+  const helpPanel = document.getElementById("editor-help");
+  helpBtn.addEventListener("click", () => {
+    helpPanel.classList.toggle("visible");
+    helpBtn.textContent = helpPanel.classList.contains("visible") ? "Hide Help" : "Help";
+  });
+
   textarea.addEventListener("paste", async (e) => {
     const items = Array.from(e.clipboardData.items);
     const imageItem = items.find((item) => item.type.startsWith("image/"));

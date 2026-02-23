@@ -1,0 +1,38 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>{{.Page.Title}}</h1>
+    <hr class="title-rule" />
+    <div class="page-tabs">
+      <a href="/wiki/{{.Page.Slug}}">Page</a>
+      <a href="/edit/{{.Page.Slug}}">Edit</a>
+      <a href="/history/{{.Page.Slug}}" class="active">History</a>
+    </div>
+  </div>
+
+  {{if .History}}
+  <table class="history-table">
+    <thead>
+      <tr>
+        <th>Revision</th>
+        <th>Date</th>
+        <th>Author</th>
+        <th>Summary</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .History}}
+      <tr>
+        <td class="history-hash"><code>{{printf "%.7s" .Hash}}</code></td>
+        <td class="history-date">{{.Date.Format "2006-01-02 15:04"}}</td>
+        <td class="history-author">{{.Author}}</td>
+        <td class="history-message">{{.Message}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No history available for this page.</p>
+  {{end}}
+</article>
+{{end}}

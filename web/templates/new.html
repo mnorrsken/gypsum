@@ -1,0 +1,21 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>New Page</h1>
+    <hr class="title-rule" />
+  </div>
+
+  {{if .Query}}
+  <p class="error">{{.Query}}</p>
+  {{end}}
+
+  <form method="post" action="/new">
+    <label for="title">Page title</label>
+    <input type="text" id="title" name="title" placeholder="Enter a unique page title..." autofocus required />
+    <div class="page-actions">
+      <button type="submit">Create</button>
+      <a class="button secondary" href="/pages">Cancel</a>
+    </div>
+  </form>
+</article>
+{{end}}

@@ -9,11 +9,17 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><a href="/wiki/Home">Gypsum</a></div>
-    <form class="search" action="/search" method="get">
-      <input type="search" name="q" value="{{.Query}}" placeholder="Search pages..." />
-      <button type="submit">Search</button>
-    </form>
+    <div class="topbar-inner">
+      <div class="brand"><a href="/wiki/Home">Gypsum</a></div>
+      <form class="search" action="/search" method="get">
+        <input type="search" name="q" value="{{.Query}}" placeholder="Search pages..." />
+        <button type="submit">Search</button>
+      </form>
+    </div>
+    <div class="topbar-rules">
+      <div class="rule-red"></div>
+      <div class="rule-blue"></div>
+    </div>
   </header>
 
   <div class="layout">
@@ -23,7 +29,7 @@
       <a href="/pages">All Pages</a>
       <a href="/images">Images</a>
       <a href="/search">Search</a>
-      <a href="/edit/New_Page" class="create-link">+ New Page</a>
+      <a href="/new" class="create-link">+ New Page</a>
 
       {{if .Favorites}}
       <h3>Favorites</h3>

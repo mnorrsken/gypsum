@@ -23,19 +23,38 @@ a:hover {
 /* --- Top bar --- */
 
 .topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 20px;
   background: #fff;
   border-bottom: 1px solid #e5e5e5;
 }
 
+.topbar-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+}
+
+.topbar-rules {
+  display: flex;
+  flex-direction: column;
+}
+
+.rule-red {
+  height: 2px;
+  background: #a72828;
+}
+
+.rule-blue {
+  height: 3px;
+  background: #2a4b8d;
+}
+
 .brand a {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   color: #1a1a1a;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.02em;
+  font-variant: small-caps;
 }
 
 .search {
@@ -123,33 +142,133 @@ article {
   padding: 28px 32px;
 }
 
-/* --- Page header (title + edit link) --- */
+/* --- Page title area (title + ruler + tabs) --- */
 
-.page-header {
+.page-title-area {
+  margin-bottom: 16px;
+}
+
+.page-title-area h1 {
+  margin: 0 0 0;
+  font-size: 1.7em;
+  font-weight: 400;
+  font-family: 'Linux Libertine', 'Georgia', 'Times', serif;
+}
+
+.title-rule {
+  border: none;
+  border-top: 3px solid #2a4b8d;
+  margin: 4px 0 0;
+}
+
+.page-tabs {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 4px;
-}
-
-.page-header h1 {
+  gap: 0;
   margin: 0;
-  font-size: 1.6em;
-  font-weight: 700;
+  border-bottom: 1px solid #e5e5e5;
 }
 
-.edit-link {
+.page-tabs a {
+  display: inline-block;
+  padding: 6px 14px;
   font-size: 13px;
-  color: #9ca3af;
-  white-space: nowrap;
+  color: #2563eb;
+  border: 1px solid transparent;
+  border-bottom: none;
+  margin-bottom: -1px;
+  border-radius: 4px 4px 0 0;
+  text-decoration: none;
 }
 
-.edit-link:hover {
-  color: #2563eb;
+.page-tabs a:hover {
+  background: #f3f4f6;
+  text-decoration: none;
+}
+
+.page-tabs a.active {
+  background: #fff;
+  color: #1a1a1a;
+  border-color: #e5e5e5;
+  font-weight: 500;
 }
 
 h1 {
   margin-top: 0;
+}
+
+/* --- Editor layout with help panel --- */
+
+.editor-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.editor-form {
+  flex: 1;
+  min-width: 0;
+}
+
+.editor-help {
+  display: none;
+  width: 300px;
+  flex-shrink: 0;
+  background: #f9fafb;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 580px;
+  overflow-y: auto;
+}
+
+.editor-help.visible {
+  display: block;
+}
+
+.editor-help h3 {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+}
+
+.editor-help h3:first-child {
+  margin-top: 0;
+}
+
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.help-table td {
+  padding: 2px 6px;
+  vertical-align: top;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.help-table td:first-child {
+  white-space: nowrap;
+  color: #374151;
+}
+
+.help-table td:last-child {
+  color: #6b7280;
+}
+
+.help-table pre {
+  margin: 2px 0;
+  font-size: 11px;
+  white-space: pre;
+}
+
+.help-note {
+  color: #6b7280;
+  margin: 4px 0;
 }
 
 /* --- Buttons & form elements --- */
@@ -372,4 +491,46 @@ textarea {
 
 .btn-delete:hover {
   background: #fef2f2;
+}
+
+/* --- History table --- */
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+.history-table th {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 2px solid #e5e5e5;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+}
+
+.history-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.history-hash code {
+  font-size: 12px;
+  color: #2563eb;
+}
+
+.history-date {
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.history-author {
+  color: #374151;
+}
+
+.history-message {
+  color: #374151;
 }

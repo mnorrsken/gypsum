@@ -43,6 +43,8 @@ type TemplateData struct {
 	Query        string
 	Results      []SearchResult
 	Images       []ImageInfo
+	History      []HistoryEntry
+	IsNew        bool
 }
 
 func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter) *Handler {
@@ -58,10 +60,12 @@ func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRender
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", h.handleIndex)
+	mux.HandleFunc("/new", h.handleNewPage)
 	mux.HandleFunc("/pages", h.handlePages)
 	mux.HandleFunc("/wiki/", h.handleView)
 	mux.HandleFunc("/edit/", h.handleEdit)
 	mux.HandleFunc("/search", h.handleSearch)
+	mux.HandleFunc("/history/", h.handleHistory)
 	mux.HandleFunc("/secure-inline/unlock", h.handleInlineSecureUnlock)
 	mux.HandleFunc("/images", h.handleImages)
 	mux.HandleFunc("/images/upload", h.handleImageUpload)
@@ -76,6 +80,41 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/wiki/Home", http.StatusFound)
+}
+
+func (h *Handler) handleNewPage(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.render(w, "new", TemplateData{
+			Title: "New Page",
+		})
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		title := strings.TrimSpace(r.FormValue("title"))
+		if title == "" {
+			h.render(w, "new", TemplateData{
+				Title: "New Page",
+				Query: "Please enter a page title.",
+			})
+			return
+		}
+		slug := SlugFromTitle(title)
+		_, err := h.store.Load(slug)
+		if err == nil {
+			// page already exists
+			h.render(w, "new", TemplateData{
+				Title: "New Page",
+				Query: fmt.Sprintf("A page named \"%s\" already exists.", title),
+			})
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("/edit/%s", slug), http.StatusFound)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func (h *Handler) handleView(w http.ResponseWriter, r *http.Request) {
@@ -130,15 +169,23 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 
 		raw := ""
 		title := TitleFromSlug(slug)
+		isNew := true
 		if page != nil {
 			raw = page.Content
 			title = page.Title
+			isNew = false
+		}
+
+		prefix := "Edit: "
+		if isNew {
+			prefix = "New page: "
 		}
 
 		h.render(w, "edit", TemplateData{
-			Title:      "Edit: " + title,
+			Title:      prefix + title,
 			Page:       &Page{Slug: slug, Title: title},
 			RawContent: h.crypto.DecryptForEdit(raw),
+			IsNew:      isNew,
 		})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
@@ -146,6 +193,26 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		content := r.FormValue("content")
+
+		// Validate custom tags before saving
+		if validationErr := ValidateContent(content); validationErr != "" {
+			title := TitleFromSlug(slug)
+			page, _ := h.store.Load(slug)
+			isNew := page == nil
+			prefix := "Edit: "
+			if isNew {
+				prefix = "New page: "
+			}
+			h.render(w, "edit", TemplateData{
+				Title:      prefix + title,
+				Page:       &Page{Slug: slug, Title: title},
+				RawContent: content,
+				IsNew:      isNew,
+				Query:      validationErr,
+			})
+			return
+		}
+
 		encrypted, err := h.crypto.EncryptForSave(content)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -230,6 +297,28 @@ func (h *Handler) handlePages(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "pages", TemplateData{
 		Title:    "All Pages",
 		AllPages: allPages,
+	})
+}
+
+func (h *Handler) handleHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slug := strings.TrimPrefix(r.URL.Path, "/history/")
+	if slug == "" {
+		http.Error(w, "missing page slug", http.StatusBadRequest)
+		return
+	}
+
+	title := TitleFromSlug(slug)
+	entries, _ := h.autoCommit.PageHistory(slug, 50)
+
+	h.render(w, "history", TemplateData{
+		Title:   "History: " + title,
+		Page:    &Page{Slug: slug, Title: title},
+		History: entries,
 	})
 }
 
