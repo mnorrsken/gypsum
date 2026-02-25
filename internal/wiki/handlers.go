@@ -70,7 +70,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/images", h.handleImages)
 	mux.HandleFunc("/images/upload", h.handleImageUpload)
 	mux.HandleFunc("/images/delete", h.handleImageDelete)
-	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(h.store.ImagesDir()))))
+	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
 	return mux
 }
 
@@ -385,7 +385,7 @@ func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.autoCommit.CommitImageSave(filename)
 
-	url := "/uploads/" + filename
+	url := "/images/" + filename
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": url, "filename": filename})
 }
 

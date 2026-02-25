@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.5.0
+
+### Changed
+- **Image URL path** — image URLs changed from `/uploads/filename.png` to `/images/filename.png`, matching the storage directory and management page. Pasted images now produce cleaner markdown tags.
+- **Multi-arch Docker build** — the builder stage now uses `--platform=$BUILDPLATFORM` with Go cross-compilation (`TARGETOS`/`TARGETARCH`), avoiding slow QEMU emulation during builds.
+
 ## v0.4.0
 
 ### Changed

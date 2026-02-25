@@ -52,7 +52,7 @@ func (s *PageStore) ListImages() ([]ImageInfo, error) {
 		}
 		images = append(images, ImageInfo{
 			Name:    entry.Name(),
-			URL:     "/uploads/" + entry.Name(),
+			URL:     "/images/" + entry.Name(),
 			Size:    info.Size(),
 			ModTime: info.ModTime(),
 			UsedBy:  usageMap[entry.Name()],
@@ -85,10 +85,10 @@ func (s *PageStore) findImageUsage() map[string][]string {
 		slug := SlugFromFilename(entry.Name())
 		text := string(content)
 
-		// Find all /uploads/FILENAME references
+		// Find all /images/FILENAME references
 		imgEntries, _ := os.ReadDir(s.imagesDir)
 		for _, img := range imgEntries {
-			if strings.Contains(text, "/uploads/"+img.Name()) {
+			if strings.Contains(text, "/images/"+img.Name()) {
 				usage[img.Name()] = append(usage[img.Name()], slug)
 			}
 		}

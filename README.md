@@ -89,7 +89,7 @@ Click the **History** tab on any page to view its git commit log, showing revisi
 
 ### Images
 
-Paste an image from the clipboard directly into the editor textarea. The image is uploaded and a markdown image reference (`![image](/uploads/filename.ext)`) is inserted at the cursor.
+Paste an image from the clipboard directly into the editor textarea. The image is uploaded and a markdown image reference (`![image](/images/filename.ext)`) is inserted at the cursor.
 
 Manage images at `/images` (linked in the sidebar as **Images**). The index shows each image's thumbnail, filename, file size, and which pages reference it. Unused images can be deleted to free space.
 
