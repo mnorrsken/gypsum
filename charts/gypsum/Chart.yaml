@@ -1,0 +1,15 @@
+apiVersion: v2
+name: gypsum
+description: A lightweight, self-hosted personal wiki built with Go
+type: application
+version: 0.1.0
+appVersion: "0.1.1"
+keywords:
+  - wiki
+  - markdown
+  - personal-wiki
+home: https://github.com/mnorrsken/gypsum
+sources:
+  - https://github.com/mnorrsken/gypsum
+maintainers:
+  - name: mnorrsken

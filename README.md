@@ -165,6 +165,65 @@ volumes:
   wiki-data:
 ```
 
+## Helm Chart
+
+Gypsum includes a Helm chart for deploying to Kubernetes.
+
+### Install from OCI Registry
+
+```bash
+helm install gypsum oci://ghcr.io/mnorrsken/charts/gypsum
+```
+
+### Install from Source
+
+```bash
+helm install gypsum ./charts/gypsum
+```
+
+### Configuration
+
+See all available values:
+
+```bash
+helm show values oci://ghcr.io/mnorrsken/charts/gypsum
+```
+
+Key values:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `image.repository` | `ghcr.io/mnorrsken/gypsum` | Container image repository |
+| `image.tag` | `""` (uses `appVersion`) | Image tag override |
+| `gypsum.secretKey` | `""` | AES-256-GCM encryption key. If empty, a pre-install hook generates one automatically |
+| `gypsum.existingSecret` | `""` | Name of an existing Secret (must contain a `secret-key` key) |
+| `persistence.enabled` | `true` | Enable persistent storage for wiki data |
+| `persistence.size` | `1Gi` | PVC size |
+| `persistence.existingClaim` | `""` | Use an existing PVC |
+| `ingress.enabled` | `false` | Enable Ingress |
+| `git.init` | `true` | Initialize a git repo in the data directory |
+| `git.commitName` | `Gypsum` | Git commit author name |
+| `git.commitEmail` | `gypsum@local` | Git commit author email |
+| `git.remoteUrl` | `""` | Git remote URL for backup/sync |
+
+### Secret Key Handling
+
+The encryption key for secure fields (`GYPSUM_SECRET_KEY`) is handled in one of three ways:
+
+1. **Auto-generated (default)** — When neither `gypsum.secretKey` nor `gypsum.existingSecret` is set, a pre-install hook runs a Job that generates a random 64-character key and stores it in a Kubernetes Secret. The secret persists across upgrades.
+2. **Explicit value** — Set `gypsum.secretKey` in your values to use a specific key.
+3. **Existing secret** — Set `gypsum.existingSecret` to reference a Secret you manage externally (it must contain a `secret-key` data key).
+
+### Example: Install with Ingress
+
+```bash
+helm install gypsum oci://ghcr.io/mnorrsken/charts/gypsum \
+  --set ingress.enabled=true \
+  --set ingress.hosts[0].host=wiki.example.com \
+  --set ingress.hosts[0].paths[0].path=/ \
+  --set ingress.hosts[0].paths[0].pathType=Prefix
+```
+
 ## Data Directory Structure
 
 ```

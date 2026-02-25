@@ -1,0 +1,92 @@
+# Default values for gypsum.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/mnorrsken/gypsum
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created.
+  create: true
+  # Annotations to add to the service account.
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template.
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: wiki.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: wiki-tls
+  #    hosts:
+  #      - wiki.example.com
+
+resources: {}
+  # limits:
+  #   cpu: 200m
+  #   memory: 256Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+persistence:
+  enabled: true
+  # Use an existing PVC instead of creating one.
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+
+# Gypsum application settings.
+gypsum:
+  # Secret key used for AES-256-GCM encryption of secure fields.
+  # If left empty, a pre-install hook generates a random secret automatically.
+  secretKey: ""
+  # Reference an existing Kubernetes Secret instead of creating one.
+  # The secret must contain a key named "secret-key".
+  existingSecret: ""
+
+# Git configuration (passed as environment variables).
+git:
+  init: true
+  commitName: "Gypsum"
+  commitEmail: "gypsum@local"
+  remoteName: ""
+  remoteUrl: ""
+  username: ""
+  password: ""
+  token: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

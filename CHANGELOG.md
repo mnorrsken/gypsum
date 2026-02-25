@@ -2,6 +2,16 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.2.0
+
+### Added
+- **Helm chart** — full Kubernetes Helm chart in `charts/gypsum/` with Deployment, Service, PVC, Ingress, and ServiceAccount templates.
+- **Auto-generated encryption secret** — a pre-install/pre-upgrade Helm hook generates a random `GYPSUM_SECRET_KEY` and stores it in a Kubernetes Secret when no key or existing secret is provided.
+- **Helm chart CI** — GitHub Actions workflow (`.github/workflows/helm.yml`) that lints the chart on PRs and packages/pushes it to the GHCR OCI registry on version tags.
+
+### Fixed
+- **Favorites git commit** — `_favorites.md` is now force-added during git commits (`git add -f`) so it is tracked even when matched by `.gitignore` patterns.
+
 ## v0.1.1
 
 ### Fixed

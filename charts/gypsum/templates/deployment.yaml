@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gypsum.fullname" . }}
+  labels:
+    {{- include "gypsum.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "gypsum.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "gypsum.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "gypsum.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: GYPSUM_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gypsum.secretName" . }}
+                  key: secret-key
+            {{- if .Values.git.init }}
+            - name: GYPSUM_GIT_INIT
+              value: "true"
+            {{- end }}
+            {{- if .Values.git.commitName }}
+            - name: GYPSUM_GIT_COMMIT_NAME
+              value: {{ .Values.git.commitName | quote }}
+            {{- end }}
+            {{- if .Values.git.commitEmail }}
+            - name: GYPSUM_GIT_COMMIT_EMAIL
+              value: {{ .Values.git.commitEmail | quote }}
+            {{- end }}
+            {{- if .Values.git.remoteName }}
+            - name: GYPSUM_GIT_REMOTE_NAME
+              value: {{ .Values.git.remoteName | quote }}
+            {{- end }}
+            {{- if .Values.git.remoteUrl }}
+            - name: GYPSUM_GIT_REMOTE_URL
+              value: {{ .Values.git.remoteUrl | quote }}
+            {{- end }}
+            {{- if .Values.git.username }}
+            - name: GYPSUM_GIT_USERNAME
+              value: {{ .Values.git.username | quote }}
+            {{- end }}
+            {{- if .Values.git.password }}
+            - name: GYPSUM_GIT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gypsum.fullname" . }}-git
+                  key: password
+            {{- end }}
+            {{- if .Values.git.token }}
+            - name: GYPSUM_GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gypsum.fullname" . }}-git
+                  key: token
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "gypsum.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
