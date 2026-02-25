@@ -295,6 +295,7 @@ h1 {
 .page-actions {
   margin: 14px 0;
   display: flex;
+  align-items: center;
   gap: 10px;
 }
 
@@ -721,6 +722,7 @@ textarea {
   color: #555;
   cursor: pointer;
   margin-left: 8px;
+  white-space: nowrap;
 }
 
 .diff-checkbox input[type="checkbox"] {

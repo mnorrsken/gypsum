@@ -102,6 +102,30 @@ func (sc *ServerCrypto) DecryptForEdit(markdown string) string {
 // EncryptForSave replaces every {{secure:CONTENT}} in markdown with
 // {{secure_aes:CIPHERTEXT}} for storage.
 func (sc *ServerCrypto) EncryptForSave(markdown string) (string, error) {
+	return sc.encryptForSave(markdown, nil)
+}
+
+// EncryptForSavePreserving works like EncryptForSave but reuses the original
+// ciphertext for any {{secure:CONTENT}} block whose plaintext matches an
+// existing {{secure_aes:...}} block in oldMarkdown. This avoids spurious diffs
+// caused by AES-GCM's random nonce.
+func (sc *ServerCrypto) EncryptForSavePreserving(markdown, oldMarkdown string) (string, error) {
+	// Build plaintext → original ciphertext map from old content.
+	preserve := make(map[string]string) // plaintext → "{{secure_aes:...}}"
+	for _, m := range secureAesMacroRe.FindAllStringSubmatch(oldMarkdown, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		plain, err := sc.Decrypt(m[1])
+		if err != nil {
+			continue
+		}
+		preserve[plain] = m[0] // keep the full macro string
+	}
+	return sc.encryptForSave(markdown, preserve)
+}
+
+func (sc *ServerCrypto) encryptForSave(markdown string, preserve map[string]string) (string, error) {
 	var encryptErr error
 	result := secureMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
 		captures := secureMacroRe.FindStringSubmatch(match)
@@ -114,6 +138,12 @@ func (sc *ServerCrypto) EncryptForSave(markdown string) (string, error) {
 		if strings.HasPrefix(content, "\n") && strings.HasSuffix(content, "\n") {
 			content = strings.TrimPrefix(content, "\n")
 			content = strings.TrimSuffix(content, "\n")
+		}
+		// Reuse original ciphertext when the plaintext is unchanged.
+		if preserve != nil {
+			if original, ok := preserve[content]; ok {
+				return original
+			}
 		}
 		encoded, err := sc.Encrypt(content)
 		if err != nil {

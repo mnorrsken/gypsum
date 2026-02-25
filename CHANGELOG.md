@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.7.0
+
+### Changed
+- **Diff shows on-disk content** — the diff preview now compares the raw on-disk files (with `{{secure_aes:...}}` tags) instead of decrypted plaintext, so encrypted fields are never exposed in the diff.
+- **Stable ciphertext for unchanged blocks** — secure blocks whose plaintext hasn't changed keep their original ciphertext in the diff, preventing spurious noise from AES-GCM's random nonces.
+- **Diff checkbox remembers preference** — the "Show diff" checkbox state is persisted in `localStorage` so it survives page navigations and browser restarts.
+- **Editor button layout** — the diff checkbox now renders inline with the action buttons on a single line, and the label is shortened to "Show diff".
+
 ## v0.6.0
 
 ### Added

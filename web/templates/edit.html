@@ -18,7 +18,7 @@
         <button type="submit">Save</button>
         <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
         <button type="button" class="button secondary" id="help-toggle">Help</button>
-        <label class="diff-checkbox"><input type="checkbox" id="showdiff-toggle" /> Show diff before saving</label>
+        <label class="diff-checkbox"><input type="checkbox" id="showdiff-toggle" /> Show diff</label>
       </div>
     </form>
     <aside class="editor-help" id="editor-help">
@@ -71,8 +71,15 @@ password: s3cret
   const textarea = document.getElementById("editor");
   const form = textarea.closest("form");
 
-  // Show-diff-before-save toggle
+  // Show-diff-before-save toggle — remember preference in localStorage
   const diffToggle = document.getElementById("showdiff-toggle");
+  const DIFF_PREF_KEY = "gypsum-showdiff";
+  if (localStorage.getItem(DIFF_PREF_KEY) === "1") {
+    diffToggle.checked = true;
+  }
+  diffToggle.addEventListener("change", () => {
+    localStorage.setItem(DIFF_PREF_KEY, diffToggle.checked ? "1" : "0");
+  });
   form.addEventListener("submit", (e) => {
     // Remove any previous hidden field
     const prev = form.querySelector('input[name="showdiff"]');

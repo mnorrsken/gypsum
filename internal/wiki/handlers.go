@@ -219,9 +219,16 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			title := TitleFromSlug(slug)
 			oldContent := ""
 			if page, _ := h.store.Load(slug); page != nil {
-				oldContent = h.crypto.DecryptForEdit(page.Content)
+				oldContent = page.Content
 			}
-			diffHTML := RenderUnifiedDiff(oldContent, content, slug)
+			// Encrypt the incoming editor content, preserving original
+			// ciphertext for unchanged blocks so the diff is clean.
+			newEncrypted, err := h.crypto.EncryptForSavePreserving(content, oldContent)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			diffHTML := RenderUnifiedDiff(oldContent, newEncrypted, slug)
 			h.render(w, "diff", TemplateData{
 				Title:      "Diff: " + title,
 				Page:       &Page{Slug: slug, Title: title},

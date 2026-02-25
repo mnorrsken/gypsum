@@ -14,7 +14,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Full-text search** — searches page titles and content
 - **Auto git commits** — every page save and image upload is committed to a git repo inside `data/`
 - **Git remote sync** — optional push-after-commit and periodic pull with "ours wins" conflict resolution, configured via environment variables
-- **Diff preview** — tick "Show diff before saving" in the editor to review a colorized unified diff before committing
+- **Diff preview** — tick "Show diff" in the editor to review a colorized unified diff of the raw on-disk content before committing; the preference is remembered across sessions
 - **Docker-ready** — single-container deployment with optional git remote sync
 - **Responsive layout** — mobile-friendly with a hamburger menu sidebar on small screens
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
@@ -100,7 +100,7 @@ Supported formats: PNG, JPG, JPEG, GIF, WEBP, SVG (max 10 MB).
 
 ### Diff Preview
 
-Tick the "Show diff before saving" checkbox in the editor before clicking Save. A colorized unified diff is displayed showing added lines (green) and removed lines (red) with surrounding context. Click **Confirm Save** to commit or **Back to Editor** to continue editing.
+Tick the "Show diff" checkbox in the editor before clicking Save. A colorized unified diff is displayed showing added lines (green) and removed lines (red) with surrounding context. The diff shows the raw on-disk content including `{{secure_aes:...}}` tags — encrypted fields whose plaintext hasn't changed keep stable ciphertext so they don't appear as noise. The checkbox preference is remembered across sessions via `localStorage`. Click **Confirm Save** to commit or **Back to Editor** to continue editing.
 
 ### Favorites
 
