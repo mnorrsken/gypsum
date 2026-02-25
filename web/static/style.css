@@ -301,6 +301,8 @@ h1 {
 
 .button,
 button {
+  display: inline-flex;
+  align-items: center;
   border: 1px solid #d1d5db;
   background: #fff;
   color: #374151;
@@ -309,7 +311,10 @@ button {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
   transition: background 0.1s;
+  box-sizing: border-box;
 }
 
 .button:hover,

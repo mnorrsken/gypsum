@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.7.1
+
+### Fixed
+- **Cancel button sizing** — the Cancel link in the editor now renders at the same size as the Save and Help buttons, fixing a mismatch caused by anchors not inheriting button font and line-height styles.
+
 ## v0.7.0
 
 ### Changed
