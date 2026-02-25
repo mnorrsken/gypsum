@@ -21,7 +21,7 @@ func TestGitAutoCommitterAutoInitsRepo(t *testing.T) {
 		t.Fatalf("failed to write page: %v", err)
 	}
 
-	committer := NewGitAutoCommitter(dataDir)
+	committer := NewGitAutoCommitter(dataDir, nil)
 
 	// ensureRepo should have created a .git directory
 	info, err := os.Stat(filepath.Join(dataDir, ".git"))
@@ -49,7 +49,7 @@ func TestGitAutoCommitterCommitsChangedFile(t *testing.T) {
 		t.Fatalf("failed to write page: %v", err)
 	}
 
-	committer := NewGitAutoCommitter(dataDir) // auto-initializes repo
+	committer := NewGitAutoCommitter(dataDir, nil) // auto-initializes repo
 	if err := committer.CommitPageSave("Home"); err != nil {
 		t.Fatalf("CommitPageSave failed: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestGitAutoCommitterCommitsIgnoredFavoritesFile(t *testing.T) {
 		t.Fatalf("failed to write favorites page: %v", err)
 	}
 
-	committer := NewGitAutoCommitter(dataDir)
+	committer := NewGitAutoCommitter(dataDir, nil)
 	if err := committer.CommitPageSave("_favorites"); err != nil {
 		t.Fatalf("CommitPageSave for _favorites failed: %v", err)
 	}

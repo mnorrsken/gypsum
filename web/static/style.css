@@ -654,3 +654,76 @@ textarea {
     flex-wrap: wrap;
   }
 }
+
+/* --- Diff preview --- */
+
+.diff-container {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.85em;
+  line-height: 1.5;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: auto;
+  margin: 16px 0;
+  background: #fafafa;
+}
+
+.diff-header {
+  padding: 8px 12px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #ddd;
+  font-weight: 600;
+  color: #333;
+}
+
+.diff-hunk-header {
+  padding: 4px 12px;
+  background: #f0f7ff;
+  color: #0969da;
+  border-top: 1px solid #ddd;
+}
+
+.diff-line {
+  padding: 1px 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.diff-ctx {
+  color: #444;
+}
+
+.diff-add {
+  background: #dafbe1;
+  color: #1a7f37;
+}
+
+.diff-del {
+  background: #ffebe9;
+  color: #cf222e;
+}
+
+.diff-empty {
+  padding: 16px;
+  text-align: center;
+  color: #888;
+}
+
+.diff-actions {
+  margin-top: 16px;
+}
+
+.diff-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85em;
+  color: #555;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.diff-checkbox input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}

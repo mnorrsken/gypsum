@@ -2,6 +2,23 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.6.0
+
+### Added
+- **Diff preview** — a "Show diff before saving" checkbox in the editor lets you review a colorized unified diff of your changes before committing. Added lines are highlighted green and removed lines red, with surrounding context. Click "Confirm Save" to proceed or "Back to Editor" to keep editing.
+- **Git remote sync in Go** — remote configuration, periodic pull, and push-after-commit are now handled entirely by the Go `GitAutoCommitter`, replacing the shell-based setup in `docker-entrypoint.sh`. Features include:
+  - Automatic remote configuration on startup
+  - Rebase-based pull before every commit
+  - Background push after every commit
+  - Periodic pull on a configurable interval (`GYPSUM_GIT_PULL_INTERVAL`, default 5 m)
+  - "Ours wins" conflict resolution — if a rebase fails, the local state is force-pushed
+  - Mutex-serialised git operations to prevent concurrent conflicts
+  - Configurable commit author via `GYPSUM_GIT_COMMIT_NAME` / `GYPSUM_GIT_COMMIT_EMAIL`
+  - Credential-sanitised URL logging
+
+### Changed
+- **Simplified `docker-entrypoint.sh`** — the entrypoint now only handles `git init` and `safe.directory` configuration. All remote setup, pulling, and pushing logic has moved to Go.
+
 ## v0.5.0
 
 ### Changed

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mnorrsken/gypsum/internal/wiki"
 )
@@ -41,7 +42,32 @@ func main() {
 	store := wiki.NewPageStore(pagesDir)
 	crypto := wiki.NewServerCrypto(secretKey)
 	renderer := wiki.NewMarkdownRenderer()
-	autoCommitter := wiki.NewGitAutoCommitter(dataDir)
+
+	var remoteConfig *wiki.GitRemoteConfig
+	if remoteURL := os.Getenv("GYPSUM_GIT_REMOTE_URL"); remoteURL != "" {
+		authURL := injectGitAuth(remoteURL)
+		remoteName := os.Getenv("GYPSUM_GIT_REMOTE_NAME")
+		if remoteName == "" {
+			remoteName = "origin"
+		}
+		remoteConfig = &wiki.GitRemoteConfig{
+			RemoteName:  remoteName,
+			RemoteURL:   authURL,
+			CommitName:  envOrDefault("GYPSUM_GIT_COMMIT_NAME", "Gypsum"),
+			CommitEmail: envOrDefault("GYPSUM_GIT_COMMIT_EMAIL", "gypsum@local"),
+		}
+	}
+
+	autoCommitter := wiki.NewGitAutoCommitter(dataDir, remoteConfig)
+	if remoteConfig != nil {
+		pullInterval := 5 * time.Minute
+		if v := os.Getenv("GYPSUM_GIT_PULL_INTERVAL"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+				pullInterval = d
+			}
+		}
+		autoCommitter.StartPeriodicPull(pullInterval)
+	}
 
 	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter)
 	mux := http.NewServeMux()
@@ -84,4 +110,32 @@ func seedPagesIfEmpty(pagesDir string) error {
 	}
 
 	return nil
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// injectGitAuth builds an authenticated URL from GYPSUM_GIT_REMOTE_URL
+// using GYPSUM_GIT_TOKEN or GYPSUM_GIT_USERNAME + GYPSUM_GIT_PASSWORD.
+func injectGitAuth(rawURL string) string {
+	if token := os.Getenv("GYPSUM_GIT_TOKEN"); token != "" {
+		return injectAuth(rawURL, token)
+	}
+	user := os.Getenv("GYPSUM_GIT_USERNAME")
+	pass := os.Getenv("GYPSUM_GIT_PASSWORD")
+	if user != "" && pass != "" {
+		return injectAuth(rawURL, user+":"+pass)
+	}
+	return rawURL
+}
+
+func injectAuth(url, auth string) string {
+	if strings.HasPrefix(url, "https://") {
+		return "https://" + auth + "@" + strings.TrimPrefix(url, "https://")
+	}
+	return url
 }

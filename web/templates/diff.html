@@ -1,0 +1,25 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>{{.Page.Title}}</h1>
+    <hr class="title-rule" />
+    <div class="page-tabs">
+      <a href="/wiki/{{.Page.Slug}}">Page</a>
+      <a href="/edit/{{.Page.Slug}}" class="active">Edit</a>
+      <a href="/history/{{.Page.Slug}}">History</a>
+    </div>
+  </div>
+
+  <p class="hint">Review your changes before saving.</p>
+
+  {{.DiffHTML}}
+
+  <form method="post" action="/edit/{{.Page.Slug}}" class="diff-actions">
+    <textarea name="content" style="display:none;">{{.RawContent}}</textarea>
+    <div class="page-actions">
+      <button type="submit">Confirm Save</button>
+      <button type="button" class="button secondary" onclick="history.back()">Back to Editor</button>
+    </div>
+  </form>
+</article>
+{{end}}

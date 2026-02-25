@@ -13,6 +13,8 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Favorites sidebar** — edit `_favorites.md` to pin pages in the sidebar
 - **Full-text search** — searches page titles and content
 - **Auto git commits** — every page save and image upload is committed to a git repo inside `data/`
+- **Git remote sync** — optional push-after-commit and periodic pull with "ours wins" conflict resolution, configured via environment variables
+- **Diff preview** — tick "Show diff before saving" in the editor to review a colorized unified diff before committing
 - **Docker-ready** — single-container deployment with optional git remote sync
 - **Responsive layout** — mobile-friendly with a hamburger menu sidebar on small screens
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
@@ -46,6 +48,7 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 | Variable | Default | Description |
 |---|---|---|
 | `GYPSUM_SECRET_KEY` | `change-me-in-production` | Passphrase used to derive the AES-256-GCM encryption key for secure fields. **Set this in production.** |
+| `GYPSUM_GIT_PULL_INTERVAL` | `5m` | How often to pull from the git remote (Go duration string, e.g. `2m`, `30s`). Only used when `GYPSUM_GIT_REMOTE_URL` is set. |
 
 ## Usage
 
@@ -94,6 +97,10 @@ Paste an image from the clipboard directly into the editor textarea. The image i
 Manage images at `/images` (linked in the sidebar as **Images**). The index shows each image's thumbnail, filename, file size, and which pages reference it. Unused images can be deleted to free space.
 
 Supported formats: PNG, JPG, JPEG, GIF, WEBP, SVG (max 10 MB).
+
+### Diff Preview
+
+Tick the "Show diff before saving" checkbox in the editor before clicking Save. A colorized unified diff is displayed showing added lines (green) and removed lines (red) with surrounding context. Click **Confirm Save** to commit or **Back to Editor** to continue editing.
 
 ### Favorites
 
@@ -144,6 +151,7 @@ All variables from the table above apply, plus these Docker-specific variables u
 | `GYPSUM_GIT_TOKEN` | _(empty)_ | Git token for HTTPS authentication (takes precedence over username/password) |
 | `GYPSUM_GIT_COMMIT_NAME` | _(empty)_ | Git commit author name |
 | `GYPSUM_GIT_COMMIT_EMAIL` | _(empty)_ | Git commit author email |
+| `GYPSUM_GIT_PULL_INTERVAL` | `5m` | How often to pull from the git remote (e.g. `2m`, `30s`) |
 
 ### Docker Compose Example
 
@@ -205,6 +213,7 @@ Key values:
 | `git.commitName` | `Gypsum` | Git commit author name |
 | `git.commitEmail` | `gypsum@local` | Git commit author email |
 | `git.remoteUrl` | `""` | Git remote URL for backup/sync |
+| `git.pullInterval` | `5m` | How often to pull from the remote (Go duration, e.g. `5m`, `30s`). Only used when `remoteUrl` is set |
 
 ### Secret Key Handling
 

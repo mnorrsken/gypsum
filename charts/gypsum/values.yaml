@@ -86,6 +86,9 @@ git:
   username: ""
   password: ""
   token: ""
+  # How often to pull from the remote (Go duration, e.g. "5m", "30s").
+  # Only used when remoteUrl is set.
+  pullInterval: "5m"
 
 nodeSelector: {}
 tolerations: []

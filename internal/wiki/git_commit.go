@@ -2,10 +2,12 @@ package wiki
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -16,14 +18,31 @@ type HistoryEntry struct {
 	Message string
 }
 
-type GitAutoCommitter struct {
-	dataDir string
+// GitRemoteConfig holds optional remote sync settings.
+type GitRemoteConfig struct {
+	RemoteName  string // e.g. "origin"
+	RemoteURL   string // full URL (with auth baked in if needed)
+	CommitName  string // user.name for commits
+	CommitEmail string // user.email for commits
 }
 
-func NewGitAutoCommitter(dataDir string) *GitAutoCommitter {
-	c := &GitAutoCommitter{dataDir: dataDir}
+type GitAutoCommitter struct {
+	dataDir string
+	remote  *GitRemoteConfig
+	mu      sync.Mutex // serialise git operations
+	stopCh  chan struct{}
+}
+
+func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommitter {
+	c := &GitAutoCommitter{
+		dataDir: dataDir,
+		remote:  remote,
+		stopCh:  make(chan struct{}),
+	}
 	c.markSafeDirectory()
 	c.ensureRepo()
+	c.configureRemote()
+	c.initialPull()
 	return c
 }
 
@@ -40,21 +59,34 @@ func (c *GitAutoCommitter) CommitImageDelete(filename string) error {
 	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
 		return nil
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.pullRebase() // best-effort pull before commit
+
 	if err := c.runGit("rm", "--cached", "--ignore-unmatch", "--", relPath); err != nil {
 		return err
 	}
-	return c.runGit(
-		"-c", "user.name=Gypsum",
-		"-c", "user.email=gypsum@local",
+	if err := c.runGit(
+		"-c", fmt.Sprintf("user.name=%s", c.commitName()),
+		"-c", fmt.Sprintf("user.email=%s", c.commitEmail()),
 		"commit", "-m", fmt.Sprintf("wiki: delete image %s", filename),
 		"--allow-empty",
-	)
+	); err != nil {
+		return err
+	}
+	c.pushAsync()
+	return nil
 }
 
 func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
 		return nil
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.pullRebase() // best-effort pull before commit
 
 	if err := c.runGit("add", "-f", "--", relativeFilePath); err != nil {
 		return err
@@ -68,12 +100,16 @@ func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 		return nil
 	}
 
-	return c.runGit(
-		"-c", "user.name=Gypsum",
-		"-c", "user.email=gypsum@local",
+	if err := c.runGit(
+		"-c", fmt.Sprintf("user.name=%s", c.commitName()),
+		"-c", fmt.Sprintf("user.email=%s", c.commitEmail()),
 		"commit", "-m", message,
 		"--", relativeFilePath,
-	)
+	); err != nil {
+		return err
+	}
+	c.pushAsync()
+	return nil
 }
 
 // ensureRepo initializes a git repo inside dataDir if one doesn't exist there.
@@ -87,6 +123,186 @@ func (c *GitAutoCommitter) ensureRepo() {
 	// Initialize a new repo inside dataDir
 	cmd := exec.Command("git", "init", c.dataDir)
 	_ = cmd.Run()
+}
+
+// configureRemote sets (or resets) the git remote URL on every startup so that
+// credential or URL changes in environment variables take effect immediately.
+func (c *GitAutoCommitter) configureRemote() {
+	if c == nil || c.remote == nil || c.remote.RemoteURL == "" || !c.isOwnRepo() {
+		return
+	}
+	name := c.remote.RemoteName
+	if name == "" {
+		name = "origin"
+	}
+	// Try set-url first; if the remote doesn't exist yet, add it.
+	if err := c.runGit("remote", "set-url", name, c.remote.RemoteURL); err != nil {
+		_ = c.runGit("remote", "add", name, c.remote.RemoteURL)
+	}
+	log.Printf("git: remote %q configured → %s", name, sanitizeURL(c.remote.RemoteURL))
+}
+
+// initialPull does a one-time pull at startup, handling the case where the
+// local repo may be empty or diverged. Uses the "ours wins" strategy.
+func (c *GitAutoCommitter) initialPull() {
+	if !c.hasRemote() {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pullRebase()
+}
+
+// StartPeriodicPull launches a background goroutine that pulls from the
+// remote at the given interval. Call Stop() to terminate it.
+func (c *GitAutoCommitter) StartPeriodicPull(interval time.Duration) {
+	if !c.hasRemote() {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				c.mu.Lock()
+				c.pullRebase()
+				c.mu.Unlock()
+			case <-c.stopCh:
+				return
+			}
+		}
+	}()
+	log.Printf("git: periodic pull every %s", interval)
+}
+
+// Stop terminates the periodic pull goroutine.
+func (c *GitAutoCommitter) Stop() {
+	if c == nil {
+		return
+	}
+	close(c.stopCh)
+}
+
+// pullRebase fetches from the remote and rebases local commits on top.
+// If rebase conflicts occur, abort and force-push local state (ours wins).
+// Must be called with c.mu held.
+func (c *GitAutoCommitter) pullRebase() {
+	if !c.hasRemote() {
+		return
+	}
+	remoteName := c.remoteName()
+	branch := c.currentBranch()
+	if branch == "" {
+		return // detached HEAD or empty repo with no commits yet
+	}
+
+	// Fetch latest
+	if err := c.runGit("fetch", remoteName); err != nil {
+		log.Printf("git: fetch failed: %v", err)
+		return
+	}
+
+	// Check if the remote branch exists
+	remoteRef := remoteName + "/" + branch
+	if err := c.runGit("rev-parse", "--verify", remoteRef); err != nil {
+		// Remote branch doesn't exist yet; nothing to pull.
+		return
+	}
+
+	// Try rebase on top of remote
+	err := c.runGit("rebase", remoteRef)
+	if err != nil {
+		log.Printf("git: rebase failed, aborting and keeping local state: %v", err)
+		_ = c.runGit("rebase", "--abort")
+		// Force-push to overwrite remote with local (ours wins)
+		c.forcePush()
+		return
+	}
+}
+
+// pushAsync pushes to the remote in the background (fire-and-forget).
+// Must be called with c.mu held (it spawns a goroutine that acquires its own lock).
+func (c *GitAutoCommitter) pushAsync() {
+	if !c.hasRemote() {
+		return
+	}
+	go func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.push()
+	}()
+}
+
+// push pushes the current branch to the remote. Falls back to force-push on rejection.
+// Must be called with c.mu held.
+func (c *GitAutoCommitter) push() {
+	branch := c.currentBranch()
+	if branch == "" {
+		return
+	}
+	remoteName := c.remoteName()
+	if err := c.runGit("push", remoteName, branch); err != nil {
+		log.Printf("git: push rejected, force-pushing: %v", err)
+		c.forcePush()
+	}
+}
+
+// forcePush force-pushes the current branch (ours-wins strategy).
+func (c *GitAutoCommitter) forcePush() {
+	branch := c.currentBranch()
+	if branch == "" {
+		return
+	}
+	if err := c.runGit("push", "--force", c.remoteName(), branch); err != nil {
+		log.Printf("git: force-push failed: %v", err)
+	}
+}
+
+func (c *GitAutoCommitter) hasRemote() bool {
+	return c != nil && c.remote != nil && c.remote.RemoteURL != "" && c.isOwnRepo()
+}
+
+func (c *GitAutoCommitter) remoteName() string {
+	if c.remote != nil && c.remote.RemoteName != "" {
+		return c.remote.RemoteName
+	}
+	return "origin"
+}
+
+func (c *GitAutoCommitter) commitName() string {
+	if c.remote != nil && c.remote.CommitName != "" {
+		return c.remote.CommitName
+	}
+	return "Gypsum"
+}
+
+func (c *GitAutoCommitter) commitEmail() string {
+	if c.remote != nil && c.remote.CommitEmail != "" {
+		return c.remote.CommitEmail
+	}
+	return "gypsum@local"
+}
+
+func (c *GitAutoCommitter) currentBranch() string {
+	cmd := exec.Command("git", "-C", c.dataDir, "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// sanitizeURL masks credentials in a URL for safe logging.
+func sanitizeURL(u string) string {
+	if i := strings.Index(u, "@"); i > 0 {
+		scheme := "https://"
+		if strings.HasPrefix(u, "http://") {
+			scheme = "http://"
+		}
+		return scheme + "***@" + u[i+1:]
+	}
+	return u
 }
 
 // markSafeDirectory adds dataDir to git's global safe.directory list so that

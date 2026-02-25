@@ -45,6 +45,7 @@ type TemplateData struct {
 	Images       []ImageInfo
 	History      []HistoryEntry
 	IsNew        bool
+	DiffHTML     template.HTML
 }
 
 func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter) *Handler {
@@ -209,6 +210,23 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 				RawContent: content,
 				IsNew:      isNew,
 				Query:      validationErr,
+			})
+			return
+		}
+
+		// Show diff preview if requested
+		if r.FormValue("showdiff") == "1" {
+			title := TitleFromSlug(slug)
+			oldContent := ""
+			if page, _ := h.store.Load(slug); page != nil {
+				oldContent = h.crypto.DecryptForEdit(page.Content)
+			}
+			diffHTML := RenderUnifiedDiff(oldContent, content, slug)
+			h.render(w, "diff", TemplateData{
+				Title:      "Diff: " + title,
+				Page:       &Page{Slug: slug, Title: title},
+				RawContent: content,
+				DiffHTML:   diffHTML,
 			})
 			return
 		}
