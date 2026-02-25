@@ -22,6 +22,7 @@ type GitAutoCommitter struct {
 
 func NewGitAutoCommitter(dataDir string) *GitAutoCommitter {
 	c := &GitAutoCommitter{dataDir: dataDir}
+	c.markSafeDirectory()
 	c.ensureRepo()
 	return c
 }
@@ -85,6 +86,21 @@ func (c *GitAutoCommitter) ensureRepo() {
 	}
 	// Initialize a new repo inside dataDir
 	cmd := exec.Command("git", "init", c.dataDir)
+	_ = cmd.Run()
+}
+
+// markSafeDirectory adds dataDir to git's global safe.directory list so that
+// git operations succeed even when the directory is owned by a different user
+// (common with Kubernetes PVC mounts).
+func (c *GitAutoCommitter) markSafeDirectory() {
+	if c == nil || c.dataDir == "" {
+		return
+	}
+	absPath, err := filepath.Abs(c.dataDir)
+	if err != nil {
+		return
+	}
+	cmd := exec.Command("git", "config", "--global", "--add", "safe.directory", absPath)
 	_ = cmd.Run()
 }
 

@@ -11,6 +11,9 @@ All notable changes to Gypsum are documented in this file.
 
 ### Fixed
 - **Favorites git commit** — `_favorites.md` is now force-added during git commits (`git add -f`) so it is tracked even when matched by `.gitignore` patterns.
+- **Git safe.directory in Kubernetes** — git operations no longer fail with "not in a git directory" when the data volume is owned by a different user (e.g. PVC mounts). Both the Go auto-committer and the Docker entrypoint now configure `safe.directory` before any git operations.
+- **Dockerfile user UID** — the `app` user is now created with explicit UID/GID 1000 to match the Helm chart's `securityContext`.
+- **Legacy secure directory removed** — the unused `data/secure` directory is no longer created by the Dockerfile or entrypoint.
 
 ## v0.1.1
 

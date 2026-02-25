@@ -9,7 +9,7 @@ GIT_USERNAME="${GYPSUM_GIT_USERNAME:-}"
 GIT_PASSWORD="${GYPSUM_GIT_PASSWORD:-}"
 GIT_TOKEN="${GYPSUM_GIT_TOKEN:-}"
 
-mkdir -p "$DATA_DIR/pages" "$DATA_DIR/secure"
+mkdir -p "$DATA_DIR/pages"
 
 is_true() {
   case "${1:-}" in
@@ -30,6 +30,10 @@ inject_auth_into_url() {
       ;;
   esac
 }
+
+# Mark data directory as safe for git (required when volume ownership
+# differs from the running user, e.g. PVC mounts in Kubernetes).
+git config --global --add safe.directory "$DATA_DIR"
 
 if is_true "$INIT_REPO"; then
   if ! git -C "$DATA_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
