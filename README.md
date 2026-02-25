@@ -155,23 +155,13 @@ All variables from the table above apply, plus these Docker-specific variables u
 
 ### Docker Compose Example
 
-```yaml
-services:
-  wiki:
-    build: .
-    ports:
-      - "8080:8080"
-    volumes:
-      - wiki-data:/app/data
-    environment:
-      GYPSUM_SECRET_KEY: "your-strong-secret-key"
-      GYPSUM_GIT_INIT: "true"
-      GYPSUM_GIT_COMMIT_NAME: "Gypsum"
-      GYPSUM_GIT_COMMIT_EMAIL: "gypsum@local"
+A ready-to-use [`docker-compose.yaml`](docker-compose.yaml) is included in the repository:
 
-volumes:
-  wiki-data:
+```bash
+docker compose up -d
 ```
+
+Adjust environment variables in the file to set your encryption key and optional git remote sync.
 
 ## Helm Chart
 

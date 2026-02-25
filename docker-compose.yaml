@@ -1,0 +1,20 @@
+services:
+  wiki:
+    image: ghcr.io/mnorrsken/gypsum:latest
+    # build: .  # uncomment to build from source instead
+    ports:
+      - "8080:8080"
+    volumes:
+      - wiki-data:/app/data
+    environment:
+      GYPSUM_SECRET_KEY: "change-me-in-production"
+      GYPSUM_GIT_INIT: "true"
+      GYPSUM_GIT_COMMIT_NAME: "Gypsum"
+      GYPSUM_GIT_COMMIT_EMAIL: "gypsum@local"
+      # GYPSUM_GIT_REMOTE_URL: "https://github.com/user/wiki-data.git"
+      # GYPSUM_GIT_TOKEN: ""
+      # GYPSUM_GIT_PULL_INTERVAL: "5m"
+    restart: unless-stopped
+
+volumes:
+  wiki-data:
