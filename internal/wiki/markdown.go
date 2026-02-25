@@ -15,7 +15,7 @@ import (
 )
 
 var wikiLinkPattern = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
-var secureMacroPattern = regexp.MustCompile(`\{\{secure:([\w+/=]+)\}\}`)
+var secureAesMacroPattern = regexp.MustCompile(`\{\{secure_aes:([\w+/=]+)\}\}`)
 
 type MarkdownRenderer struct {
 	engine goldmark.Markdown
@@ -58,12 +58,12 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 		return fmt.Sprintf("[%s](/wiki/%s)", title, slug)
 	})
 
-	// Replace secure macros with placeholder tokens before goldmark so they
+	// Replace secure_aes macros with placeholder tokens before goldmark so they
 	// don't get wrapped in their own <p> blocks. The tokens survive HTML
 	// rendering and are swapped for real HTML afterwards.
 	var securePlaceholders []string
-	withPlaceholders := secureMacroPattern.ReplaceAllStringFunc(withLinks, func(match string) string {
-		captures := secureMacroPattern.FindStringSubmatch(match)
+	withPlaceholders := secureAesMacroPattern.ReplaceAllStringFunc(withLinks, func(match string) string {
+		captures := secureAesMacroPattern.FindStringSubmatch(match)
 		if len(captures) < 2 {
 			return match
 		}

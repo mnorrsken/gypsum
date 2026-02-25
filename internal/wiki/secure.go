@@ -12,11 +12,11 @@ import (
 	"strings"
 )
 
-// secureMacroRe matches {{secure:PAYLOAD}} where PAYLOAD is base64 ciphertext.
-var secureMacroRe = regexp.MustCompile(`\{\{secure:([\w+/=]+)\}\}`)
+// secureAesMacroRe matches {{secure_aes:PAYLOAD}} where PAYLOAD is base64 ciphertext.
+var secureAesMacroRe = regexp.MustCompile(`\{\{secure_aes:([\w+/=]+)\}\}`)
 
-// plainMacroRe matches {{plain:CONTENT}} used in the editor for decrypted blocks.
-var plainMacroRe = regexp.MustCompile(`(?s)\{\{plain:(.*?)\}\}`)
+// secureMacroRe matches {{secure:CONTENT}} used in the editor for decrypted blocks.
+var secureMacroRe = regexp.MustCompile(`(?s)\{\{secure:(.*?)\}\}`)
 
 // ServerCrypto provides AES-256-GCM encryption using a single server key.
 type ServerCrypto struct {
@@ -79,11 +79,11 @@ func (sc *ServerCrypto) Decrypt(encoded string) (string, error) {
 	return string(plain), nil
 }
 
-// DecryptForEdit replaces every {{secure:CIPHERTEXT}} in markdown with
-// {{plain:DECRYPTED}} so the editor shows cleartext.
+// DecryptForEdit replaces every {{secure_aes:CIPHERTEXT}} in markdown with
+// {{secure:DECRYPTED}} so the editor shows cleartext.
 func (sc *ServerCrypto) DecryptForEdit(markdown string) string {
-	return secureMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
-		captures := secureMacroRe.FindStringSubmatch(match)
+	return secureAesMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
+		captures := secureAesMacroRe.FindStringSubmatch(match)
 		if len(captures) < 2 || captures[1] == "" {
 			return match
 		}
@@ -93,24 +93,24 @@ func (sc *ServerCrypto) DecryptForEdit(markdown string) string {
 		}
 		// If content contains newlines, format as multiline block.
 		if strings.Contains(plain, "\n") {
-			return fmt.Sprintf("{{plain:\n%s\n}}", plain)
+			return fmt.Sprintf("{{secure:\n%s\n}}", plain)
 		}
-		return fmt.Sprintf("{{plain:%s}}", plain)
+		return fmt.Sprintf("{{secure:%s}}", plain)
 	})
 }
 
-// EncryptForSave replaces every {{plain:CONTENT}} in markdown with
-// {{secure:CIPHERTEXT}} for storage.
+// EncryptForSave replaces every {{secure:CONTENT}} in markdown with
+// {{secure_aes:CIPHERTEXT}} for storage.
 func (sc *ServerCrypto) EncryptForSave(markdown string) (string, error) {
 	var encryptErr error
-	result := plainMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
-		captures := plainMacroRe.FindStringSubmatch(match)
+	result := secureMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
+		captures := secureMacroRe.FindStringSubmatch(match)
 		if len(captures) < 2 {
 			return match
 		}
 		content := captures[1]
 		// For multiline blocks, strip the leading and trailing linebreaks
-		// so {{plain:\nxxx\nyyy\n}} stores only "xxx\nyyy".
+		// so {{secure:\nxxx\nyyy\n}} stores only "xxx\nyyy".
 		if strings.HasPrefix(content, "\n") && strings.HasSuffix(content, "\n") {
 			content = strings.TrimPrefix(content, "\n")
 			content = strings.TrimSuffix(content, "\n")
@@ -120,13 +120,13 @@ func (sc *ServerCrypto) EncryptForSave(markdown string) (string, error) {
 			encryptErr = err
 			return match
 		}
-		return fmt.Sprintf("{{secure:%s}}", encoded)
+		return fmt.Sprintf("{{secure_aes:%s}}", encoded)
 	})
 	return result, encryptErr
 }
 
 // unknownTagRe matches any {{word:...}} or {{word that isn't a known tag.
-var unknownTagRe = regexp.MustCompile(`\{\{(?:plain|secure)\b`)
+var unknownTagRe = regexp.MustCompile(`\{\{(?:secure|secure_aes)\b`)
 var anyDoubleBraceOpen = regexp.MustCompile(`\{\{`)
 var anyDoubleBraceClose = regexp.MustCompile(`\}\}`)
 
@@ -140,7 +140,7 @@ func ValidateContent(content string) string {
 		lineNum := i + 1
 		for _, loc := range anyDoubleBraceOpen.FindAllStringIndex(line, -1) {
 			rest := line[loc[0]:]
-			if strings.HasPrefix(rest, "{{plain:") || strings.HasPrefix(rest, "{{secure:") {
+			if strings.HasPrefix(rest, "{{secure:") || strings.HasPrefix(rest, "{{secure_aes:") {
 				continue
 			}
 			if len(rest) > 2 && rest[2] != '{' && rest[2] != ' ' && rest[2] != '\n' {
@@ -149,7 +149,7 @@ func ValidateContent(content string) string {
 				if colonIdx > 2 && (closeIdx < 0 || colonIdx < closeIdx) {
 					tag := rest[2:colonIdx]
 					if !strings.ContainsAny(tag, " \t\n") {
-						return fmt.Sprintf("Line %d: unknown tag {{%s:...}}. Only {{plain:...}} is supported.", lineNum, tag)
+						return fmt.Sprintf("Line %d: unknown tag {{%s:...}}. Only {{secure:...}} is supported.", lineNum, tag)
 					}
 				}
 			}
@@ -165,28 +165,28 @@ func ValidateContent(content string) string {
 		trimmed := strings.TrimSpace(line)
 
 		if !inBlock {
-			// Look for {{plain: on this line
-			idx := strings.Index(line, "{{plain:")
+			// Look for {{secure: on this line
+			idx := strings.Index(line, "{{secure:")
 			if idx < 0 {
 				// Check for stray }}
-				if strings.Contains(line, "}}") && !strings.Contains(line, "{{secure:") {
+				if strings.Contains(line, "}}") && !strings.Contains(line, "{{secure_aes:") {
 					// Only flag if it's not part of something else (template syntax etc)
-					// We allow }} in normal text, only flag in context of plain blocks
+					// We allow }} in normal text, only flag in context of secure blocks
 				}
 				continue
 			}
 
 			// Check if it closes on the same line (single-line block)
-			after := line[idx+8:] // after "{{plain:"
+			after := line[idx+9:] // after "{{secure:"
 			closeIdx := strings.Index(after, "}}")
 			if closeIdx >= 0 {
-				// Single-line: {{plain:content}} — valid
+				// Single-line: {{secure:content}} — valid
 				continue
 			}
 
-			// Multiline block: {{plain: must be the entire trimmed content of this line
-			if trimmed != "{{plain:" {
-				return fmt.Sprintf("Line %d: multiline {{plain: must be on its own line with no other text.", lineNum)
+			// Multiline block: {{secure: must be the entire trimmed content of this line
+			if trimmed != "{{secure:" {
+				return fmt.Sprintf("Line %d: multiline {{secure: must be on its own line with no other text.", lineNum)
 			}
 
 			inBlock = true
@@ -203,7 +203,7 @@ func ValidateContent(content string) string {
 	}
 
 	if inBlock {
-		return fmt.Sprintf("Line %d: unclosed {{plain: block — missing closing }}.", blockStartLine)
+		return fmt.Sprintf("Line %d: unclosed {{secure: block — missing closing }}.", blockStartLine)
 	}
 
 	return ""

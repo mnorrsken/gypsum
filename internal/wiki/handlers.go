@@ -192,7 +192,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		content := r.FormValue("content")
+		content := strings.ReplaceAll(r.FormValue("content"), "\r\n", "\n")
 
 		// Validate custom tags before saving
 		if validationErr := ValidateContent(content); validationErr != "" {

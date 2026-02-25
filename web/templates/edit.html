@@ -10,7 +10,7 @@
     </div>
   </div>
   {{if .Query}}<p class="error">{{.Query}}</p>{{end}}
-  <p class="hint">{{if .IsNew}}Creating a new page.{{else}}Editing page.{{end}} Secure blocks: <code>{{"{{plain:your secret}}"}}</code>. Paste images to upload.</p>
+  <p class="hint">{{if .IsNew}}Creating a new page.{{else}}Editing page.{{end}} Secure blocks: <code>{{"{{secure:your secret}}"}}</code>. Paste images to upload.</p>
   <div class="editor-layout">
     <form method="post" action="/edit/{{.Page.Slug}}" class="editor-form">
       <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
@@ -50,14 +50,14 @@
       <h3>Secure Fields</h3>
       <table class="help-table">
         <tr><td colspan="2"><strong>Single-line:</strong></td></tr>
-        <tr><td colspan="2"><code>{{"{{plain:my secret}}"}}</code></td></tr>
+        <tr><td colspan="2"><code>{{"{{secure:my secret}}"}}</code></td></tr>
         <tr><td colspan="2"><strong>Multiline:</strong></td></tr>
-        <tr><td colspan="2"><pre>{{"{{plain:"}}
+        <tr><td colspan="2"><pre>{{"{{secure:"}}
 username: admin
 password: s3cret
 {{"}}"}}</pre></td></tr>
       </table>
-      <p class="help-note">Encrypted with AES-256-GCM on save. Multiline blocks require <code>{{"{{plain:"}}</code> and <code>{{"}}"}}</code> on their own lines.</p>
+      <p class="help-note">Encrypted with AES-256-GCM on save. Multiline blocks require <code>{{"{{secure:"}}</code> and <code>{{"}}"}}</code> on their own lines.</p>
 
       <h3>Images</h3>
       <p class="help-note">Paste an image from the clipboard to upload automatically.</p>

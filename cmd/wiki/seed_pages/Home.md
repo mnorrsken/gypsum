@@ -30,6 +30,6 @@ You can use fenced blocks with language labels.
 
 Use this notation in any page:
 
-{{plain:my secret notes}}
+{{secure:my secret notes}}
 
 It creates an encrypted inline field. Secure content is encrypted on save and decrypted on edit.

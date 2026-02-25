@@ -2,6 +2,21 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.4.0
+
+### Changed
+- **Tag rename** — the editor tag for sensitive fields is now `{{secure:...}}` (was `{{plain:...}}`). The on-disk encrypted tag is now `{{secure_aes:...}}` (was `{{secure:...}}`). This makes the naming more intuitive: what you mark as "secure" in the editor is stored with the algorithm-specific `secure_aes` tag.
+
+### Fixed
+- **CRLF line endings** — multiline `{{secure:...}}` blocks no longer accumulate extra blank lines on each save. Browser-submitted `\r\n` line endings are now normalised to `\n` before processing.
+
+## v0.3.0
+
+### Fixed
+- **Git safe.directory in Kubernetes** — git operations no longer fail with "not in a git directory" when the data volume is owned by a different user (e.g. PVC mounts). Both the Go auto-committer and the Docker entrypoint now configure `safe.directory` before any git operations.
+- **Dockerfile user UID** — the `app` user is now created with explicit UID/GID 1000 to match the Helm chart's `securityContext`.
+- **Legacy secure directory removed** — the unused `data/secure` directory is no longer created by the Dockerfile or entrypoint.
+
 ## v0.2.0
 
 ### Added
@@ -11,14 +26,11 @@ All notable changes to Gypsum are documented in this file.
 
 ### Fixed
 - **Favorites git commit** — `_favorites.md` is now force-added during git commits (`git add -f`) so it is tracked even when matched by `.gitignore` patterns.
-- **Git safe.directory in Kubernetes** — git operations no longer fail with "not in a git directory" when the data volume is owned by a different user (e.g. PVC mounts). Both the Go auto-committer and the Docker entrypoint now configure `safe.directory` before any git operations.
-- **Dockerfile user UID** — the `app` user is now created with explicit UID/GID 1000 to match the Helm chart's `securityContext`.
-- **Legacy secure directory removed** — the unused `data/secure` directory is no longer created by the Dockerfile or entrypoint.
 
 ## v0.1.1
 
 ### Fixed
-- **Multiline secure block linebreaks** — multiline `{{plain:\n...\n}}` blocks now strip the leading and trailing linebreaks before encrypting, so the stored content matches what the user typed. `DecryptForEdit` re-wraps multiline content with the surrounding linebreaks for correct round-tripping.
+- **Multiline secure block linebreaks** — multiline `{{secure:\n...\n}}` blocks now strip the leading and trailing linebreaks before encrypting, so the stored content matches what the user typed. `DecryptForEdit` re-wraps multiline content with the surrounding linebreaks for correct round-tripping.
 - **Unlocked secure field styling** — revealed secure fields now render as `inline-block` with padding so the grey background forms a continuous area instead of breaking across lines.
 
 ## v0.1.0
@@ -31,8 +43,8 @@ All notable changes to Gypsum are documented in this file.
 - **MediaWiki-style topbar** — brand and search bar with red and blue horizontal rulers underneath, inspired by MediaWiki.
 - **Blue title ruler** — a blue horizontal rule appears under every page title.
 - **New Page flow** — the "+ New Page" sidebar link now opens a title input form. The title must be unique; duplicate names are rejected with an error message.
-- **Content validation** — on save, the editor validates custom tags: unknown `{{tag:...}}` patterns are rejected, unclosed `{{plain:` blocks are caught, and multiline blocks require `{{plain:` and `}}` each on their own line.
-- **Multiline secure blocks** — `{{plain:` blocks can span multiple lines. The opening `{{plain:` and closing `}}` must each be on their own line.
+- **Content validation** — on save, the editor validates custom tags: unknown `{{tag:...}}` patterns are rejected, unclosed `{{secure:` blocks are caught, and multiline blocks require `{{secure:` and `}}` each on their own line.
+- **Multiline secure blocks** — `{{secure:` blocks can span multiple lines. The opening `{{secure:` and closing `}}` must each be on their own line.
 - **Multiline decrypted display** — decrypted secure fields with line breaks now render with `<br>` tags instead of collapsing to a single line.
 - **Image support** — paste images directly into the editor to upload. Images are stored in `data/images/` and referenced as standard markdown images. An image index page (`/images`) lists all uploaded images with thumbnails, file sizes, page usage, and a delete button for cleanup.
 - **Image git integration** — image uploads and deletions are auto-committed to the data repo.
@@ -44,7 +56,7 @@ All notable changes to Gypsum are documented in this file.
 - **Recently Edited sidebar** — the 5 most recently modified pages are shown in the sidebar.
 - **Full-text search** — search bar in the top navigation searches page titles and content.
 - **Unicode slug support** — wiki links like `[[Lösenord]]` correctly preserve non-ASCII characters in slugs.
-- **Inline encrypted fields** — `{{plain:...}}` syntax in the editor is encrypted with AES-256-GCM on save using a server-side key (`GYPSUM_SECRET_KEY`). Encrypted fields are stored inline in `.md` files as `{{secure:BASE64}}`.
+- **Inline encrypted fields** — `{{secure:...}}` syntax in the editor is encrypted with AES-256-GCM on save using a server-side key (`GYPSUM_SECRET_KEY`). Encrypted fields are stored inline in `.md` files as `{{secure_aes:BASE64}}`.
 - **Modern UI** — clean layout with sidebar navigation, system font stack, rounded corners, and subtle styling.
 - **Docker support** — Dockerfile with multi-stage build and entrypoint script supporting git remote configuration.
 - **Auto git commits** — page saves are automatically committed to a git repo inside `data/`.

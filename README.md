@@ -6,7 +6,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 
 - **Markdown pages** — stored as `.md` files, rendered with [goldmark](https://github.com/yuin/goldmark) (GFM tables, syntax highlighting)
 - **Wiki links** — `[[Page Title]]` creates inter-page links; clicking a link to a non-existent page opens the editor
-- **Inline encryption** — `{{plain:secret}}` in the editor is AES-256-GCM encrypted on save; click the lock icon on a page to temporarily reveal the value (auto-hides after 60 seconds). Supports multiline blocks.
+- **Inline encryption** — `{{secure:secret}}` in the editor is AES-256-GCM encrypted on save; click the lock icon on a page to temporarily reveal the value (auto-hides after 60 seconds). Supports multiline blocks.
 - **Content validation** — malformed or unknown custom tags are rejected on save with clear error messages
 - **Page history** — view the git commit history for any page via the History tab
 - **Image uploads** — paste images directly into the editor; managed via an image index page
@@ -61,22 +61,22 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 Store sensitive values inline in your markdown:
 
 ```
-WiFi password: {{plain:my-secret-password}}
+WiFi password: {{secure:my-secret-password}}
 ```
 
-For multiline secrets, place `{{plain:` and `}}` on their own lines:
+For multiline secrets, place `{{secure:` and `}}` on their own lines:
 
 ```
-{{plain:
+{{secure:
 username: admin
 password: s3cret
 }}
 ```
 
-On save, the `{{plain:...}}` block is encrypted with AES-256-GCM:
+On save, the `{{secure:...}}` block is encrypted with AES-256-GCM:
 
 ```
-WiFi password: {{secure:BASE64_CIPHERTEXT}}
+WiFi password: {{secure_aes:BASE64_CIPHERTEXT}}
 ```
 
 When viewing the page, encrypted fields appear as `🔒****`. Click to decrypt and reveal the value for 60 seconds, then it auto-hides. A clipboard copy button appears next to revealed values. Multiline content renders with proper line breaks.
