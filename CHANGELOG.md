@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.7.2
+
+### Changed
+- **Async git sync** — git pull and push are now performed in a background goroutine after each commit, so page saves and image uploads return instantly without waiting for network I/O.
+
 ## v0.7.1
 
 ### Fixed

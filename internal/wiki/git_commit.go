@@ -62,8 +62,6 @@ func (c *GitAutoCommitter) CommitImageDelete(filename string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.pullRebase() // best-effort pull before commit
-
 	if err := c.runGit("rm", "--cached", "--ignore-unmatch", "--", relPath); err != nil {
 		return err
 	}
@@ -75,7 +73,7 @@ func (c *GitAutoCommitter) CommitImageDelete(filename string) error {
 	); err != nil {
 		return err
 	}
-	c.pushAsync()
+	c.syncAsync()
 	return nil
 }
 
@@ -85,8 +83,6 @@ func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	c.pullRebase() // best-effort pull before commit
 
 	if err := c.runGit("add", "-f", "--", relativeFilePath); err != nil {
 		return err
@@ -108,7 +104,7 @@ func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 	); err != nil {
 		return err
 	}
-	c.pushAsync()
+	c.syncAsync()
 	return nil
 }
 
@@ -221,15 +217,17 @@ func (c *GitAutoCommitter) pullRebase() {
 	}
 }
 
-// pushAsync pushes to the remote in the background (fire-and-forget).
+// syncAsync pulls (rebase) and pushes to the remote in the background so that
+// the caller (HTTP handler) is not blocked by network I/O.
 // Must be called with c.mu held (it spawns a goroutine that acquires its own lock).
-func (c *GitAutoCommitter) pushAsync() {
+func (c *GitAutoCommitter) syncAsync() {
 	if !c.hasRemote() {
 		return
 	}
 	go func() {
 		c.mu.Lock()
 		defer c.mu.Unlock()
+		c.pullRebase()
 		c.push()
 	}()
 }
