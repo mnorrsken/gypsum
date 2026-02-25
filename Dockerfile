@@ -1,4 +1,5 @@
-FROM golang:1.23-alpine AS builder
+ARG BUILDPLATFORM
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
 
 WORKDIR /src
 
@@ -7,7 +8,9 @@ RUN go mod download
 
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/gypsum ./cmd/wiki
+
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/gypsum ./cmd/wiki
 
 FROM alpine:3.21
 
