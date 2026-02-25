@@ -55,7 +55,7 @@ func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 		return nil
 	}
 
-	if err := c.runGit("add", "--", relativeFilePath); err != nil {
+	if err := c.runGit("add", "-f", "--", relativeFilePath); err != nil {
 		return err
 	}
 
