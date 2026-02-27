@@ -1,4 +1,5 @@
 name: Helm Chart
+run-name: Helm Chart ${{ github.ref_name }}
 
 on:
   push:
