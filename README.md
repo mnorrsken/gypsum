@@ -11,7 +11,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Inline encryption** — `{{secure:secret}}` in the editor is AES-256-GCM encrypted on save; click the lock icon on a page to temporarily reveal the value (auto-hides after 60 seconds). Supports multiline blocks.
 - **Content validation** — malformed or unknown custom tags are rejected on save with clear error messages
 - **Page history** — view the git commit history for any page via the History tab
-- **Image uploads** — paste images directly into the editor; managed via an image index page
+- **Image uploads** — paste images directly into the editor; managed via an image index page. Images auto-scale to fit the content width. Optional size hints: `![alt|500](url)` (px), `![alt|50%](url)` (percent), `![alt|800x400](url)` (width×height)
 - **Favorites sidebar** — edit `_favorites.md` to pin pages in the sidebar
 - **Full-text search** — searches page titles and content
 - **Auto git commits** — every page save and image upload is committed to a git repo inside `data/`
@@ -95,6 +95,14 @@ Click the **History** tab on any page to view its git commit log, showing revisi
 ### Images
 
 Paste an image from the clipboard directly into the editor textarea. The image is uploaded and a markdown image reference (`![image](/images/filename.ext)`) is inserted at the cursor.
+
+Images automatically scale down to fit the content area. You can also add an optional size hint to the alt text:
+
+| Syntax | Effect |
+|---|---|
+| `![screenshot\|500](/images/foo.png)` | max-width: 500px |
+| `![screenshot\|50%](/images/foo.png)` | max-width: 50% |
+| `![screenshot\|800x400](/images/foo.png)` | width: 800px, height: 400px |
 
 Manage images at `/images` (linked in the sidebar as **Images**). The index shows each image's thumbnail, filename, file size, and which pages reference it. Unused images can be deleted to free space.
 

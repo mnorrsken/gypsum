@@ -479,6 +479,13 @@ textarea {
 
 /* --- Wiki content --- */
 
+.wiki-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+}
+
 .wiki-content pre {
   padding: 14px;
   overflow: auto;

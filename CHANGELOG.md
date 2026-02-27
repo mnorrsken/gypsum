@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.8.0
+
+### Added
+- **Image auto-scaling** — images in wiki pages now automatically scale down to fit the content width (`max-width: 100%`) so large images never overflow the layout.
+- **Image size hints** — an optional size specifier can be added to the alt text of any image tag: `![alt|500](/images/foo.png)` (max-width in px), `![alt|50%](/images/foo.png)` (max-width in %), or `![alt|800x400](/images/foo.png)` (explicit width × height). Standard `![alt](url)` syntax continues to work unchanged.
+
 ## v0.7.2
 
 ### Changed

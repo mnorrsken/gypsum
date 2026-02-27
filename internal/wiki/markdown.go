@@ -17,6 +17,12 @@ import (
 var wikiLinkPattern = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
 var secureAesMacroPattern = regexp.MustCompile(`\{\{secure_aes:([\w+/=]+)\}\}`)
 
+// imageSizePattern matches ![alt|SIZE](url) where SIZE is one of:
+//   - 500      → max-width: 500px
+//   - 50%      → max-width: 50%
+//   - 500x300  → width: 500px; height: 300px
+var imageSizePattern = regexp.MustCompile(`!\[([^\]]*)\|(\d+(?:%|x\d+)?)\]\(([^)]*)\)`)
+
 type MarkdownRenderer struct {
 	engine goldmark.Markdown
 }
@@ -56,6 +62,26 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 		title := captures[1]
 		slug := SlugFromTitle(title)
 		return fmt.Sprintf("[%s](/wiki/%s)", title, slug)
+	})
+
+	// Replace sized image macros: ![alt|SIZE](url) → raw <img> with inline style.
+	// SIZE formats: 500 (max-width px), 50% (max-width %), 500x300 (width×height px).
+	withLinks = imageSizePattern.ReplaceAllStringFunc(withLinks, func(match string) string {
+		caps := imageSizePattern.FindStringSubmatch(match)
+		if len(caps) < 4 {
+			return match
+		}
+		alt, size, url := caps[1], caps[2], caps[3]
+		var style string
+		if strings.HasSuffix(size, "%") {
+			style = fmt.Sprintf("max-width:%s;height:auto", size)
+		} else if idx := strings.Index(size, "x"); idx != -1 {
+			w, h := size[:idx], size[idx+1:]
+			style = fmt.Sprintf("width:%spx;height:%spx", w, h)
+		} else {
+			style = fmt.Sprintf("max-width:%spx;height:auto", size)
+		}
+		return fmt.Sprintf(`<img src="%s" alt="%s" style="%s">`, url, alt, style)
 	})
 
 	// Replace secure_aes macros with placeholder tokens before goldmark so they
