@@ -10,13 +10,14 @@
     </div>
   </div>
   {{if .Query}}<p class="error">{{.Query}}</p>{{end}}
-  <p class="hint">{{if .IsNew}}Creating a new page.{{else}}Editing page.{{end}} Secure blocks: <code>{{"{{secure:your secret}}"}}</code>. Paste images to upload.</p>
+  <p class="hint">{{if .IsNew}}Creating a new page.{{else}}Editing page.{{end}} Secure blocks: <code>{{"{{secure:your secret}}"}}</code>. Paste or drop images to upload.</p>
   <div class="editor-layout">
     <form method="post" action="/edit/{{.Page.Slug}}" class="editor-form">
       <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
       <div class="page-actions">
         <button type="submit">Save</button>
         <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
+        <button type="button" class="button secondary" id="images-toggle">Images</button>
         <button type="button" class="button secondary" id="help-toggle">Help</button>
         <label class="diff-checkbox"><input type="checkbox" id="showdiff-toggle" /> Show diff</label>
       </div>
@@ -61,30 +62,46 @@ password: s3cret
       <p class="help-note">Encrypted with AES-256-GCM on save. Multiline blocks require <code>{{"{{secure:"}}</code> and <code>{{"}}"}}</code> on their own lines.</p>
 
       <h3>Images</h3>
-      <p class="help-note">Paste an image from the clipboard to upload automatically.</p>
+      <p class="help-note">Paste from clipboard, drag &amp; drop a file, or click <strong>Images</strong> to browse and insert uploaded images.</p>
     </aside>
   </div>
 </article>
+
+<!-- Image picker modal (outside form) -->
+<div id="image-picker" class="image-picker-overlay" hidden>
+  <div class="image-picker-dialog">
+    <div class="image-picker-header">
+      <h3>Insert Image</h3>
+      <button type="button" id="image-picker-close" class="image-picker-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="image-picker-toolbar">
+      <label class="button secondary">
+        Upload new&hellip;
+        <input type="file" id="image-picker-file" accept="image/*" style="display:none" multiple>
+      </label>
+      <span id="image-picker-status" class="image-picker-status"></span>
+    </div>
+    <div id="image-picker-grid" class="image-picker-grid">
+      <p class="image-picker-loading">Loading&hellip;</p>
+    </div>
+  </div>
+</div>
 
 <script>
 (() => {
   const textarea = document.getElementById("editor");
   const form = textarea.closest("form");
 
-  // Show-diff-before-save toggle — remember preference in localStorage
+  // --- Show-diff toggle (persisted in localStorage) ---
   const diffToggle = document.getElementById("showdiff-toggle");
   const DIFF_PREF_KEY = "gypsum-showdiff";
-  if (localStorage.getItem(DIFF_PREF_KEY) === "1") {
-    diffToggle.checked = true;
-  }
+  if (localStorage.getItem(DIFF_PREF_KEY) === "1") diffToggle.checked = true;
   diffToggle.addEventListener("change", () => {
     localStorage.setItem(DIFF_PREF_KEY, diffToggle.checked ? "1" : "0");
   });
   form.addEventListener("submit", (e) => {
-    // Remove any previous hidden field
     const prev = form.querySelector('input[name="showdiff"]');
     if (prev) prev.remove();
-
     if (diffToggle.checked) {
       const hidden = document.createElement("input");
       hidden.type = "hidden";
@@ -94,7 +111,7 @@ password: s3cret
     }
   });
 
-  // Help panel toggle
+  // --- Help panel toggle ---
   const helpBtn = document.getElementById("help-toggle");
   const helpPanel = document.getElementById("editor-help");
   helpBtn.addEventListener("click", () => {
@@ -102,6 +119,55 @@ password: s3cret
     helpBtn.textContent = helpPanel.classList.contains("visible") ? "Hide Help" : "Help";
   });
 
+  // --- Shared helpers ---
+
+  // Insert text at the textarea cursor position.
+  function insertAtCursor(text) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    textarea.setRangeText(text, start, end, "end");
+    textarea.focus();
+  }
+
+  // Replace a unique placeholder string anywhere in the textarea value.
+  function replacePlaceholder(placeholder, replacement) {
+    textarea.value = textarea.value.replace(placeholder, replacement);
+  }
+
+  // Derive a human-friendly alt text from a filename.
+  function deriveAlt(filename) {
+    if (!filename) return "image";
+    const base = filename.replace(/\.[^.]+$/, ""); // strip extension
+    if (!base || base === "image" || base === "pasted-image") return "image";
+    return base.replace(/[-_]+/g, " ").trim();
+  }
+
+  // Upload a File object and insert the resulting markdown at the cursor.
+  // Returns a promise that resolves with the server response data.
+  async function uploadImage(file) {
+    const alt = deriveAlt(file.name);
+    // Use a unique placeholder so concurrent uploads don't collide.
+    const id = Math.random().toString(36).slice(2, 8);
+    const placeholder = `![uploading-${id}…]()`;
+    insertAtCursor(placeholder);
+
+    const formData = new FormData();
+    formData.append("image", file, file.name || ("image." + (file.type.split("/")[1] || "png")));
+
+    try {
+      const resp = await fetch("/images/upload", { method: "POST", body: formData });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || "Upload failed");
+      replacePlaceholder(placeholder, `![${alt}](${data.url})`);
+      return data;
+    } catch (err) {
+      replacePlaceholder(placeholder, "");
+      alert("Image upload failed: " + err.message);
+      throw err;
+    }
+  }
+
+  // --- Paste handler ---
   textarea.addEventListener("paste", async (e) => {
     const items = Array.from(e.clipboardData.items);
     const imageItem = items.find((item) => item.type.startsWith("image/"));
@@ -110,28 +176,116 @@ password: s3cret
     e.preventDefault();
     const file = imageItem.getAsFile();
     if (!file) return;
+    await uploadImage(file);
+  });
 
-    const ext = file.type.split("/")[1] || "png";
-    const formData = new FormData();
-    formData.append("image", file, "pasted-image." + ext);
+  // --- Drag-and-drop handler ---
+  textarea.addEventListener("dragover", (e) => {
+    const hasImage = Array.from(e.dataTransfer.items).some(
+      (i) => i.kind === "file" && i.type.startsWith("image/")
+    );
+    if (!hasImage) return;
+    e.preventDefault();
+    textarea.classList.add("drag-over");
+  });
 
-    const pos = textarea.selectionStart;
-    const placeholder = "![Uploading image...]()";
-    textarea.setRangeText(placeholder, pos, pos, "end");
-
-    try {
-      const resp = await fetch("/images/upload", { method: "POST", body: formData });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) throw new Error(data.error || "Upload failed");
-
-      const markdown = "![image](" + data.url + ")";
-      const current = textarea.value;
-      textarea.value = current.replace(placeholder, markdown);
-    } catch (err) {
-      const current = textarea.value;
-      textarea.value = current.replace(placeholder, "");
-      alert("Image upload failed: " + err.message);
+  textarea.addEventListener("dragleave", (e) => {
+    // Only remove when the cursor leaves the textarea itself, not its children.
+    if (!textarea.contains(e.relatedTarget)) {
+      textarea.classList.remove("drag-over");
     }
+  });
+
+  textarea.addEventListener("drop", async (e) => {
+    const files = Array.from(e.dataTransfer.files).filter((f) =>
+      f.type.startsWith("image/")
+    );
+    if (!files.length) return;
+    e.preventDefault();
+    textarea.classList.remove("drag-over");
+    for (const file of files) {
+      await uploadImage(file);
+    }
+  });
+
+  // --- Image picker ---
+  const pickerOverlay = document.getElementById("image-picker");
+  const pickerGrid = document.getElementById("image-picker-grid");
+  const pickerStatus = document.getElementById("image-picker-status");
+  const pickerFile = document.getElementById("image-picker-file");
+  const imagesBtn = document.getElementById("images-toggle");
+
+  imagesBtn.addEventListener("click", openPicker);
+  document.getElementById("image-picker-close").addEventListener("click", closePicker);
+  pickerOverlay.addEventListener("click", (e) => {
+    if (e.target === pickerOverlay) closePicker();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !pickerOverlay.hidden) closePicker();
+  });
+
+  function openPicker() {
+    pickerOverlay.hidden = false;
+    loadImages();
+  }
+
+  function closePicker() {
+    pickerOverlay.hidden = true;
+    pickerStatus.textContent = "";
+  }
+
+  async function loadImages() {
+    pickerGrid.innerHTML = '<p class="image-picker-loading">Loading&hellip;</p>';
+    try {
+      const resp = await fetch("/images/list");
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error);
+      renderGrid(data.images);
+    } catch (err) {
+      pickerGrid.innerHTML = '<p class="image-picker-loading">Failed to load images.</p>';
+    }
+  }
+
+  function renderGrid(images) {
+    if (!images || images.length === 0) {
+      pickerGrid.innerHTML = '<p class="image-picker-empty">No images uploaded yet.</p>';
+      return;
+    }
+    pickerGrid.innerHTML = "";
+    for (const img of images) {
+      const item = document.createElement("div");
+      item.className = "image-picker-item";
+      const thumb = document.createElement("img");
+      thumb.src = img.url;
+      thumb.alt = img.name;
+      thumb.className = "image-picker-thumb";
+      thumb.loading = "lazy";
+      const label = document.createElement("span");
+      label.className = "image-picker-name";
+      label.textContent = img.name;
+      item.appendChild(thumb);
+      item.appendChild(label);
+      item.addEventListener("click", () => {
+        insertAtCursor(`![${deriveAlt(img.name)}](${img.url})`);
+        closePicker();
+      });
+      pickerGrid.appendChild(item);
+    }
+  }
+
+  pickerFile.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    pickerStatus.textContent = "Uploading\u2026";
+    try {
+      for (const file of files) {
+        await uploadImage(file);
+      }
+      closePicker();
+    } catch (_) {
+      pickerStatus.textContent = "Upload failed.";
+    }
+    e.target.value = "";
   });
 })();
 </script>

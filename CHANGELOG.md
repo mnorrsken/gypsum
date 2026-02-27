@@ -2,6 +2,13 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.10.0
+
+### Added
+- **Image picker** — a new **Images** button in the editor toolbar opens a modal showing all uploaded images as thumbnails; click any image to insert it at the cursor position. The modal also has an "Upload new…" button for uploading directly from the picker.
+- **Drag-and-drop image upload** — drag an image file onto the editor textarea to upload and insert it. A dashed-border highlight appears while dragging.
+- **Filename-aware image names** — uploaded images are stored with a slug derived from the original filename (e.g. `freddie-mercury-20260228-a1b2c3d4.jpg`); screenshots and generic pastes fall back to a date-only name. The markdown alt text is also derived from the original filename.
+
 ## v0.9.0
 
 ### Added

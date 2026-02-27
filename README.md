@@ -11,7 +11,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Inline encryption** — `{{secure:secret}}` in the editor is AES-256-GCM encrypted on save; click the lock icon on a page to temporarily reveal the value (auto-hides after 60 seconds). Supports multiline blocks.
 - **Content validation** — malformed or unknown custom tags are rejected on save with clear error messages
 - **Page history** — view the git commit history for any page via the History tab
-- **Image uploads** — paste images directly into the editor; managed via an image index page. Images auto-scale to fit the content width. Optional size hints: `![alt|500](url)` (px), `![alt|50%](url)` (percent), `![alt|800x400](url)` (width×height)
+- **Image uploads** — paste from clipboard, drag-and-drop onto the editor, or click **Images** to browse and insert existing uploads. Filenames are derived from the original file name where available. Images auto-scale to fit the content width. Optional size hints: `![alt|500](url)` (px), `![alt|50%](url)` (percent), `![alt|800x400](url)` (width×height)
 - **Favorites sidebar** — edit `_favorites.md` to pin pages in the sidebar
 - **Full-text search** — searches page titles and content
 - **Auto git commits** — every page save and image upload is committed to a git repo inside `data/`
@@ -95,7 +95,13 @@ Click the **History** tab on any page to view its git commit log, showing revisi
 
 ### Images
 
-Paste an image from the clipboard directly into the editor textarea. The image is uploaded and a markdown image reference (`![image](/images/filename.ext)`) is inserted at the cursor.
+There are three ways to upload and insert images into the editor:
+
+- **Paste** — copy an image to the clipboard and paste it into the editor textarea.
+- **Drag-and-drop** — drag an image file onto the editor textarea; a dashed border highlights the drop zone.
+- **Image picker** — click the **Images** button in the editor toolbar to open a thumbnail gallery of all uploaded images. Click any image to insert it, or use "Upload new…" to upload directly from the picker.
+
+In all cases a markdown image reference (`![alt text](/images/filename.ext)`) is inserted at the cursor. The alt text and filename are derived from the original file name where available (e.g. `freddie-mercury-20260228-a1b2c3d4.jpg`); screenshots and browser-generated names fall back to a date-based name.
 
 Images automatically scale down to fit the content area. You can also add an optional size hint to the alt text:
 
@@ -244,7 +250,7 @@ data/
 │   ├── Scratch_Pad.md
 │   └── _favorites.md
 └── images/        # uploaded images
-    └── 20260223-142301-a1b2c3d4.png
+    └── my-photo-20260228-a1b2c3d4.png
 ```
 
 ## Development

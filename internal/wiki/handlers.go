@@ -71,6 +71,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/images", h.handleImages)
 	mux.HandleFunc("/images/upload", h.handleImageUpload)
 	mux.HandleFunc("/images/delete", h.handleImageDelete)
+	mux.HandleFunc("/images/list", h.handleImageList)
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
 	return mux
 }
@@ -390,10 +391,19 @@ func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate unique filename
-	randBytes := make([]byte, 8)
+	// Generate unique filename: {original-name}-{YYYYMMDD}-{8hexrandom}{ext}
+	// or {YYYYMMDD}-{8hexrandom}{ext} when the original name is generic/absent.
+	randBytes := make([]byte, 4)
 	_, _ = rand.Read(randBytes)
-	filename := fmt.Sprintf("%s-%s%s", time.Now().Format("20060102-150405"), hex.EncodeToString(randBytes), ext)
+	namePart := sanitizeImageBasename(header.Filename)
+	datePart := time.Now().Format("20060102")
+	shortRand := hex.EncodeToString(randBytes) // 8 hex chars
+	var filename string
+	if namePart != "" {
+		filename = fmt.Sprintf("%s-%s-%s%s", namePart, datePart, shortRand, ext)
+	} else {
+		filename = fmt.Sprintf("%s-%s%s", datePart, shortRand, ext)
+	}
 
 	dstPath := filepath.Join(h.store.ImagesDir(), filename)
 	dst, err := os.Create(dstPath)
@@ -412,6 +422,63 @@ func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 
 	url := "/images/" + filename
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": url, "filename": filename})
+}
+
+// sanitizeImageBasename converts an original filename (without extension) into
+// a lowercase hyphen-separated slug suitable for use in a stored filename.
+// Returns "" for generic names like "image" or "pasted-image".
+func sanitizeImageBasename(filename string) string {
+	// Strip extension
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	base = strings.ToLower(base)
+
+	var sb strings.Builder
+	prevHyphen := false
+	for _, r := range base {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			sb.WriteRune(r)
+			prevHyphen = false
+		} else if sb.Len() > 0 && !prevHyphen {
+			sb.WriteRune('-')
+			prevHyphen = true
+		}
+	}
+	result := strings.TrimRight(sb.String(), "-")
+
+	// Ignore generic fallback names produced by browsers / our own JS
+	switch result {
+	case "", "image", "pasted-image", "screenshot":
+		return ""
+	}
+
+	const maxLen = 48
+	if len(result) > maxLen {
+		result = strings.TrimRight(result[:maxLen], "-")
+	}
+	return result
+}
+
+func (h *Handler) handleImageList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "method not allowed"})
+		return
+	}
+
+	images, err := h.store.ListImages()
+	if err != nil {
+		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+
+	type imgItem struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	}
+	items := make([]imgItem, len(images))
+	for i, img := range images {
+		items[i] = imgItem{Name: img.Name, URL: img.URL}
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "images": items})
 }
 
 func (h *Handler) handleImageDelete(w http.ResponseWriter, r *http.Request) {
