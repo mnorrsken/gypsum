@@ -18,6 +18,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Git remote sync** — optional push-after-commit and periodic pull with "ours wins" conflict resolution, configured via environment variables
 - **Diff preview** — tick "Show diff" in the editor to review a colorized unified diff of the raw on-disk content before committing; the preference is remembered across sessions
 - **Docker-ready** — single-container deployment with optional git remote sync
+- **Dark/light theme** — toggle between dark and light mode via the button in the top bar; preference is remembered across sessions
 - **Responsive layout** — mobile-friendly with a hamburger menu sidebar on small screens
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)

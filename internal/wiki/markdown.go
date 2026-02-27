@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -37,7 +38,7 @@ func NewMarkdownRenderer() *MarkdownRenderer {
 			extension.Table,
 			extension.TaskList,
 			highlighting.NewHighlighting(
-				highlighting.WithStyle("github"),
+				highlighting.WithFormatOptions(chromahtml.WithClasses(true)),
 				highlighting.WithGuessLanguage(true),
 			),
 		),

@@ -21,18 +21,19 @@
         <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Menu">&#9776;</button>
         <div class="brand"><a href="/wiki/Home">Gypsum</a></div>
       </div>
-      <form class="search" action="/search" method="get">
-        <input type="search" name="q" value="{{.Query}}" placeholder="Search..." />
-        <button type="submit">Search</button>
-      </form>
-      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
-        <span class="icon-sun">&#9728;&#65039;</span>
-        <span class="icon-moon">&#127769;</span>
-      </button>
+      <div class="topbar-right">
+        <form class="search" action="/search" method="get">
+          <input type="search" name="q" value="{{.Query}}" placeholder="Search..." />
+          <button type="submit">Search</button>
+        </form>
+        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+          <span class="icon-sun">&#9728;&#65039;</span>
+          <span class="icon-moon">&#127769;</span>
+        </button>
+      </div>
     </div>
     <div class="topbar-rules">
       <div class="rule-red"></div>
-      <div class="rule-blue"></div>
     </div>
   </header>
 

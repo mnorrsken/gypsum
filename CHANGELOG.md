@@ -2,6 +2,15 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.9.0
+
+### Added
+- **Dark/light theme** — a toggle button in the top bar switches between dark and light mode; the preference is persisted in `localStorage`.
+- **Dark-mode code highlighting** — syntax highlighting now uses the github (light) and github-dark themes via CSS classes, switching automatically with the theme toggle. Previously hardcoded inline styles caused code blocks to always render with a white background.
+
+### Changed
+- **Compact topbar** — the search field and theme toggle are grouped together on the right side of the navigation bar, and the bar height has been reduced for a tighter look.
+
 ## v0.8.0
 
 ### Added
