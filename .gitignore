@@ -1,3 +1,23 @@
-/data/
+# Build output
+bin/
+
+# Local wiki data and user config
+data/
 todo.txt
 values.yaml
+
+# Go toolchain
+*.test
+*.out
+vendor/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
