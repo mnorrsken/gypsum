@@ -20,6 +20,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Docker-ready** — single-container deployment with optional git remote sync
 - **Dark/light theme** — toggle between dark and light mode via the button in the top bar; preference is remembered across sessions
 - **Responsive layout** — mobile-friendly with a hamburger menu sidebar on small screens
+- **Table editor** — click **Insert Table** (or **Edit Table** when the cursor is inside a table) to open a visual table editor modal; supports adding/removing rows and columns and per-column alignment (left/center/right)
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
 

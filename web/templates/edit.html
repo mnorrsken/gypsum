@@ -18,6 +18,7 @@
         <button type="submit">Save</button>
         <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
         <button type="button" class="button secondary" id="images-toggle">Images</button>
+        <button type="button" class="button secondary" id="table-editor-toggle">Insert Table</button>
         <button type="button" class="button secondary" id="help-toggle">Help</button>
         <label class="diff-checkbox"><input type="checkbox" id="showdiff-toggle" /> Show diff</label>
       </div>
@@ -83,6 +84,24 @@ password: s3cret
     </div>
     <div id="image-picker-grid" class="image-picker-grid">
       <p class="image-picker-loading">Loading&hellip;</p>
+    </div>
+  </div>
+</div>
+
+<!-- Table editor modal (outside form) -->
+<div id="table-editor" class="table-editor-overlay" hidden>
+  <div class="table-editor-dialog">
+    <div class="table-editor-header">
+      <h3 id="table-editor-title">Table Editor</h3>
+      <button type="button" id="table-editor-close" class="table-editor-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="table-editor-body" id="table-editor-body"></div>
+    <div class="table-editor-footer">
+      <button type="button" class="button secondary" id="table-add-col">+ Column</button>
+      <button type="button" class="button secondary" id="table-add-row">+ Row</button>
+      <div class="te-spacer"></div>
+      <button type="button" id="table-editor-apply">Apply</button>
+      <button type="button" class="button secondary" id="table-editor-cancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -287,6 +306,307 @@ password: s3cret
     }
     e.target.value = "";
   });
+
+  // --- Table Editor ---
+
+  const teOverlay = document.getElementById("table-editor");
+  const teBody = document.getElementById("table-editor-body");
+  const teBtn = document.getElementById("table-editor-toggle");
+  let teData = null;   // { headers, alignments, rows }
+  let teRange = null;  // { start, end } in textarea, or null for insert
+  let teSavedPos = 0;
+
+  // Find the markdown table the cursor is currently inside, if any.
+  function getTableAtCursor() {
+    const pos = textarea.selectionStart;
+    const text = textarea.value;
+    const lines = text.split("\n");
+
+    let cursor = 0, lineIdx = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (cursor + lines[i].length >= pos) { lineIdx = i; break; }
+      cursor += lines[i].length + 1;
+    }
+
+    if (!lines[lineIdx].trim().startsWith("|")) return null;
+
+    let s = lineIdx, e = lineIdx;
+    while (s > 0 && lines[s - 1].trim().startsWith("|")) s--;
+    while (e < lines.length - 1 && lines[e + 1].trim().startsWith("|")) e++;
+
+    let startChar = 0;
+    for (let i = 0; i < s; i++) startChar += lines[i].length + 1;
+    const tableText = lines.slice(s, e + 1).join("\n");
+    return { text: tableText, start: startChar, end: startChar + tableText.length };
+  }
+
+  // Parse a GFM markdown table string into { headers, alignments, rows }.
+  function parseTable(text) {
+    const lines = text.split("\n").filter(l => l.trim().startsWith("|"));
+    if (lines.length < 2) return null;
+
+    function cells(line) {
+      return line.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+    }
+
+    const headers = cells(lines[0]);
+    const sep = cells(lines[1]);
+    if (!sep.every(c => /^:?-+:?$/.test(c))) return null;
+
+    const alignments = sep.map(c => {
+      if (c.startsWith(":") && c.endsWith(":")) return "center";
+      if (c.endsWith(":")) return "right";
+      return "left";
+    });
+
+    const numCols = headers.length;
+    const rows = lines.slice(2).map(l => {
+      const cs = cells(l);
+      while (cs.length < numCols) cs.push("");
+      return cs.slice(0, numCols);
+    });
+
+    return { headers, alignments, rows };
+  }
+
+  // Serialize table data to an aligned markdown table string.
+  function serializeTable(data) {
+    const { headers, alignments, rows } = data;
+    const widths = headers.map((h, i) => {
+      let w = Math.max(h.length, 3);
+      for (const row of rows) w = Math.max(w, (row[i] || "").length);
+      return w;
+    });
+
+    function pad(cell, i) {
+      const s = cell || "";
+      const w = widths[i];
+      const a = alignments[i] || "left";
+      if (a === "right") return s.padStart(w);
+      if (a === "center") {
+        const p = Math.max(0, w - s.length);
+        const l = Math.floor(p / 2);
+        return " ".repeat(l) + s + " ".repeat(p - l);
+      }
+      return s.padEnd(w);
+    }
+
+    const hLine = "| " + headers.map((h, i) => pad(h, i)).join(" | ") + " |";
+    const sLine = "|" + widths.map((w, i) => {
+      const t = w + 2;
+      const a = alignments[i] || "left";
+      if (a === "center") return ":" + "-".repeat(t - 2) + ":";
+      if (a === "right") return "-".repeat(t - 1) + ":";
+      return "-".repeat(t);
+    }).join("|") + "|";
+    const dLines = rows.map(r =>
+      "| " + headers.map((_, i) => pad(r[i] || "", i)).join(" | ") + " |"
+    );
+
+    return [hLine, sLine, ...dLines].join("\n");
+  }
+
+  // Read current table state from the editor DOM inputs.
+  function readTeData() {
+    const tbl = teBody.querySelector(".te-table");
+    if (!tbl) return teData;
+    const headers = [], alignments = [], rows = [];
+    tbl.querySelectorAll(".te-header-input").forEach(el => headers.push(el.value));
+    tbl.querySelectorAll(".te-align-select").forEach(el => alignments.push(el.value));
+    tbl.querySelectorAll(".te-data-row").forEach(tr => {
+      const cs = [];
+      tr.querySelectorAll(".te-cell-input").forEach(el => cs.push(el.value));
+      rows.push(cs);
+    });
+    return { headers, alignments, rows };
+  }
+
+  // Render the table editor grid from teData.
+  function renderTe() {
+    const { headers, alignments, rows } = teData;
+    teBody.innerHTML = "";
+
+    const tbl = document.createElement("table");
+    tbl.className = "te-table";
+
+    // Control row: alignment selectors + delete-column buttons
+    const ctrlTr = document.createElement("tr");
+    ctrlTr.className = "te-ctrl-row";
+    headers.forEach((_, i) => {
+      const td = document.createElement("td");
+      const wrap = document.createElement("div");
+      wrap.className = "te-ctrl-wrap";
+
+      const sel = document.createElement("select");
+      sel.className = "te-align-select";
+      ["left", "center", "right"].forEach(a => {
+        const opt = document.createElement("option");
+        opt.value = a;
+        opt.textContent = a.charAt(0).toUpperCase() + a.slice(1);
+        if ((alignments[i] || "left") === a) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      wrap.appendChild(sel);
+
+      if (headers.length > 1) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "te-del-col";
+        btn.title = "Delete column";
+        btn.textContent = "\xd7";
+        btn.addEventListener("click", () => {
+          const d = readTeData();
+          d.headers.splice(i, 1);
+          d.alignments.splice(i, 1);
+          d.rows.forEach(r => r.splice(i, 1));
+          teData = d;
+          renderTe();
+        });
+        wrap.appendChild(btn);
+      }
+
+      td.appendChild(wrap);
+      ctrlTr.appendChild(td);
+    });
+    ctrlTr.appendChild(document.createElement("td")); // spacer for row-action col
+    tbl.appendChild(ctrlTr);
+
+    // Header row
+    const hdrTr = document.createElement("tr");
+    hdrTr.className = "te-header-row";
+    headers.forEach((h, i) => {
+      const th = document.createElement("th");
+      th.className = "te-header-cell";
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "te-header-input";
+      inp.value = h;
+      inp.placeholder = "Column " + (i + 1);
+      th.appendChild(inp);
+      hdrTr.appendChild(th);
+    });
+    hdrTr.appendChild(document.createElement("td"));
+    tbl.appendChild(hdrTr);
+
+    // Data rows
+    rows.forEach((row, ri) => {
+      const tr = document.createElement("tr");
+      tr.className = "te-data-row";
+      headers.forEach((_, ci) => {
+        const td = document.createElement("td");
+        td.className = "te-data-cell";
+        const inp = document.createElement("input");
+        inp.type = "text";
+        inp.className = "te-cell-input";
+        inp.value = row[ci] || "";
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
+      const actTd = document.createElement("td");
+      actTd.className = "te-row-act";
+      if (rows.length > 1) {
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "te-del-row";
+        delBtn.title = "Delete row";
+        delBtn.textContent = "\xd7";
+        delBtn.addEventListener("click", () => {
+          const d = readTeData();
+          d.rows.splice(ri, 1);
+          teData = d;
+          renderTe();
+        });
+        actTd.appendChild(delBtn);
+      }
+      tr.appendChild(actTd);
+      tbl.appendChild(tr);
+    });
+
+    teBody.appendChild(tbl);
+  }
+
+  function openTe() {
+    teSavedPos = textarea.selectionStart;
+    const found = getTableAtCursor();
+    if (found) {
+      const parsed = parseTable(found.text);
+      if (parsed) {
+        teData = parsed;
+        teRange = { start: found.start, end: found.end };
+        document.getElementById("table-editor-title").textContent = "Edit Table";
+      } else {
+        teData = { headers: ["Column 1", "Column 2"], alignments: ["left", "left"], rows: [["", ""]] };
+        teRange = null;
+        document.getElementById("table-editor-title").textContent = "Insert Table";
+      }
+    } else {
+      teData = { headers: ["Column 1", "Column 2"], alignments: ["left", "left"], rows: [["", ""]] };
+      teRange = null;
+      document.getElementById("table-editor-title").textContent = "Insert Table";
+    }
+    renderTe();
+    teOverlay.hidden = false;
+  }
+
+  function closeTe() {
+    teOverlay.hidden = true;
+  }
+
+  function applyTe() {
+    teData = readTeData();
+    const md = serializeTable(teData);
+
+    if (teRange) {
+      textarea.setRangeText(md, teRange.start, teRange.end, "end");
+    } else {
+      const pos = teSavedPos;
+      const text = textarea.value;
+      const before = text.slice(0, pos);
+      const after = text.slice(pos);
+      const prefix = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
+      const suffix = after.length > 0 && !after.startsWith("\n") ? "\n" : "";
+      textarea.setRangeText(prefix + md + suffix, pos, pos, "end");
+    }
+
+    textarea.focus();
+    closeTe();
+    updateTeBtn();
+  }
+
+  function updateTeBtn() {
+    teBtn.textContent = getTableAtCursor() ? "Edit Table" : "Insert Table";
+  }
+
+  teBtn.addEventListener("click", openTe);
+  document.getElementById("table-editor-close").addEventListener("click", closeTe);
+  teOverlay.addEventListener("click", e => { if (e.target === teOverlay) closeTe(); });
+  document.getElementById("table-editor-apply").addEventListener("click", applyTe);
+  document.getElementById("table-editor-cancel").addEventListener("click", closeTe);
+
+  document.getElementById("table-add-col").addEventListener("click", () => {
+    const d = readTeData();
+    d.headers.push("");
+    d.alignments.push("left");
+    d.rows.forEach(r => r.push(""));
+    teData = d;
+    renderTe();
+  });
+
+  document.getElementById("table-add-row").addEventListener("click", () => {
+    const d = readTeData();
+    d.rows.push(d.headers.map(() => ""));
+    teData = d;
+    renderTe();
+  });
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !teOverlay.hidden) closeTe();
+  });
+
+  textarea.addEventListener("mouseup", updateTeBtn);
+  textarea.addEventListener("keyup", updateTeBtn);
+  updateTeBtn();
+
 })();
 </script>
 {{end}}

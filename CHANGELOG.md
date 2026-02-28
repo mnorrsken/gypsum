@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.11.0
+
+### Added
+- **Table editor** — a new **Insert Table** / **Edit Table** button in the editor toolbar opens a visual table editor modal. When the cursor is inside an existing GFM table the button reads "Edit Table" and pre-populates the editor with the current table; otherwise it inserts a new table. Columns support left/center/right alignment, and rows/columns can be added or deleted. Applying serializes the table with aligned columns back into the editor.
+
 ## v0.10.0
 
 ### Added

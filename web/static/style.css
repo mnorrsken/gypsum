@@ -1135,3 +1135,178 @@ textarea {
 [data-theme="dark"] .theme-toggle .icon-moon {
   display: none;
 }
+
+/* --- Table Editor modal --- */
+
+.table-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.table-editor-overlay[hidden] {
+  display: none;
+}
+
+.table-editor-dialog {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 820px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+}
+
+.table-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.table-editor-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.table-editor-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  padding: 0 2px;
+}
+
+.table-editor-close:hover {
+  color: var(--color-text);
+  background: none;
+}
+
+.table-editor-body {
+  overflow: auto;
+  padding: 16px;
+  flex: 1;
+}
+
+.table-editor-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.te-spacer {
+  flex: 1;
+}
+
+/* Editor table */
+
+.te-table {
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+
+.te-table th,
+.te-table td {
+  border: 1px solid var(--color-border);
+  padding: 0;
+  vertical-align: middle;
+}
+
+.te-table input[type="text"] {
+  border: none;
+  margin: 0;
+  padding: 5px 8px;
+  background: transparent;
+  border-radius: 0;
+  font-size: 13px;
+  min-width: 90px;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.te-table input[type="text"]:focus {
+  outline: 2px solid var(--color-link);
+  outline-offset: -2px;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+/* Control row (alignment + delete column) */
+
+.te-ctrl-row td {
+  background: var(--color-hover-bg);
+  padding: 4px 6px;
+}
+
+.te-ctrl-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.te-align-select {
+  font-size: 11px;
+  padding: 2px 4px;
+  border: 1px solid var(--color-input-border);
+  border-radius: 3px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  margin: 0;
+  width: auto;
+  min-width: 0;
+}
+
+/* Header row */
+
+.te-header-cell {
+  background: var(--color-editor-help-bg);
+}
+
+.te-header-input {
+  font-weight: 600 !important;
+}
+
+/* Delete buttons */
+
+.te-del-col,
+.te-del-row {
+  background: none;
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-text);
+  padding: 1px 5px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.te-del-col:hover,
+.te-del-row:hover {
+  background: var(--color-error-bg);
+}
+
+/* Row action column */
+
+.te-row-act {
+  padding: 2px 6px !important;
+  text-align: center;
+  width: 1%;
+}
