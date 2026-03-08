@@ -7,7 +7,8 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 ## Features
 
 - **Markdown pages** — stored as `.md` files, rendered with [goldmark](https://github.com/yuin/goldmark) (GFM tables, syntax highlighting)
-- **Wiki links** — `[[Page Title]]` creates inter-page links; clicking a link to a non-existent page opens the editor
+- **Wiki links** — `[[Page Title]]` creates inter-page links; clicking a link to a non-existent page opens the editor pre-populated with a `# Page Title` heading (preserving characters like `&` that are stripped from the URL slug)
+- **H1 title override** — if a page starts with a level-1 heading (`# My Title`), that heading is used as the browser and page title instead of the slug-derived name; the heading is not rendered again in the body
 - **Inline encryption** — `{{secure:secret}}` in the editor is AES-256-GCM encrypted on save; click the lock icon on a page to temporarily reveal the value (auto-hides after 60 seconds). Supports multiline blocks.
 - **Content validation** — malformed or unknown custom tags are rejected on save with clear error messages
 - **Page history** — view the git commit history for any page via the History tab
