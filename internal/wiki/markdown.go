@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -54,15 +55,37 @@ func NewMarkdownRenderer() *MarkdownRenderer {
 	return &MarkdownRenderer{engine: engine}
 }
 
+// ExtractH1Title checks if source begins with a level-1 heading (# …).
+// If it does, it returns the heading text and the remainder of the content
+// (without that heading line). Otherwise it returns empty strings for both.
+func ExtractH1Title(source string) (title, rest string) {
+	s := strings.TrimLeft(source, "\r\n")
+	nlIdx := strings.Index(s, "\n")
+	var firstLine, remaining string
+	if nlIdx == -1 {
+		firstLine = s
+		remaining = ""
+	} else {
+		firstLine = s[:nlIdx]
+		remaining = s[nlIdx+1:]
+	}
+	after, found := strings.CutPrefix(firstLine, "# ")
+	if !found {
+		return "", source
+	}
+	return strings.TrimSpace(after), remaining
+}
+
 func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 	withLinks := wikiLinkPattern.ReplaceAllStringFunc(source, func(match string) string {
 		captures := wikiLinkPattern.FindStringSubmatch(match)
 		if len(captures) < 2 {
 			return match
 		}
-		title := captures[1]
+		title := strings.TrimSpace(captures[1])
 		slug := SlugFromTitle(title)
-		return fmt.Sprintf("[%s](/wiki/%s)", title, slug)
+		// Encode the original title so new-page creation can recover it.
+		return fmt.Sprintf("[%s](/wiki/%s?title=%s)", title, slug, url.QueryEscape(title))
 	})
 
 	// Replace sized image macros: ![alt|SIZE](url) → raw <img> with inline style.

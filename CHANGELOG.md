@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.12.0
+
+### Added
+- **H1 title as page title** — if a page's content begins with a level-1 heading (`# My Title`), that heading is used as the browser tab title and the page-title area instead of the slug-derived name. The heading is not rendered a second time in the page body.
+- **New pages pre-populated with H1 heading** — when a new page is created (either from a `[[wiki link]]` or the **+ New Page** form), the editor is pre-populated with a `# Proper Title` heading that preserves characters stripped from the URL slug (e.g. `# Tokens & Lösenord` for a link written as `[[ Tokens & Lösenord ]]`).
+
 ## v0.11.0
 
 ### Added

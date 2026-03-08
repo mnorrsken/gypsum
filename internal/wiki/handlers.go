@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,7 +114,7 @@ func (h *Handler) handleNewPage(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/edit/%s", slug), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/edit/%s?title=%s", slug, url.QueryEscape(title)), http.StatusFound)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -134,22 +135,37 @@ func (h *Handler) handleView(w http.ResponseWriter, r *http.Request) {
 	page, err := h.store.Load(slug)
 	if err != nil {
 		if errors.Is(err, ErrPageNotFound) {
-			http.Redirect(w, r, fmt.Sprintf("/edit/%s", slug), http.StatusFound)
+			editURL := fmt.Sprintf("/edit/%s", slug)
+			if t := r.URL.Query().Get("title"); t != "" {
+				editURL += "?title=" + url.QueryEscape(t)
+			}
+			http.Redirect(w, r, editURL, http.StatusFound)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	html, err := h.renderer.Render(page.Content)
+	// If the page starts with a level-1 heading, use that as the display
+	// title and render only the rest of the content (the heading is shown
+	// by the page-title-area in the template, so rendering it again would
+	// duplicate it).
+	displayTitle := page.Title
+	renderSource := page.Content
+	if h1, rest := ExtractH1Title(page.Content); h1 != "" {
+		displayTitle = h1
+		renderSource = rest
+	}
+
+	html, err := h.renderer.Render(renderSource)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	h.render(w, "view", TemplateData{
-		Title:        page.Title,
-		Page:         page,
+		Title:        displayTitle,
+		Page:         &Page{Slug: page.Slug, Title: displayTitle, Content: page.Content},
 		RenderedHTML: html,
 	})
 }
@@ -176,6 +192,16 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			raw = page.Content
 			title = page.Title
 			isNew = false
+		}
+
+		// For new pages, pre-populate with a level-1 heading so the proper
+		// title (including characters stripped from the slug) is preserved.
+		if isNew && raw == "" {
+			prettyTitle := title
+			if t := r.URL.Query().Get("title"); t != "" {
+				prettyTitle = t
+			}
+			raw = "# " + prettyTitle + "\n\n"
 		}
 
 		prefix := "Edit: "
