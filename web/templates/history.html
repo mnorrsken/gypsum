@@ -11,26 +11,54 @@
   </div>
 
   {{if .History}}
-  <table class="history-table">
-    <thead>
-      <tr>
-        <th>Revision</th>
-        <th>Date</th>
-        <th>Author</th>
-        <th>Summary</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{range .History}}
-      <tr>
-        <td class="history-hash"><code>{{printf "%.7s" .Hash}}</code></td>
-        <td class="history-date">{{.Date.Format "2006-01-02 15:04"}}</td>
-        <td class="history-author">{{.Author}}</td>
-        <td class="history-message">{{.Message}}</td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
+  <form id="history-compare-form" method="get" action="/history-diff/{{.Page.Slug}}">
+    <div class="page-actions">
+      <button type="submit" id="compare-btn" disabled>Compare Selected</button>
+    </div>
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th class="history-radio-col">Old</th>
+          <th class="history-radio-col">New</th>
+          <th>Revision</th>
+          <th>Date</th>
+          <th>Author</th>
+          <th>Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $i, $entry := .History}}
+        <tr>
+          <td class="history-radio-cell"><input type="radio" name="from" value="{{$entry.Hash}}" {{if eq $i 1}}checked{{end}} /></td>
+          <td class="history-radio-cell"><input type="radio" name="to" value="{{$entry.Hash}}" {{if eq $i 0}}checked{{end}} /></td>
+          <td class="history-hash"><code>{{printf "%.7s" $entry.Hash}}</code></td>
+          <td class="history-date">{{$entry.Date.Format "2006-01-02 15:04"}}</td>
+          <td class="history-author">{{$entry.Author}}</td>
+          <td class="history-message">{{$entry.Message}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </form>
+
+  <script>
+  (() => {
+    const form = document.getElementById('history-compare-form');
+    const btn = document.getElementById('compare-btn');
+    const fromRadios = form.querySelectorAll('input[name="from"]');
+    const toRadios = form.querySelectorAll('input[name="to"]');
+
+    function update() {
+      const from = form.querySelector('input[name="from"]:checked');
+      const to = form.querySelector('input[name="to"]:checked');
+      btn.disabled = !from || !to || from.value === to.value;
+    }
+
+    fromRadios.forEach(r => r.addEventListener('change', update));
+    toRadios.forEach(r => r.addEventListener('change', update));
+    update();
+  })();
+  </script>
   {{else}}
   <p class="hint">No history available for this page.</p>
   {{end}}

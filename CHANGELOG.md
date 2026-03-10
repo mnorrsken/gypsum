@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.13.0
+
+### Added
+- **Revision comparison** — the History tab now has "Old" and "New" radio buttons for selecting two revisions; click **Compare Selected** to view a colorized unified diff between them, using the same diff viewer as the editor preview.
+
 ## v0.12.0
 
 ### Added

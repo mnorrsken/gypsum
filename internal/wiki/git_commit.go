@@ -348,6 +348,21 @@ func (c *GitAutoCommitter) runGit(args ...string) error {
 	return nil
 }
 
+// PageContentAtRevision returns the content of a page file at a specific git revision.
+func (c *GitAutoCommitter) PageContentAtRevision(slug, hash string) (string, error) {
+	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
+		return "", fmt.Errorf("git not available")
+	}
+
+	relPath := filepath.Join("pages", MarkdownFilename(slug))
+	cmd := exec.Command("git", "-C", c.dataDir, "show", hash+":"+relPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("revision not found")
+	}
+	return string(out), nil
+}
+
 // PageHistory returns the git log for a page file.
 func (c *GitAutoCommitter) PageHistory(slug string, maxEntries int) ([]HistoryEntry, error) {
 	if c == nil || c.dataDir == "" || !c.isOwnRepo() {

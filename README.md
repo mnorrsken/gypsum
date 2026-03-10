@@ -11,7 +11,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **H1 title override** — if a page starts with a level-1 heading (`# My Title`), that heading is used as the browser and page title instead of the slug-derived name; the heading is not rendered again in the body
 - **Inline encryption** — `{{secure:secret}}` in the editor is AES-256-GCM encrypted on save; click the lock icon on a page to temporarily reveal the value (auto-hides after 60 seconds). Supports multiline blocks.
 - **Content validation** — malformed or unknown custom tags are rejected on save with clear error messages
-- **Page history** — view the git commit history for any page via the History tab
+- **Page history** — view the git commit history for any page via the History tab; select two revisions and click **Compare Selected** to see a colorized unified diff between them
 - **Image uploads** — paste from clipboard, drag-and-drop onto the editor, or click **Images** to browse and insert existing uploads. Filenames are derived from the original file name where available. Images auto-scale to fit the content width. Optional size hints: `![alt|500](url)` (px), `![alt|50%](url)` (percent), `![alt|800x400](url)` (width×height)
 - **Favorites sidebar** — edit `_favorites.md` to pin pages in the sidebar
 - **Full-text search** — searches page titles and content
@@ -93,7 +93,7 @@ The editor validates custom tags on save — unknown tags, unclosed blocks, and 
 
 ### Page History
 
-Click the **History** tab on any page to view its git commit log, showing revision hashes, dates, authors, and commit messages.
+Click the **History** tab on any page to view its git commit log, showing revision hashes, dates, authors, and commit messages. Select two revisions using the **Old** and **New** radio buttons, then click **Compare Selected** to view a colorized unified diff between them.
 
 ### Images
 

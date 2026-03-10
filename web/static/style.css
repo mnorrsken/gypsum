@@ -928,6 +928,15 @@ textarea {
   color: var(--color-text-secondary);
 }
 
+.history-radio-col {
+  width: 40px;
+  text-align: center;
+}
+
+.history-radio-cell {
+  text-align: center;
+}
+
 /* --- Responsive --- */
 
 @media (max-width: 768px) {
@@ -994,8 +1003,8 @@ textarea {
     display: none;
   }
 
-  .history-table th:nth-child(3),
-  .history-table td:nth-child(3) {
+  .history-table th:nth-child(5),
+  .history-table td:nth-child(5) {
     display: none;
   }
 

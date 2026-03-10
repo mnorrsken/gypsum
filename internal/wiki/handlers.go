@@ -68,6 +68,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/edit/", h.handleEdit)
 	mux.HandleFunc("/search", h.handleSearch)
 	mux.HandleFunc("/history/", h.handleHistory)
+	mux.HandleFunc("/history-diff/", h.handleHistoryDiff)
 	mux.HandleFunc("/secure-inline/unlock", h.handleInlineSecureUnlock)
 	mux.HandleFunc("/images", h.handleImages)
 	mux.HandleFunc("/images/upload", h.handleImageUpload)
@@ -372,6 +373,54 @@ func (h *Handler) handleHistory(w http.ResponseWriter, r *http.Request) {
 		Page:    &Page{Slug: slug, Title: title},
 		History: entries,
 	})
+}
+
+func (h *Handler) handleHistoryDiff(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slug := strings.TrimPrefix(r.URL.Path, "/history-diff/")
+	if slug == "" {
+		http.Error(w, "missing page slug", http.StatusBadRequest)
+		return
+	}
+
+	fromHash := r.URL.Query().Get("from")
+	toHash := r.URL.Query().Get("to")
+	if fromHash == "" || toHash == "" {
+		http.Error(w, "missing from or to parameter", http.StatusBadRequest)
+		return
+	}
+
+	oldContent, err := h.autoCommit.PageContentAtRevision(slug, fromHash)
+	if err != nil {
+		http.Error(w, "could not load old revision: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	newContent, err := h.autoCommit.PageContentAtRevision(slug, toHash)
+	if err != nil {
+		http.Error(w, "could not load new revision: "+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	diffHTML := RenderUnifiedDiff(oldContent, newContent, slug)
+	title := TitleFromSlug(slug)
+
+	h.render(w, "history_diff", TemplateData{
+		Title:    "Diff: " + title,
+		Page:     &Page{Slug: slug, Title: title},
+		DiffHTML: diffHTML,
+		Query:    fmt.Sprintf("%s...%s", fromHash[:minLen(len(fromHash), 7)], toHash[:minLen(len(toHash), 7)]),
+	})
+}
+
+func minLen(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (h *Handler) handleImages(w http.ResponseWriter, r *http.Request) {

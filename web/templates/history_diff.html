@@ -1,0 +1,21 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>{{.Page.Title}}</h1>
+    <hr class="title-rule" />
+    <div class="page-tabs">
+      <a href="/wiki/{{.Page.Slug}}">Page</a>
+      <a href="/edit/{{.Page.Slug}}">Edit</a>
+      <a href="/history/{{.Page.Slug}}">History</a>
+    </div>
+  </div>
+
+  <p class="hint">Comparing revisions <code>{{.Query}}</code></p>
+
+  {{.DiffHTML}}
+
+  <div class="page-actions">
+    <a href="/history/{{.Page.Slug}}" class="button secondary">Back to History</a>
+  </div>
+</article>
+{{end}}
