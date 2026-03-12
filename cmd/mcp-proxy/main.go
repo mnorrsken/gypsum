@@ -75,7 +75,12 @@ func main() {
 			continue
 		}
 
-		fmt.Fprintf(os.Stdout, "%s\n", body)
+		// The server's json.Encoder already appends a newline, so write
+		// the body as-is. Add a trailing newline only if missing.
+		os.Stdout.Write(body)
+		if len(body) > 0 && body[len(body)-1] != '\n' {
+			os.Stdout.Write([]byte{'\n'})
+		}
 	}
 
 	if err := scanner.Err(); err != nil {

@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.15.1
+
+### Fixed
+- **MCP proxy double newline** — fixed duplicate trailing newline in proxied responses that caused "Unexpected end of JSON input" errors in Claude Desktop.
+
 ## v0.15.0
 
 ### Added
