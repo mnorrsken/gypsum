@@ -16,6 +16,12 @@ import (
 var seedPages embed.FS
 
 func main() {
+	// Subcommand: mcp-stdio — run MCP server on stdin/stdout for Claude Desktop
+	if len(os.Args) > 1 && os.Args[1] == "mcp-stdio" {
+		runMCPStdio()
+		return
+	}
+
 	workspaceRoot, err := os.Getwd()
 	if err != nil {
 		log.Fatalf("failed to get working directory: %v", err)
@@ -110,6 +116,21 @@ func seedPagesIfEmpty(pagesDir string) error {
 	}
 
 	return nil
+}
+
+func runMCPStdio() {
+	workspaceRoot, err := os.Getwd()
+	if err != nil {
+		log.Fatalf("failed to get working directory: %v", err)
+	}
+	pagesDir := filepath.Join(workspaceRoot, "data", "pages")
+	dataDir := filepath.Join(workspaceRoot, "data")
+	if err := os.MkdirAll(pagesDir, 0o755); err != nil {
+		log.Fatalf("failed to create pages directory: %v", err)
+	}
+	store := wiki.NewPageStore(pagesDir)
+	autoCommitter := wiki.NewGitAutoCommitter(dataDir, nil)
+	wiki.RunMCPStdio(store, autoCommitter)
 }
 
 func envOrDefault(key, fallback string) string {

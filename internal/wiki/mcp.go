@@ -143,7 +143,7 @@ func (m *MCPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := m.handleRPC(req, w)
+	resp := m.HandleRPC(req, func(k, v string) { w.Header().Set(k, v) })
 	if resp == nil {
 		w.WriteHeader(http.StatusAccepted)
 		return
@@ -153,11 +153,16 @@ func (m *MCPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (m *MCPHandler) handleRPC(req jsonRPCRequest, w http.ResponseWriter) *jsonRPCResponse {
+// HandleRPC processes a single JSON-RPC request and returns a response.
+// Returns nil for notifications that need no response.
+// The optional headerFn is called to set HTTP headers (ignored for stdio).
+func (m *MCPHandler) HandleRPC(req jsonRPCRequest, headerFn func(key, value string)) *jsonRPCResponse {
 	switch req.Method {
 	case "initialize":
 		sid := m.newSession()
-		w.Header().Set("Mcp-Session-Id", sid)
+		if headerFn != nil {
+			headerFn("Mcp-Session-Id", sid)
+		}
 		return &jsonRPCResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,

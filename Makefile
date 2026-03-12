@@ -48,8 +48,8 @@ docker-run:
 	docker run --rm -p 8080:8080 -v $(PWD)/data:/app/data $(IMAGE)
 
 deploy:
-	docker build -t $(IMAGE) .
-	docker push $(IMAGE)
+# 	docker build -t $(IMAGE) .
+# 	docker push $(IMAGE)
 	helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) \
 		-n $(HELM_NS) \
 		-f values.yaml \
