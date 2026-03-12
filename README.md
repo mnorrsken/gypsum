@@ -150,6 +150,23 @@ URL: https://your-wiki.example.com/mcp
 
 That's it — Claude will discover the available tools automatically via the MCP protocol.
 
+### Claude Desktop (stdio proxy)
+
+For local use or when the wiki isn't publicly accessible, use the `mcp-proxy` binary. It bridges stdio to the remote HTTP endpoint.
+
+Build it with `make build`, then configure Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "gypsum": {
+      "command": "C:\\path\\to\\mcp-proxy.exe",
+      "args": ["https://wiki.example.com/mcp"]
+    }
+  }
+}
+```
+
 ### Available Tools
 
 | Tool | Description |

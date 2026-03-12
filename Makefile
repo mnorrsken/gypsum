@@ -15,7 +15,7 @@ help:
 	@echo "  make fmt                        - Format Go source"
 	@echo "  make tidy                       - Tidy Go modules"
 	@echo "  make test                       - Run unit tests"
-	@echo "  make build                      - Build binary to ./bin/gypsum"
+	@echo "  make build                      - Build binaries to ./bin/"
 	@echo "  make run                        - Run wiki server locally on :8080"
 	@echo "  make clean                      - Remove build artifacts"
 	@echo "  make docker-build               - Build Docker image (REGISTRY=... TAG=...)"
@@ -34,6 +34,8 @@ test:
 build:
 	mkdir -p bin
 	go build -o bin/$(APP_NAME) $(CMD_PATH)
+	GOOS=windows GOARCH=amd64 go build -o bin/$(APP_NAME).exe $(CMD_PATH)
+	GOOS=windows GOARCH=amd64 go build -o bin/mcp-proxy.exe ./cmd/mcp-proxy
 
 run:
 	go run $(CMD_PATH)

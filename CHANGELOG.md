@@ -2,6 +2,15 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.15.0
+
+### Added
+- **MCP proxy binary** — standalone `mcp-proxy` executable that bridges stdio to a remote Gypsum `/mcp` endpoint, enabling Claude Desktop integration via the `command` connector. Windows binary built by default.
+
+### Changed
+- **Windows build** — `make build` now also produces `gypsum.exe` and `mcp-proxy.exe` for Windows/amd64.
+- **Removed embedded stdio MCP** — the `mcp-stdio` subcommand is replaced by the separate `mcp-proxy` binary.
+
 ## v0.14.1
 
 ### Fixed
