@@ -101,7 +101,15 @@ func NewMCPHandler(store *PageStore, autoCommitter *GitAutoCommitter) *MCPHandle
 }
 
 func (m *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// CORS headers — required for Claude's remote MCP connector
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id")
+	w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id")
+
 	switch r.Method {
+	case http.MethodOptions:
+		w.WriteHeader(http.StatusNoContent)
 	case http.MethodPost:
 		m.handlePost(w, r)
 	case http.MethodGet:

@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.14.1
+
+### Fixed
+- **MCP CORS headers** — added CORS support and OPTIONS preflight handling so Claude's remote MCP connector can connect successfully.
+
 ## v0.14.0
 
 ### Added
