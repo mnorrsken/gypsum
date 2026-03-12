@@ -75,6 +75,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/images/delete", h.handleImageDelete)
 	mux.HandleFunc("/images/list", h.handleImageList)
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
+	mux.Handle("/mcp", NewMCPHandler(h.store, h.autoCommit))
 	return mux
 }
 

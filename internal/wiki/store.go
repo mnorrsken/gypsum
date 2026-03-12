@@ -25,6 +25,14 @@ func (s *PageStore) ImagesDir() string {
 	return s.imagesDir
 }
 
+func (s *PageStore) PagePath(slug string) string {
+	return filepath.Join(s.pagesDir, MarkdownFilename(slug))
+}
+
+func (s *PageStore) ImagePath(filename string) string {
+	return filepath.Join(s.imagesDir, filename)
+}
+
 func (s *PageStore) ListImages() ([]ImageInfo, error) {
 	entries, err := os.ReadDir(s.imagesDir)
 	if err != nil {

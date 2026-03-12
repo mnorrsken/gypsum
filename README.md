@@ -22,6 +22,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Dark/light theme** — toggle between dark and light mode via the button in the top bar; preference is remembered across sessions
 - **Responsive layout** — mobile-friendly with a hamburger menu sidebar on small screens
 - **Table editor** — click **Insert Table** (or **Edit Table** when the cursor is inside a table) to open a visual table editor modal; supports adding/removing rows and columns and per-column alignment (left/center/right)
+- **MCP server** — built-in MCP (Model Context Protocol) endpoint at `/mcp` using Streamable HTTP transport; exposes the wiki as tools for AI assistants (list/read/create/edit/delete pages, search, image management, history). Connect from Claude using a remote MCP custom connector
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
 
@@ -134,6 +135,37 @@ Edit the special `_favorites.md` page (linked at the bottom of the Favorites sec
 ### Search
 
 Use the search bar in the top navigation or visit `/search`. Searches page titles and content (case-insensitive).
+
+## MCP Server
+
+Gypsum has a built-in MCP (Model Context Protocol) endpoint at `/mcp` using the Streamable HTTP transport. This lets AI assistants like Claude interact with your wiki remotely — no separate binary needed.
+
+### Connecting from Claude
+
+In Claude's settings, add a **remote MCP server** (custom connector) pointing at your Gypsum instance:
+
+```
+URL: https://your-wiki.example.com/mcp
+```
+
+That's it — Claude will discover the available tools automatically via the MCP protocol.
+
+### Available Tools
+
+| Tool | Description |
+|---|---|
+| `list_pages` | List all wiki pages |
+| `get_page` | Read a page's markdown content |
+| `create_page` | Create a new page |
+| `edit_page` | Update an existing page |
+| `delete_page` | Delete a page |
+| `search_pages` | Full-text search across pages |
+| `list_images` | List uploaded images with metadata |
+| `delete_image` | Delete an image |
+| `get_recent_pages` | Recently modified pages |
+| `get_favorites` | Favorite/pinned pages |
+| `page_history` | Git revision history for a page |
+| `get_page_revision` | Page content at a specific revision |
 
 ## Docker
 

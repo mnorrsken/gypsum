@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.14.0
+
+### Added
+- **MCP server** — built-in MCP (Model Context Protocol) endpoint at `/mcp` using Streamable HTTP transport, allowing AI assistants like Claude to list, read, create, edit, delete, and search pages, manage images, browse favorites, and view page history. Connect from Claude using a remote MCP custom connector pointed at your wiki URL.
+
 ## v0.13.0
 
 ### Added

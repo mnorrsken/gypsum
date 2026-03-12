@@ -1,0 +1,567 @@
+package wiki
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// mcpCall sends a JSON-RPC request to the MCP handler and returns the parsed response.
+func mcpCall(t *testing.T, handler http.Handler, id int, method string, params any) jsonRPCResponse {
+	t.Helper()
+	body := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"method":  method,
+	}
+	if params != nil {
+		raw, _ := json.Marshal(params)
+		body["params"] = json.RawMessage(raw)
+	}
+	data, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("MCP %s: status=%d body=%s", method, rec.Code, rec.Body.String())
+	}
+	var resp jsonRPCResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("MCP %s: decode failed: %v", method, err)
+	}
+	return resp
+}
+
+// mcpNotify sends a JSON-RPC notification (no id) and returns the HTTP status.
+func mcpNotify(t *testing.T, handler http.Handler, method string) int {
+	t.Helper()
+	body := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  method,
+	}
+	data, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+func toolResultText(t *testing.T, resp jsonRPCResponse) string {
+	t.Helper()
+	if resp.Error != nil {
+		t.Fatalf("unexpected JSON-RPC error: %s", resp.Error.Message)
+	}
+	raw, _ := json.Marshal(resp.Result)
+	var result mcpCallToolResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("decode tool result: %v", err)
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("tool result has no content")
+	}
+	return result.Content[0].Text
+}
+
+func toolResultIsError(t *testing.T, resp jsonRPCResponse) string {
+	t.Helper()
+	raw, _ := json.Marshal(resp.Result)
+	var result mcpCallToolResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("decode tool result: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected isError=true, got text: %s", result.Content[0].Text)
+	}
+	return result.Content[0].Text
+}
+
+func newTestMCP(t *testing.T) (*MCPHandler, *PageStore) {
+	t.Helper()
+	dir := t.TempDir()
+	pagesDir := filepath.Join(dir, "pages")
+	_ = os.MkdirAll(pagesDir, 0o755)
+	store := NewPageStore(pagesDir)
+	handler := NewMCPHandler(store, nil)
+	return handler, store
+}
+
+// ── Protocol tests ──────────────────────────────────────────────────────
+
+func TestMCPInitialize(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "initialize", map[string]any{
+		"protocolVersion": "2025-03-26",
+		"capabilities":    map[string]any{},
+		"clientInfo":      map[string]any{"name": "test", "version": "1.0"},
+	})
+	if resp.Error != nil {
+		t.Fatalf("initialize error: %s", resp.Error.Message)
+	}
+	raw, _ := json.Marshal(resp.Result)
+	var result mcpInitializeResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if result.ProtocolVersion != "2025-03-26" {
+		t.Fatalf("unexpected protocol version: %s", result.ProtocolVersion)
+	}
+	if result.ServerInfo.Name != "gypsum-wiki" {
+		t.Fatalf("unexpected server name: %s", result.ServerInfo.Name)
+	}
+}
+
+func TestMCPInitializeReturnsSessionID(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	body := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params":  map[string]any{},
+	}
+	data, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	sid := rec.Header().Get("Mcp-Session-Id")
+	if sid == "" {
+		t.Fatal("missing Mcp-Session-Id header")
+	}
+	if len(sid) != 32 { // 16 bytes hex-encoded
+		t.Fatalf("unexpected session id length: %d", len(sid))
+	}
+}
+
+func TestMCPNotificationReturns202(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	code := mcpNotify(t, handler, "notifications/initialized")
+	if code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", code)
+	}
+}
+
+func TestMCPToolsList(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/list", nil)
+	if resp.Error != nil {
+		t.Fatalf("tools/list error: %s", resp.Error.Message)
+	}
+	raw, _ := json.Marshal(resp.Result)
+	var result mcpToolsListResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(result.Tools) != 12 {
+		t.Fatalf("expected 12 tools, got %d", len(result.Tools))
+	}
+	// Verify all tools have name, description, and schema
+	for _, tool := range result.Tools {
+		if tool.Name == "" {
+			t.Fatal("tool has empty name")
+		}
+		if tool.Description == "" {
+			t.Fatalf("tool %s has empty description", tool.Name)
+		}
+		if tool.InputSchema == nil {
+			t.Fatalf("tool %s has nil schema", tool.Name)
+		}
+	}
+}
+
+func TestMCPPing(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "ping", nil)
+	if resp.Error != nil {
+		t.Fatalf("ping error: %s", resp.Error.Message)
+	}
+}
+
+func TestMCPUnknownMethod(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "bogus/method", nil)
+	if resp.Error == nil {
+		t.Fatal("expected error for unknown method")
+	}
+	if resp.Error.Code != -32601 {
+		t.Fatalf("expected code -32601, got %d", resp.Error.Code)
+	}
+}
+
+func TestMCPDeleteSession(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	req := httptest.NewRequest(http.MethodDelete, "/mcp", nil)
+	req.Header.Set("Mcp-Session-Id", "some-session-id")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("DELETE /mcp: status=%d", rec.Code)
+	}
+}
+
+// ── Tool tests ──────────────────────────────────────────────────────────
+
+func TestMCPListPagesEmpty(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "list_pages", "arguments": map[string]any{},
+	})
+	text := toolResultText(t, resp)
+	// Empty store returns empty array
+	if text != "[]" {
+		t.Fatalf("expected empty array, got: %s", text)
+	}
+}
+
+func TestMCPCreateAndGetPage(t *testing.T) {
+	handler, _ := newTestMCP(t)
+
+	// Create
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":   "Test Page",
+			"content": "# Hello\n\nWorld",
+		},
+	})
+	text := toolResultText(t, resp)
+	if text != "Created page 'Test Page' (slug: Test_Page)" {
+		t.Fatalf("unexpected create result: %s", text)
+	}
+
+	// Get
+	resp = mcpCall(t, handler, 2, "tools/call", map[string]any{
+		"name":      "get_page",
+		"arguments": map[string]any{"slug": "Test_Page"},
+	})
+	text = toolResultText(t, resp)
+	if text != "# Hello\n\nWorld" {
+		t.Fatalf("unexpected content: %q", text)
+	}
+}
+
+func TestMCPCreatePageDuplicate(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("Existing", "content")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":   "Existing",
+			"content": "new content",
+		},
+	})
+	errText := toolResultIsError(t, resp)
+	if errText != "page already exists: Existing" {
+		t.Fatalf("unexpected error: %s", errText)
+	}
+}
+
+func TestMCPEditPage(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("MyPage", "old content")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":    "MyPage",
+			"content": "new content",
+		},
+	})
+	text := toolResultText(t, resp)
+	if text != "Updated page 'MyPage'" {
+		t.Fatalf("unexpected: %s", text)
+	}
+
+	// Verify on disk
+	page, _ := store.Load("MyPage")
+	if page.Content != "new content" {
+		t.Fatalf("content not updated: %q", page.Content)
+	}
+}
+
+func TestMCPEditPageNotFound(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":    "NoSuchPage",
+			"content": "x",
+		},
+	})
+	errText := toolResultIsError(t, resp)
+	if errText != "page not found: NoSuchPage" {
+		t.Fatalf("unexpected error: %s", errText)
+	}
+}
+
+func TestMCPDeletePage(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("ToDelete", "bye")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "delete_page",
+		"arguments": map[string]any{"slug": "ToDelete"},
+	})
+	text := toolResultText(t, resp)
+	if text != "Deleted page 'ToDelete'" {
+		t.Fatalf("unexpected: %s", text)
+	}
+
+	// Verify gone
+	_, err := store.Load("ToDelete")
+	if err != ErrPageNotFound {
+		t.Fatalf("expected ErrPageNotFound, got %v", err)
+	}
+}
+
+func TestMCPDeletePageNotFound(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "delete_page",
+		"arguments": map[string]any{"slug": "Ghost"},
+	})
+	toolResultIsError(t, resp)
+}
+
+func TestMCPSearchPages(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("Alpha", "contains keyword gypsum here")
+	_ = store.Save("Beta", "nothing relevant")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_pages",
+		"arguments": map[string]any{"query": "gypsum"},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Alpha")) {
+		t.Fatalf("expected Alpha in results: %s", text)
+	}
+	if bytes.Contains([]byte(text), []byte("Beta")) {
+		t.Fatalf("Beta should not be in results: %s", text)
+	}
+}
+
+func TestMCPSearchPagesNoResults(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_pages",
+		"arguments": map[string]any{"query": "nonexistent"},
+	})
+	text := toolResultText(t, resp)
+	if text != "No results found for: nonexistent" {
+		t.Fatalf("unexpected: %s", text)
+	}
+}
+
+func TestMCPGetPageNotFound(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "get_page",
+		"arguments": map[string]any{"slug": "NoSuchPage"},
+	})
+	toolResultIsError(t, resp)
+}
+
+func TestMCPListImages(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "list_images", "arguments": map[string]any{},
+	})
+	text := toolResultText(t, resp)
+	if text != "No images uploaded." {
+		t.Fatalf("expected no images message, got: %s", text)
+	}
+}
+
+func TestMCPDeleteImageNotFound(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "delete_image",
+		"arguments": map[string]any{"filename": "nonexistent.png"},
+	})
+	toolResultIsError(t, resp)
+}
+
+func TestMCPDeleteImagePathTraversal(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "delete_image",
+		"arguments": map[string]any{"filename": "../../../etc/passwd"},
+	})
+	errText := toolResultIsError(t, resp)
+	if errText != "invalid filename" {
+		t.Fatalf("expected invalid filename error, got: %s", errText)
+	}
+}
+
+func TestMCPGetRecentPages(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("Old", "old page")
+	_ = store.Save("New", "new page")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "get_recent_pages",
+		"arguments": map[string]any{"count": 1},
+	})
+	text := toolResultText(t, resp)
+	// Should contain the most recent page
+	if !bytes.Contains([]byte(text), []byte("New")) {
+		t.Fatalf("expected New in recent pages: %s", text)
+	}
+}
+
+func TestMCPGetFavoritesEmpty(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "get_favorites", "arguments": map[string]any{},
+	})
+	text := toolResultText(t, resp)
+	if text != "No favorites set." {
+		t.Fatalf("unexpected: %s", text)
+	}
+}
+
+func TestMCPGetFavorites(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("_favorites", "[[Home]]\n[[Notes]]")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "get_favorites", "arguments": map[string]any{},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Home")) {
+		t.Fatalf("expected Home in favorites: %s", text)
+	}
+}
+
+func TestMCPPageHistoryNoGit(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "page_history",
+		"arguments": map[string]any{"slug": "Home"},
+	})
+	text := toolResultText(t, resp)
+	if text != "No history available for: Home" {
+		t.Fatalf("unexpected: %s", text)
+	}
+}
+
+func TestMCPGetPageRevisionNoGit(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "get_page_revision",
+		"arguments": map[string]any{"slug": "Home", "hash": "abc123"},
+	})
+	toolResultIsError(t, resp)
+}
+
+func TestMCPUnknownTool(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "nonexistent_tool",
+		"arguments": map[string]any{},
+	})
+	errText := toolResultIsError(t, resp)
+	if errText != "unknown tool: nonexistent_tool" {
+		t.Fatalf("unexpected error: %s", errText)
+	}
+}
+
+func TestMCPMissingRequiredArgs(t *testing.T) {
+	handler, _ := newTestMCP(t)
+
+	tests := []struct {
+		tool string
+		args map[string]any
+	}{
+		{"get_page", map[string]any{}},
+		{"create_page", map[string]any{"content": "x"}},
+		{"create_page", map[string]any{"title": "x"}},
+		{"edit_page", map[string]any{"slug": "x"}},
+		{"edit_page", map[string]any{"content": "x"}},
+		{"delete_page", map[string]any{}},
+		{"search_pages", map[string]any{}},
+		{"delete_image", map[string]any{}},
+		{"page_history", map[string]any{}},
+		{"get_page_revision", map[string]any{"slug": "x"}},
+		{"get_page_revision", map[string]any{"hash": "x"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.tool, func(t *testing.T) {
+			resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+				"name":      tt.tool,
+				"arguments": tt.args,
+			})
+			toolResultIsError(t, resp)
+		})
+	}
+}
+
+func TestMCPFullPageLifecycle(t *testing.T) {
+	handler, _ := newTestMCP(t)
+
+	// Create
+	mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "create_page",
+		"arguments": map[string]any{"title": "Lifecycle", "content": "v1"},
+	})
+
+	// List — should appear
+	resp := mcpCall(t, handler, 2, "tools/call", map[string]any{
+		"name": "list_pages", "arguments": map[string]any{},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Lifecycle")) {
+		t.Fatalf("expected Lifecycle in list: %s", text)
+	}
+
+	// Edit
+	mcpCall(t, handler, 3, "tools/call", map[string]any{
+		"name":      "edit_page",
+		"arguments": map[string]any{"slug": "Lifecycle", "content": "v2"},
+	})
+
+	// Read — should be v2
+	resp = mcpCall(t, handler, 4, "tools/call", map[string]any{
+		"name":      "get_page",
+		"arguments": map[string]any{"slug": "Lifecycle"},
+	})
+	if toolResultText(t, resp) != "v2" {
+		t.Fatalf("expected v2")
+	}
+
+	// Search — should find it
+	resp = mcpCall(t, handler, 5, "tools/call", map[string]any{
+		"name":      "search_pages",
+		"arguments": map[string]any{"query": "v2"},
+	})
+	text = toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Lifecycle")) {
+		t.Fatalf("expected Lifecycle in search: %s", text)
+	}
+
+	// Delete
+	mcpCall(t, handler, 6, "tools/call", map[string]any{
+		"name":      "delete_page",
+		"arguments": map[string]any{"slug": "Lifecycle"},
+	})
+
+	// List — should be gone
+	resp = mcpCall(t, handler, 7, "tools/call", map[string]any{
+		"name": "list_pages", "arguments": map[string]any{},
+	})
+	text = toolResultText(t, resp)
+	if text != "[]" {
+		t.Fatalf("expected empty list after delete, got: %s", text)
+	}
+}
