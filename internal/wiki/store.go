@@ -270,6 +270,72 @@ func (s *PageStore) Search(query string) ([]SearchResult, error) {
 	return results, nil
 }
 
+// ExtractWikiLinks returns all [[Page Title]] link targets found in content as slugs.
+func ExtractWikiLinks(content string) []string {
+	matches := wikiLinkPattern.FindAllStringSubmatch(content, -1)
+	seen := make(map[string]bool)
+	var slugs []string
+	for _, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		slug := SlugFromTitle(strings.TrimSpace(m[1]))
+		if !seen[slug] {
+			seen[slug] = true
+			slugs = append(slugs, slug)
+		}
+	}
+	return slugs
+}
+
+// LinkGraph builds a map of page slug → list of slugs it links to via [[wiki links]].
+func (s *PageStore) LinkGraph() (map[string][]string, error) {
+	entries, err := os.ReadDir(s.pagesDir)
+	if err != nil {
+		return nil, err
+	}
+
+	graph := make(map[string][]string)
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		slug := SlugFromFilename(entry.Name())
+		if strings.HasPrefix(slug, "_") {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(s.pagesDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		links := ExtractWikiLinks(string(content))
+		graph[slug] = links
+	}
+	return graph, nil
+}
+
+// BackLinks returns all pages that link to the given slug via [[wiki links]].
+func (s *PageStore) BackLinks(targetSlug string) ([]PageLink, error) {
+	graph, err := s.LinkGraph()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []PageLink
+	for slug, links := range graph {
+		for _, link := range links {
+			if link == targetSlug {
+				results = append(results, PageLink{Slug: slug, Title: TitleFromSlug(slug)})
+				break
+			}
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return strings.ToLower(results[i].Title) < strings.ToLower(results[j].Title)
+	})
+	return results, nil
+}
+
 func excerptForQuery(content, query string) string {
 	replaced := strings.ReplaceAll(content, "\n", " ")
 	clean := strings.TrimSpace(replaced)

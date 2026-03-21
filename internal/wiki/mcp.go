@@ -245,6 +245,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Name: "create_page",
 			Description: "Create a new wiki page. Fails if the page already exists. " +
 				"The slug is derived from the title (spaces become underscores, e.g. 'My Page' → 'My_Page'). " +
+				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page (e.g. Home or a relevant category page) so it is discoverable. " +
 				wikiFormattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
 				"title":   mcpPropString("Page title, e.g. 'My New Page'. This becomes the slug and the display title."),
@@ -255,6 +256,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Name: "edit_page",
 			Description: "Update the content of an existing wiki page. Replaces the entire page content. " +
 				"Always use get_page first to read the current content before editing. " +
+				"When adding [[wiki links]] to new pages, make sure those pages exist or will be created. " +
 				wikiFormattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
 				"slug":    mcpPropString("Page slug to edit, e.g. 'My_Page'"),
@@ -315,6 +317,27 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"hash": mcpPropString("Git commit hash"),
 			}, []string{"slug", "hash"}),
 		},
+		{
+			Name:        "page_links",
+			Description: "Get all outgoing wiki links from a page. Returns the slugs of pages that this page links to via [[Page Title]] syntax.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug": mcpPropString("Page slug to inspect"),
+			}, []string{"slug"}),
+		},
+		{
+			Name: "what_links_here",
+			Description: "Find all pages that link to a given page (backlinks/parent pages). " +
+				"Every page should be linked from at least one other page to be discoverable in the wiki.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug": mcpPropString("Target page slug to find backlinks for"),
+			}, []string{"slug"}),
+		},
+		{
+			Name: "link_graph",
+			Description: "Get the full wiki link graph. Returns a map of every page slug to the list of slugs it links to. " +
+				"Useful for understanding the overall wiki structure and finding orphaned pages.",
+			InputSchema: mcpSchema("object", nil, nil),
+		},
 	}
 }
 
@@ -346,6 +369,12 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 		return m.toolPageHistory(params.Arguments)
 	case "get_page_revision":
 		return m.toolGetPageRevision(params.Arguments)
+	case "page_links":
+		return m.toolPageLinks(params.Arguments)
+	case "what_links_here":
+		return m.toolWhatLinksHere(params.Arguments)
+	case "link_graph":
+		return m.toolLinkGraph()
 	default:
 		return mcpError("unknown tool: " + params.Name)
 	}
@@ -540,6 +569,45 @@ func (m *MCPHandler) toolGetPageRevision(args map[string]any) mcpCallToolResult 
 		return mcpError("failed to get revision: " + err.Error())
 	}
 	return mcpText(content)
+}
+
+func (m *MCPHandler) toolPageLinks(args map[string]any) mcpCallToolResult {
+	slug, ok := mcpArgString(args, "slug")
+	if !ok {
+		return mcpError("missing required argument: slug")
+	}
+	page, err := m.store.Load(slug)
+	if err != nil {
+		return mcpError("page not found: " + slug)
+	}
+	links := ExtractWikiLinks(page.Content)
+	if len(links) == 0 {
+		return mcpText("Page '" + slug + "' has no outgoing wiki links.")
+	}
+	return mcpJSON(links)
+}
+
+func (m *MCPHandler) toolWhatLinksHere(args map[string]any) mcpCallToolResult {
+	slug, ok := mcpArgString(args, "slug")
+	if !ok {
+		return mcpError("missing required argument: slug")
+	}
+	backlinks, err := m.store.BackLinks(slug)
+	if err != nil {
+		return mcpError("failed to compute backlinks: " + err.Error())
+	}
+	if len(backlinks) == 0 {
+		return mcpText("No pages link to '" + slug + "'. This page is orphaned — consider linking it from a parent page.")
+	}
+	return mcpJSON(backlinks)
+}
+
+func (m *MCPHandler) toolLinkGraph() mcpCallToolResult {
+	graph, err := m.store.LinkGraph()
+	if err != nil {
+		return mcpError("failed to build link graph: " + err.Error())
+	}
+	return mcpJSON(graph)
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────

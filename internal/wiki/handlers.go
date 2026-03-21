@@ -47,6 +47,7 @@ type TemplateData struct {
 	History      []HistoryEntry
 	IsNew        bool
 	DiffHTML     template.HTML
+	GraphJSON    template.JS
 }
 
 func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter) *Handler {
@@ -75,6 +76,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/images/delete", h.handleImageDelete)
 	mux.HandleFunc("/images/list", h.handleImageList)
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
+	mux.HandleFunc("/graph", h.handleGraph)
 	mux.Handle("/mcp", NewMCPHandler(h.store, h.autoCommit))
 	return mux
 }
@@ -414,6 +416,30 @@ func (h *Handler) handleHistoryDiff(w http.ResponseWriter, r *http.Request) {
 		Page:     &Page{Slug: slug, Title: title},
 		DiffHTML: diffHTML,
 		Query:    fmt.Sprintf("%s...%s", fromHash[:minLen(len(fromHash), 7)], toHash[:minLen(len(toHash), 7)]),
+	})
+}
+
+func (h *Handler) handleGraph(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	graph, err := h.store.LinkGraph()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	data, err := json.Marshal(graph)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.render(w, "graph", TemplateData{
+		Title:     "Link Graph",
+		GraphJSON: template.JS(data),
 	})
 }
 

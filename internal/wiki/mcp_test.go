@@ -160,8 +160,8 @@ func TestMCPToolsList(t *testing.T) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(result.Tools) != 12 {
-		t.Fatalf("expected 12 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 15 {
+		t.Fatalf("expected 15 tools, got %d", len(result.Tools))
 	}
 	// Verify all tools have name, description, and schema
 	for _, tool := range result.Tools {
@@ -494,6 +494,8 @@ func TestMCPMissingRequiredArgs(t *testing.T) {
 		{"page_history", map[string]any{}},
 		{"get_page_revision", map[string]any{"slug": "x"}},
 		{"get_page_revision", map[string]any{"hash": "x"}},
+		{"page_links", map[string]any{}},
+		{"what_links_here", map[string]any{}},
 	}
 
 	for _, tt := range tests {
@@ -504,6 +506,75 @@ func TestMCPMissingRequiredArgs(t *testing.T) {
 			})
 			toolResultIsError(t, resp)
 		})
+	}
+}
+
+func TestMCPPageLinks(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("Home", "See [[About]] and [[Contact]]")
+	_ = store.Save("About", "Back to [[Home]]")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "page_links", "arguments": map[string]any{"slug": "Home"},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("About")) || !bytes.Contains([]byte(text), []byte("Contact")) {
+		t.Fatalf("expected About and Contact in links: %s", text)
+	}
+}
+
+func TestMCPPageLinksNoLinks(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("Lonely", "No links here.")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "page_links", "arguments": map[string]any{"slug": "Lonely"},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("no outgoing")) {
+		t.Fatalf("expected no outgoing message: %s", text)
+	}
+}
+
+func TestMCPWhatLinksHere(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("Home", "See [[About]]")
+	_ = store.Save("Other", "Also see [[About]]")
+	_ = store.Save("About", "About page")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "what_links_here", "arguments": map[string]any{"slug": "About"},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Home")) || !bytes.Contains([]byte(text), []byte("Other")) {
+		t.Fatalf("expected Home and Other in backlinks: %s", text)
+	}
+}
+
+func TestMCPWhatLinksHereOrphaned(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("Orphan", "Nobody links here")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "what_links_here", "arguments": map[string]any{"slug": "Orphan"},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("orphaned")) {
+		t.Fatalf("expected orphaned message: %s", text)
+	}
+}
+
+func TestMCPLinkGraph(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save("Home", "See [[About]]")
+	_ = store.Save("About", "Back to [[Home]]")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "link_graph", "arguments": map[string]any{},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Home")) || !bytes.Contains([]byte(text), []byte("About")) {
+		t.Fatalf("expected graph data: %s", text)
 	}
 }
 

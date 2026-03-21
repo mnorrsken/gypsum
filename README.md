@@ -22,7 +22,8 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Dark/light theme** — toggle between dark and light mode via the button in the top bar; preference is remembered across sessions
 - **Responsive layout** — mobile-friendly with a hamburger menu sidebar on small screens
 - **Table editor** — click **Insert Table** (or **Edit Table** when the cursor is inside a table) to open a visual table editor modal; supports adding/removing rows and columns and per-column alignment (left/center/right)
-- **MCP server** — built-in MCP (Model Context Protocol) endpoint at `/mcp` using Streamable HTTP transport; exposes the wiki as tools for AI assistants (list/read/create/edit/delete pages, search, image management, history). Connect from Claude using a remote MCP custom connector
+- **Link graph** — interactive force-directed graph visualization at `/graph` showing how all wiki pages connect via `[[wiki links]]`; double-click a node to navigate to that page
+- **MCP server** — built-in MCP (Model Context Protocol) endpoint at `/mcp` using Streamable HTTP transport; exposes the wiki as tools for AI assistants (list/read/create/edit/delete pages, search, image management, history, link analysis). Connect from Claude using a remote MCP custom connector
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
 
@@ -183,6 +184,9 @@ Build it with `make build`, then configure Claude Desktop (`%APPDATA%\Claude\cla
 | `get_favorites` | Favorite/pinned pages |
 | `page_history` | Git revision history for a page |
 | `get_page_revision` | Page content at a specific revision |
+| `page_links` | Outgoing wiki links from a page |
+| `what_links_here` | Pages that link to a given page (backlinks) |
+| `link_graph` | Full wiki link graph (all pages and their links) |
 
 ## Docker
 

@@ -2,6 +2,17 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.16.0
+
+### Added
+- **Link graph page** — interactive force-directed graph visualization at `/graph` (sidebar link: "Link Graph") showing how all wiki pages connect via `[[wiki links]]`. Uses vis-network. Missing pages shown in red; double-click a node to navigate.
+- **MCP tool: `page_links`** — get all outgoing wiki links from a page.
+- **MCP tool: `what_links_here`** — find all pages that link to a given page (backlinks). Flags orphaned pages with no parents.
+- **MCP tool: `link_graph`** — get the full wiki link graph as a page→links map.
+
+### Changed
+- **MCP descriptions** — `create_page` now instructs to always link new pages from a parent page; `edit_page` reminds to ensure linked pages exist.
+
 ## v0.15.1
 
 ### Fixed

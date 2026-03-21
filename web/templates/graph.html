@@ -1,0 +1,63 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>Page Link Graph</h1>
+    <hr class="title-rule" />
+  </div>
+  <div id="graph-container" style="width:100%;height:calc(100vh - 200px);border:1px solid var(--border-color, #ddd);border-radius:4px;"></div>
+</article>
+
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script>
+(() => {
+  const graphData = {{.GraphJSON}};
+  const nodes = [];
+  const edges = [];
+  const allSlugs = new Set();
+
+  // Collect all slugs (sources + targets)
+  for (const [slug, links] of Object.entries(graphData)) {
+    allSlugs.add(slug);
+    for (const target of links) {
+      allSlugs.add(target);
+    }
+  }
+
+  for (const slug of allSlugs) {
+    const exists = graphData.hasOwnProperty(slug);
+    nodes.push({
+      id: slug,
+      label: slug.replace(/_/g, ' '),
+      color: exists ? undefined : '#ff6666',
+      title: exists ? slug : slug + ' (missing)',
+      font: { size: 14 }
+    });
+  }
+
+  for (const [slug, links] of Object.entries(graphData)) {
+    for (const target of links) {
+      edges.push({ from: slug, to: target, arrows: 'to' });
+    }
+  }
+
+  const container = document.getElementById('graph-container');
+  const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+  const options = {
+    physics: {
+      solver: 'forceAtlas2Based',
+      forceAtlas2Based: { gravitationalConstant: -40, springLength: 120 },
+      stabilization: { iterations: 200 }
+    },
+    interaction: { hover: true, navigationButtons: true },
+    edges: { smooth: { type: 'continuous' }, color: { color: '#999', highlight: '#333' } },
+    nodes: { shape: 'box', margin: 8, borderWidth: 1 }
+  };
+  const network = new vis.Network(container, data, options);
+  network.on('doubleClick', (params) => {
+    if (params.nodes.length > 0) {
+      window.location.href = '/wiki/' + params.nodes[0];
+    }
+  });
+})();
+</script>
+{{end}}

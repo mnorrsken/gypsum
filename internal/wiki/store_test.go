@@ -296,3 +296,75 @@ func TestExcerptForQueryNoMatch(t *testing.T) {
 		t.Fatalf("excerpt too long for no-match case: len=%d", len(excerpt))
 	}
 }
+
+func TestExtractWikiLinks(t *testing.T) {
+	content := "See [[Home]] and [[My Page]] for details. Also [[Home]] again."
+	links := ExtractWikiLinks(content)
+	if len(links) != 2 {
+		t.Fatalf("expected 2 unique links, got %d: %v", len(links), links)
+	}
+	if links[0] != "Home" || links[1] != "My_Page" {
+		t.Fatalf("unexpected links: %v", links)
+	}
+}
+
+func TestExtractWikiLinksEmpty(t *testing.T) {
+	links := ExtractWikiLinks("No links here, just text.")
+	if len(links) != 0 {
+		t.Fatalf("expected 0 links, got %d", len(links))
+	}
+}
+
+func TestLinkGraph(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+	_ = store.Save("Home", "Welcome! See [[About]] and [[Contact]]")
+	_ = store.Save("About", "About us. Back to [[Home]]")
+	_ = store.Save("Contact", "Contact page.")
+
+	graph, err := store.LinkGraph()
+	if err != nil {
+		t.Fatalf("LinkGraph failed: %v", err)
+	}
+	if len(graph["Home"]) != 2 {
+		t.Fatalf("expected Home to have 2 links, got %d", len(graph["Home"]))
+	}
+	if len(graph["About"]) != 1 || graph["About"][0] != "Home" {
+		t.Fatalf("unexpected About links: %v", graph["About"])
+	}
+	if len(graph["Contact"]) != 0 {
+		t.Fatalf("expected Contact to have 0 links, got %d", len(graph["Contact"]))
+	}
+}
+
+func TestBackLinks(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+	_ = store.Save("Home", "See [[About]] and [[Contact]]")
+	_ = store.Save("About", "Back to [[Home]]")
+	_ = store.Save("Contact", "Back to [[Home]]")
+
+	backlinks, err := store.BackLinks("Home")
+	if err != nil {
+		t.Fatalf("BackLinks failed: %v", err)
+	}
+	if len(backlinks) != 2 {
+		t.Fatalf("expected 2 backlinks to Home, got %d", len(backlinks))
+	}
+
+	backlinks, err = store.BackLinks("About")
+	if err != nil {
+		t.Fatalf("BackLinks failed: %v", err)
+	}
+	if len(backlinks) != 1 || backlinks[0].Slug != "Home" {
+		t.Fatalf("unexpected backlinks to About: %v", backlinks)
+	}
+
+	backlinks, err = store.BackLinks("Nonexistent")
+	if err != nil {
+		t.Fatalf("BackLinks failed: %v", err)
+	}
+	if len(backlinks) != 0 {
+		t.Fatalf("expected 0 backlinks to Nonexistent, got %d", len(backlinks))
+	}
+}
