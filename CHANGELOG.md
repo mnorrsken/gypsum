@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.16.1
+
+### Fixed
+- **Link graph empty page** — fixed null JSON arrays for pages without links, added loading indicator, CDN error fallback, and empty-state message.
+
 ## v0.16.0
 
 ### Added

@@ -309,6 +309,9 @@ func (s *PageStore) LinkGraph() (map[string][]string, error) {
 			continue
 		}
 		links := ExtractWikiLinks(string(content))
+		if links == nil {
+			links = []string{}
+		}
 		graph[slug] = links
 	}
 	return graph, nil

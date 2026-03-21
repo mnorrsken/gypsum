@@ -4,23 +4,39 @@
     <h1>Page Link Graph</h1>
     <hr class="title-rule" />
   </div>
-  <div id="graph-container" style="width:100%;height:calc(100vh - 200px);border:1px solid var(--border-color, #ddd);border-radius:4px;"></div>
+  <div id="graph-container" style="width:100%;height:calc(100vh - 200px);border:1px solid var(--border-color, #ddd);border-radius:4px;display:flex;align-items:center;justify-content:center;">
+    <p id="graph-loading">Loading graph library...</p>
+  </div>
 </article>
 
-<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script>
+  window._graphData = {{.GraphJSON}};
+</script>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"
+        onerror="document.getElementById('graph-loading').textContent='Failed to load vis-network library from CDN.'"
+></script>
 <script>
 (() => {
-  const graphData = {{.GraphJSON}};
+  if (typeof vis === 'undefined') return;
+
+  const graphData = window._graphData || {};
+  const loading = document.getElementById('graph-loading');
+  if (loading) loading.remove();
+
   const nodes = [];
   const edges = [];
   const allSlugs = new Set();
 
-  // Collect all slugs (sources + targets)
   for (const [slug, links] of Object.entries(graphData)) {
     allSlugs.add(slug);
-    for (const target of links) {
+    for (const target of (links || [])) {
       allSlugs.add(target);
     }
+  }
+
+  if (allSlugs.size === 0) {
+    document.getElementById('graph-container').innerHTML = '<p>No pages or links found.</p>';
+    return;
   }
 
   for (const slug of allSlugs) {
@@ -35,7 +51,7 @@
   }
 
   for (const [slug, links] of Object.entries(graphData)) {
-    for (const target of links) {
+    for (const target of (links || [])) {
       edges.push({ from: slug, to: target, arrows: 'to' });
     }
   }
