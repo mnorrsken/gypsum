@@ -34,6 +34,7 @@ test:
 build:
 	mkdir -p bin
 	go build -o bin/$(APP_NAME) $(CMD_PATH)
+	go build -o bin/mcp-proxy ./cmd/mcp-proxy
 	GOOS=windows GOARCH=amd64 go build -o bin/$(APP_NAME).exe $(CMD_PATH)
 	GOOS=windows GOARCH=amd64 go build -o bin/mcp-proxy.exe ./cmd/mcp-proxy
 
@@ -50,8 +51,8 @@ docker-run:
 	docker run --rm -p 8080:8080 -v $(PWD)/data:/app/data $(IMAGE)
 
 deploy:
-# 	docker build -t $(IMAGE) .
-# 	docker push $(IMAGE)
+#	docker build -t $(IMAGE) .
+#	docker push $(IMAGE)
 	helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) \
 		-n $(HELM_NS) \
 		-f values.yaml \
