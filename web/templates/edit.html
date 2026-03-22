@@ -19,6 +19,7 @@
         <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
         <button type="button" class="button secondary" id="images-toggle">Images</button>
         <button type="button" class="button secondary" id="table-editor-toggle">Insert Table</button>
+        <button type="button" class="button secondary" id="mediawiki-import-toggle">Import MediaWiki</button>
         <button type="button" class="button secondary" id="help-toggle">Help</button>
         <label class="diff-checkbox"><input type="checkbox" id="showdiff-toggle" /> Show diff</label>
       </div>
@@ -102,6 +103,25 @@ password: s3cret
       <div class="te-spacer"></div>
       <button type="button" id="table-editor-apply">Apply</button>
       <button type="button" class="button secondary" id="table-editor-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- MediaWiki import modal (outside form) -->
+<div id="mediawiki-import" class="mw-import-overlay" hidden>
+  <div class="mw-import-dialog">
+    <div class="mw-import-header">
+      <h3>Import from MediaWiki</h3>
+      <button type="button" id="mw-import-close" class="mw-import-close" aria-label="Close">&times;</button>
+    </div>
+    <p class="hint" style="padding: 0 16px;">Paste MediaWiki wikitext below. This will replace the current editor content.</p>
+    <div class="mw-import-body">
+      <textarea id="mw-import-input" rows="16" placeholder="Paste MediaWiki source text here..."></textarea>
+    </div>
+    <div class="mw-import-footer">
+      <button type="button" id="mw-import-convert">Convert &amp; Insert</button>
+      <button type="button" class="button secondary" id="mw-import-cancel">Cancel</button>
+      <span id="mw-import-status" class="mw-import-status"></span>
     </div>
   </div>
 </div>
@@ -606,6 +626,54 @@ password: s3cret
   textarea.addEventListener("mouseup", updateTeBtn);
   textarea.addEventListener("keyup", updateTeBtn);
   updateTeBtn();
+
+  // --- MediaWiki Import ---
+
+  const mwOverlay = document.getElementById("mediawiki-import");
+  const mwInput = document.getElementById("mw-import-input");
+  const mwStatus = document.getElementById("mw-import-status");
+  const mwBtn = document.getElementById("mediawiki-import-toggle");
+
+  function openMwImport() {
+    mwInput.value = "";
+    mwStatus.textContent = "";
+    mwOverlay.hidden = false;
+    mwInput.focus();
+  }
+
+  function closeMwImport() {
+    mwOverlay.hidden = true;
+    mwStatus.textContent = "";
+  }
+
+  async function convertMwImport() {
+    const wikitext = mwInput.value.trim();
+    if (!wikitext) {
+      mwStatus.textContent = "Please paste some MediaWiki text first.";
+      return;
+    }
+    mwStatus.textContent = "Converting\u2026";
+    try {
+      const body = new URLSearchParams({ wikitext });
+      const resp = await fetch("/convert/mediawiki", { method: "POST", body });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || "Conversion failed");
+      textarea.value = data.markdown;
+      textarea.focus();
+      closeMwImport();
+    } catch (err) {
+      mwStatus.textContent = "Error: " + err.message;
+    }
+  }
+
+  mwBtn.addEventListener("click", openMwImport);
+  document.getElementById("mw-import-close").addEventListener("click", closeMwImport);
+  document.getElementById("mw-import-cancel").addEventListener("click", closeMwImport);
+  document.getElementById("mw-import-convert").addEventListener("click", convertMwImport);
+  mwOverlay.addEventListener("click", (e) => { if (e.target === mwOverlay) closeMwImport(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !mwOverlay.hidden) closeMwImport();
+  });
 
 })();
 </script>

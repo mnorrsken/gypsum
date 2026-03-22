@@ -23,7 +23,8 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Responsive layout** — mobile-friendly with a hamburger menu sidebar on small screens
 - **Table editor** — click **Insert Table** (or **Edit Table** when the cursor is inside a table) to open a visual table editor modal; supports adding/removing rows and columns and per-column alignment (left/center/right)
 - **Link graph** — interactive force-directed graph visualization at `/graph` showing how all wiki pages connect via `[[wiki links]]`; double-click a node to navigate to that page
-- **MCP server** — built-in MCP (Model Context Protocol) endpoint at `/mcp` using Streamable HTTP transport; exposes the wiki as tools for AI assistants (list/read/create/edit/delete pages, search, image management, history, link analysis). Connect from Claude using a remote MCP custom connector
+- **MediaWiki import** — click "Import MediaWiki" in the editor to paste MediaWiki wikitext and convert it to Markdown automatically; handles headings, bold/italic, `<syntaxhighlight>`, `<nowiki>`, lists, tables, wiki links, and space-prefixed preformatted lines
+- **MCP server** — built-in MCP (Model Context Protocol) endpoint at `/mcp` using Streamable HTTP transport; exposes the wiki as tools for AI assistants (list/read/create/edit/delete pages, search, image management, history, link analysis, MediaWiki import). Connect from Claude using a remote MCP custom connector
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
 
@@ -187,6 +188,8 @@ Build it with `make build`, then configure Claude Desktop (`%APPDATA%\Claude\cla
 | `page_links` | Outgoing wiki links from a page |
 | `what_links_here` | Pages that link to a given page (backlinks) |
 | `link_graph` | Full wiki link graph (all pages and their links) |
+| `create_page_from_mediawiki` | Create a page from MediaWiki wikitext (import only) |
+| `edit_page_from_mediawiki` | Update a page from MediaWiki wikitext (import only) |
 
 ## Docker
 

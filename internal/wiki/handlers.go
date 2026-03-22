@@ -77,6 +77,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/images/list", h.handleImageList)
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
 	mux.HandleFunc("/graph", h.handleGraph)
+	mux.HandleFunc("/convert/mediawiki", h.handleConvertMediaWiki)
 	mux.Handle("/mcp", NewMCPHandler(h.store, h.autoCommit))
 	return mux
 }
@@ -608,6 +609,24 @@ func (h *Handler) handleImageDelete(w http.ResponseWriter, r *http.Request) {
 	_ = h.autoCommit.CommitImageDelete(filename)
 
 	http.Redirect(w, r, "/images", http.StatusFound)
+}
+
+func (h *Handler) handleConvertMediaWiki(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid form"})
+		return
+	}
+	wikitext := r.FormValue("wikitext")
+	if wikitext == "" {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "empty wikitext"})
+		return
+	}
+	markdown := ConvertMediaWikiToMarkdown(wikitext)
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "markdown": markdown})
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) {

@@ -1319,3 +1319,90 @@ textarea {
   text-align: center;
   width: 1%;
 }
+
+/* ── MediaWiki Import Modal ── */
+
+.mw-import-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mw-import-overlay[hidden] {
+  display: none;
+}
+
+.mw-import-dialog {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 740px;
+  max-width: 92vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+}
+
+.mw-import-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.mw-import-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mw-import-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  padding: 0 2px;
+}
+
+.mw-import-close:hover {
+  color: var(--color-text);
+  background: none;
+}
+
+.mw-import-body {
+  padding: 8px 16px;
+  flex: 1;
+  overflow: auto;
+}
+
+.mw-import-body textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.mw-import-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mw-import-status {
+  margin-left: 8px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}

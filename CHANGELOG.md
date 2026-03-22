@@ -2,6 +2,13 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.17.0
+
+### Added
+- **MediaWiki import** — paste MediaWiki wikitext into the editor via the "Import MediaWiki" button; converts headings, bold/italic, `<syntaxhighlight>`/`<source>`/`<pre>`/`<nowiki>`/`<code>` tags, lists, tables, wiki links, external links, and space-prefixed preformatted lines to Markdown automatically.
+- **MCP tool: `create_page_from_mediawiki`** — create a wiki page from MediaWiki wikitext via MCP (for bulk import workflows).
+- **MCP tool: `edit_page_from_mediawiki`** — update an existing page from MediaWiki wikitext via MCP.
+
 ## v0.16.1
 
 ### Fixed

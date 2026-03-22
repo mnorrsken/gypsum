@@ -338,6 +338,34 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"Useful for understanding the overall wiki structure and finding orphaned pages.",
 			InputSchema: mcpSchema("object", nil, nil),
 		},
+		{
+			Name: "create_page_from_mediawiki",
+			Description: "Create a new wiki page from MediaWiki wikitext. ONLY use this tool when importing content from a MediaWiki source — " +
+				"for normal page creation, use create_page with Markdown instead. " +
+				"The wikitext is automatically converted to Markdown. " +
+				"Handles: '''bold'''/''italic'', == headings ==, <syntaxhighlight>/<source>/<pre>/<nowiki>/<code>, " +
+				"* and # lists, {| tables |}, [[wiki links]], [external links], categories, templates, refs, and " +
+				"MediaWiki space-prefixed preformatted lines. " +
+				"Fails if the page already exists. " +
+				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"title":    mcpPropString("Page title, e.g. 'My New Page'. This becomes the slug and display title."),
+				"wikitext": mcpPropString("MediaWiki wikitext source to convert and save as the page content."),
+			}, []string{"title", "wikitext"}),
+		},
+		{
+			Name: "edit_page_from_mediawiki",
+			Description: "Update an existing wiki page from MediaWiki wikitext. ONLY use this tool when importing content from a MediaWiki source — " +
+				"for normal page editing, use edit_page with Markdown instead. " +
+				"The wikitext is automatically converted to Markdown and replaces the entire page content. " +
+				"Handles: '''bold'''/''italic'', == headings ==, <syntaxhighlight>/<source>/<pre>/<nowiki>/<code>, " +
+				"* and # lists, {| tables |}, [[wiki links]], [external links], categories, templates, refs, and " +
+				"MediaWiki space-prefixed preformatted lines.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug":     mcpPropString("Page slug to edit, e.g. 'My_Page'"),
+				"wikitext": mcpPropString("MediaWiki wikitext source to convert and save as the new page content."),
+			}, []string{"slug", "wikitext"}),
+		},
 	}
 }
 
@@ -375,6 +403,10 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 		return m.toolWhatLinksHere(params.Arguments)
 	case "link_graph":
 		return m.toolLinkGraph()
+	case "create_page_from_mediawiki":
+		return m.toolCreatePageFromMediaWiki(params.Arguments)
+	case "edit_page_from_mediawiki":
+		return m.toolEditPageFromMediaWiki(params.Arguments)
 	default:
 		return mcpError("unknown tool: " + params.Name)
 	}
@@ -600,6 +632,51 @@ func (m *MCPHandler) toolWhatLinksHere(args map[string]any) mcpCallToolResult {
 		return mcpText("No pages link to '" + slug + "'. This page is orphaned — consider linking it from a parent page.")
 	}
 	return mcpJSON(backlinks)
+}
+
+func (m *MCPHandler) toolCreatePageFromMediaWiki(args map[string]any) mcpCallToolResult {
+	title, ok := mcpArgString(args, "title")
+	if !ok {
+		return mcpError("missing required argument: title")
+	}
+	wikitext, ok := mcpArgString(args, "wikitext")
+	if !ok {
+		return mcpError("missing required argument: wikitext")
+	}
+
+	slug := SlugFromTitle(title)
+	if _, err := m.store.Load(slug); err == nil {
+		return mcpError("page already exists: " + slug)
+	}
+
+	content := ConvertMediaWikiToMarkdown(wikitext)
+	if err := m.store.Save(slug, content); err != nil {
+		return mcpError("failed to save page: " + err.Error())
+	}
+	_ = m.autoCommit.CommitPageSave(slug)
+	return mcpText(fmt.Sprintf("Created page '%s' (slug: %s) from MediaWiki source", title, slug))
+}
+
+func (m *MCPHandler) toolEditPageFromMediaWiki(args map[string]any) mcpCallToolResult {
+	slug, ok := mcpArgString(args, "slug")
+	if !ok {
+		return mcpError("missing required argument: slug")
+	}
+	wikitext, ok := mcpArgString(args, "wikitext")
+	if !ok {
+		return mcpError("missing required argument: wikitext")
+	}
+
+	if _, err := m.store.Load(slug); err != nil {
+		return mcpError("page not found: " + slug)
+	}
+
+	content := ConvertMediaWikiToMarkdown(wikitext)
+	if err := m.store.Save(slug, content); err != nil {
+		return mcpError("failed to save page: " + err.Error())
+	}
+	_ = m.autoCommit.CommitPageSave(slug)
+	return mcpText(fmt.Sprintf("Updated page '%s' from MediaWiki source", slug))
 }
 
 func (m *MCPHandler) toolLinkGraph() mcpCallToolResult {
