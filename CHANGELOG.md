@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.17.1
+
+### Added
+- **Delete page button** — edit page now has a "Delete" button (with confirmation prompt) to delete pages from the web UI.
+
+### Fixed
+- **Page deletion not committed to git** — deleting a page (via MCP or web UI) now properly commits the removal to git, keeping the repository in sync.
+
 ## v0.17.0
 
 ### Added

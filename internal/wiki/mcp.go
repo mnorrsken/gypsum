@@ -491,6 +491,7 @@ func (m *MCPHandler) toolDeletePage(args map[string]any) mcpCallToolResult {
 	if err := os.Remove(path); err != nil {
 		return mcpError("failed to delete page: " + err.Error())
 	}
+	_ = m.autoCommit.CommitPageDelete(slug)
 	return mcpText(fmt.Sprintf("Deleted page '%s'", slug))
 }
 

@@ -76,6 +76,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/images/delete", h.handleImageDelete)
 	mux.HandleFunc("/images/list", h.handleImageList)
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
+	mux.HandleFunc("/delete/", h.handleDeletePage)
 	mux.HandleFunc("/graph", h.handleGraph)
 	mux.HandleFunc("/convert/mediawiki", h.handleConvertMediaWiki)
 	mux.Handle("/mcp", NewMCPHandler(h.store, h.autoCommit))
@@ -609,6 +610,35 @@ func (h *Handler) handleImageDelete(w http.ResponseWriter, r *http.Request) {
 	_ = h.autoCommit.CommitImageDelete(filename)
 
 	http.Redirect(w, r, "/images", http.StatusFound)
+}
+
+func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slug := strings.TrimPrefix(r.URL.Path, "/delete/")
+	if slug == "" {
+		http.Error(w, "missing page slug", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := h.store.Load(slug); err != nil {
+		if errors.Is(err, ErrPageNotFound) {
+			http.Error(w, "page not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := os.Remove(h.store.PagePath(slug)); err != nil {
+		http.Error(w, "failed to delete page", http.StatusInternalServerError)
+		return
+	}
+	_ = h.autoCommit.CommitPageDelete(slug)
+	http.Redirect(w, r, "/pages", http.StatusFound)
 }
 
 func (h *Handler) handleConvertMediaWiki(w http.ResponseWriter, r *http.Request) {

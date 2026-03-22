@@ -50,12 +50,21 @@ func (c *GitAutoCommitter) CommitPageSave(slug string) error {
 	return c.commitFile(filepath.Join("pages", MarkdownFilename(slug)), fmt.Sprintf("wiki: update page %s", slug))
 }
 
+func (c *GitAutoCommitter) CommitPageDelete(slug string) error {
+	relPath := filepath.Join("pages", MarkdownFilename(slug))
+	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete page %s", slug))
+}
+
 func (c *GitAutoCommitter) CommitImageSave(filename string) error {
 	return c.commitFile(filepath.Join("images", filename), fmt.Sprintf("wiki: upload image %s", filename))
 }
 
 func (c *GitAutoCommitter) CommitImageDelete(filename string) error {
 	relPath := filepath.Join("images", filename)
+	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete image %s", filename))
+}
+
+func (c *GitAutoCommitter) commitDelete(relPath, message string) error {
 	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
 		return nil
 	}
@@ -68,7 +77,7 @@ func (c *GitAutoCommitter) CommitImageDelete(filename string) error {
 	if err := c.runGit(
 		"-c", fmt.Sprintf("user.name=%s", c.commitName()),
 		"-c", fmt.Sprintf("user.email=%s", c.commitEmail()),
-		"commit", "-m", fmt.Sprintf("wiki: delete image %s", filename),
+		"commit", "-m", message,
 		"--allow-empty",
 	); err != nil {
 		return err

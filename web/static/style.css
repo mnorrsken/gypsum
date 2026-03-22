@@ -408,6 +408,17 @@ button:hover {
   background: var(--color-surface);
 }
 
+.button.danger {
+  background: #c0392b;
+  color: #fff;
+  border-color: #a93226;
+  margin-left: auto;
+}
+
+.button.danger:hover {
+  background: #e74c3c;
+}
+
 input,
 textarea {
   width: 100%;

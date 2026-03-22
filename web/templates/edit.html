@@ -22,8 +22,12 @@
         <button type="button" class="button secondary" id="mediawiki-import-toggle">Import MediaWiki</button>
         <button type="button" class="button secondary" id="help-toggle">Help</button>
         <label class="diff-checkbox"><input type="checkbox" id="showdiff-toggle" /> Show diff</label>
+        {{if not .IsNew}}<button type="button" class="button danger" id="delete-page-btn">Delete</button>{{end}}
       </div>
     </form>
+    {{if not .IsNew}}
+    <form id="delete-page-form" method="post" action="/delete/{{.Page.Slug}}" style="display:none"></form>
+    {{end}}
     <aside class="editor-help" id="editor-help">
       <h3>Markdown Reference</h3>
       <table class="help-table">
@@ -674,6 +678,16 @@ password: s3cret
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !mwOverlay.hidden) closeMwImport();
   });
+
+  // --- Delete page ---
+  const deleteBtn = document.getElementById("delete-page-btn");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", () => {
+      if (confirm("Are you sure you want to delete this page? This cannot be undone.")) {
+        document.getElementById("delete-page-form").submit();
+      }
+    });
+  }
 
 })();
 </script>
