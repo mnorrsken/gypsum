@@ -14,6 +14,38 @@
 
 <script>
 (() => {
+  // Helper: decrypt ciphertext via the server endpoint.
+  async function decryptSecret(ciphertext) {
+    const response = await fetch("/secure-inline/unlock", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ ciphertext }).toString(),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "Decryption failed");
+    }
+    return payload.content || "";
+  }
+
+  // Copy buttons (always visible) — decrypt and copy without revealing.
+  document.querySelectorAll(".secure-copy-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const ciphertext = btn.dataset.ciphertext || "";
+      if (!ciphertext) return;
+      try {
+        const text = await decryptSecret(ciphertext);
+        await navigator.clipboard.writeText(text);
+        btn.textContent = "✓";
+        setTimeout(() => { btn.textContent = "📋"; }, 1500);
+      } catch (error) {
+        console.error("secure copy failed:", error);
+      }
+    });
+  });
+
+  // Click-to-reveal on the lock span itself.
   document.querySelectorAll(".secure-inline").forEach((el) => {
     el.addEventListener("click", async () => {
       if (el.classList.contains("unlocked")) return;
@@ -22,18 +54,9 @@
       if (!ciphertext) return;
 
       try {
-        const response = await fetch("/secure-inline/unlock", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ ciphertext }).toString(),
-        });
-        const payload = await response.json();
-        if (!response.ok || !payload.ok) {
-          throw new Error(payload.error || "Decryption failed");
-        }
+        const text = await decryptSecret(ciphertext);
 
         el.textContent = "";
-        const text = payload.content || "";
         if (text.includes("\n")) {
           text.split("\n").forEach((part, i, arr) => {
             el.appendChild(document.createTextNode(part));
@@ -44,22 +67,9 @@
         }
         el.classList.add("unlocked");
 
-        const btn = document.createElement("button");
-        btn.textContent = "📋";
-        btn.className = "secure-copy-btn";
-        btn.title = "Copy to clipboard";
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          navigator.clipboard.writeText(payload.content || "");
-          btn.textContent = "✓";
-          setTimeout(() => { btn.textContent = "📋"; }, 1500);
-        });
-        el.after(btn);
-
         setTimeout(() => {
           el.textContent = "🔒****";
           el.classList.remove("unlocked");
-          btn.remove();
         }, 60000);
       } catch (error) {
         console.error("secure unlock failed:", error);

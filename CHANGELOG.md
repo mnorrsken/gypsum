@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.17.2
+
+### Changed
+- **Secure field copy button** — the clipboard copy button now appears permanently next to encrypted fields, allowing copying the plaintext without revealing it visually.
+
 ## v0.17.1
 
 ### Added
