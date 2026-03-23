@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.18.2
+
+### Added
+- **Auto-generated OAuth password** — when `oauth.enabled` is true and no `oauth.password` or `oauth.existingSecret` is set, the pre-install hook generates a random 32-character password automatically (same pattern as the encryption key).
+
 ## v0.18.1
 
 ### Added

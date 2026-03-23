@@ -95,6 +95,7 @@ oauth:
   # Set to true to enable the OAuth-protected /mcp/external endpoint.
   enabled: false
   # Password for the OAuth login page.
+  # If left empty (and no existingSecret), a pre-install hook generates one automatically.
   password: ""
   # Public base URL with no trailing slash (e.g. https://wiki.example.com).
   # Required when oauth.enabled is true.

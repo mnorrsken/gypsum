@@ -320,19 +320,24 @@ Key values:
 | `git.remoteUrl` | `""` | Git remote URL for backup/sync |
 | `git.pullInterval` | `5m` | How often to pull from the remote (Go duration, e.g. `5m`, `30s`). Only used when `remoteUrl` is set |
 | `oauth.enabled` | `false` | Enable the OAuth-protected `/mcp/external` endpoint |
-| `oauth.password` | `""` | Password for the OAuth login page. Required when `oauth.enabled` is true |
+| `oauth.password` | `""` | Password for the OAuth login page. If empty, a pre-install hook generates one automatically |
 | `oauth.externalUrl` | `""` | Public base URL with no trailing slash (e.g. `https://wiki.example.com`). Required when `oauth.enabled` is true |
 | `oauth.clientId` | `claude` | OAuth `client_id` expected from the MCP client |
 | `oauth.tokenTtl` | `24h` | Access token lifetime (Go duration string, e.g. `24h`, `12h`) |
 | `oauth.existingSecret` | `""` | Name of an existing Secret (must contain an `oauth-password` key) |
 
-### Secret Key Handling
+### Secret Handling
 
-The encryption key for secure fields (`GYPSUM_SECRET_KEY`) is handled in one of three ways:
+The encryption key (`GYPSUM_SECRET_KEY`) and the OAuth password (`GYPSUM_OAUTH_PASSWORD`) each follow the same pattern:
 
-1. **Auto-generated (default)** — When neither `gypsum.secretKey` nor `gypsum.existingSecret` is set, a pre-install hook runs a Job that generates a random 64-character key and stores it in a Kubernetes Secret. The secret persists across upgrades.
-2. **Explicit value** — Set `gypsum.secretKey` in your values to use a specific key.
-3. **Existing secret** — Set `gypsum.existingSecret` to reference a Secret you manage externally (it must contain a `secret-key` data key).
+1. **Auto-generated (default)** — When no explicit value or existing secret is provided, a pre-install hook runs a Job that generates a random key and stores it in a Kubernetes Secret. The secret persists across upgrades.
+2. **Explicit value** — Set `gypsum.secretKey` / `oauth.password` in your values.
+3. **Existing secret** — Set `gypsum.existingSecret` / `oauth.existingSecret` to reference a Secret you manage externally (must contain a `secret-key` or `oauth-password` data key respectively).
+
+> **Note:** When the OAuth password is auto-generated, retrieve it with:
+> ```bash
+> kubectl get secret <release>-gypsum-oauth -o jsonpath='{.data.oauth-password}' | base64 -d
+> ```
 
 ### Example: Install with Ingress
 
