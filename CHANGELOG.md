@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.19.1
+
+### Fixed
+- **OAuth token persistence** — access tokens are now persisted to `data/oauth_tokens.json` so they survive server restarts. Previously all tokens were in-memory only, causing MCP clients like Claude to lose their connection on restart and fail to reconnect.
+
 ## v0.19.0
 
 ### Added

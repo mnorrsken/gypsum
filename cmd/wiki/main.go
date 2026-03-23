@@ -85,7 +85,7 @@ func main() {
 				tokenTTL = d
 			}
 		}
-		oauthServer = wiki.NewOAuthServer(password, externalURL, tokenTTL)
+		oauthServer = wiki.NewOAuthServer(password, externalURL, tokenTTL, dataDir)
 		log.Printf("OAuth enabled: /mcp/external protected via OAuth (external URL: %s)", externalURL)
 	}
 

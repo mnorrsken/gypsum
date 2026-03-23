@@ -8,8 +8,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"html/template"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +32,7 @@ type OAuthServer struct {
 	password    string
 	tokenTTL    time.Duration
 	externalURL string // no trailing slash
+	dataDir     string // persistent storage directory
 
 	mu     sync.Mutex
 	codes  map[string]pendingCode
@@ -52,15 +56,18 @@ type loginFormData struct {
 }
 
 // NewOAuthServer creates an OAuthServer. externalURL must not have a trailing slash.
-// It starts a background goroutine to periodically purge expired codes and tokens.
-func NewOAuthServer(password, externalURL string, tokenTTL time.Duration) *OAuthServer {
+// dataDir is the persistent storage directory for token state (e.g. "data/").
+// It loads persisted tokens from disk and starts a background purge goroutine.
+func NewOAuthServer(password, externalURL string, tokenTTL time.Duration, dataDir string) *OAuthServer {
 	o := &OAuthServer{
 		password:    password,
 		tokenTTL:    tokenTTL,
 		externalURL: strings.TrimRight(externalURL, "/"),
+		dataDir:     dataDir,
 		codes:       make(map[string]pendingCode),
 		tokens:      make(map[string]time.Time),
 	}
+	o.loadTokens()
 	go o.purgeExpiredLoop()
 	return o
 }
@@ -71,6 +78,7 @@ func (o *OAuthServer) purgeExpiredLoop() {
 	defer ticker.Stop()
 	for range ticker.C {
 		now := time.Now()
+		dirty := false
 		o.mu.Lock()
 		for code, pending := range o.codes {
 			if now.After(pending.expiry) {
@@ -80,9 +88,72 @@ func (o *OAuthServer) purgeExpiredLoop() {
 		for token, expiry := range o.tokens {
 			if now.After(expiry) {
 				delete(o.tokens, token)
+				dirty = true
 			}
 		}
+		if dirty {
+			o.persistTokensLocked()
+		}
 		o.mu.Unlock()
+	}
+}
+
+const oauthTokensFile = "oauth_tokens.json"
+
+// tokenEntry is the JSON-serializable form of a token.
+type tokenEntry struct {
+	Token  string    `json:"token"`
+	Expiry time.Time `json:"expiry"`
+}
+
+// tokensPath returns the full path to the tokens persistence file.
+func (o *OAuthServer) tokensPath() string {
+	return filepath.Join(o.dataDir, oauthTokensFile)
+}
+
+// loadTokens reads persisted tokens from disk into memory, discarding expired ones.
+func (o *OAuthServer) loadTokens() {
+	if o.dataDir == "" {
+		return
+	}
+	data, err := os.ReadFile(o.tokensPath())
+	if err != nil {
+		return // file doesn't exist yet — first run
+	}
+	var entries []tokenEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		log.Printf("oauth: failed to parse %s: %v", oauthTokensFile, err)
+		return
+	}
+	now := time.Now()
+	loaded := 0
+	for _, e := range entries {
+		if now.Before(e.Expiry) {
+			o.tokens[e.Token] = e.Expiry
+			loaded++
+		}
+	}
+	if loaded > 0 {
+		log.Printf("oauth: restored %d token(s) from disk", loaded)
+	}
+}
+
+// persistTokensLocked writes the current tokens to disk. Must be called with o.mu held.
+func (o *OAuthServer) persistTokensLocked() {
+	if o.dataDir == "" {
+		return
+	}
+	entries := make([]tokenEntry, 0, len(o.tokens))
+	for token, expiry := range o.tokens {
+		entries = append(entries, tokenEntry{Token: token, Expiry: expiry})
+	}
+	data, err := json.Marshal(entries)
+	if err != nil {
+		log.Printf("oauth: failed to marshal tokens: %v", err)
+		return
+	}
+	if err := os.WriteFile(o.tokensPath(), data, 0o600); err != nil {
+		log.Printf("oauth: failed to persist tokens: %v", err)
 	}
 }
 
@@ -104,6 +175,7 @@ func (o *OAuthServer) ValidateBearer(r *http.Request) bool {
 	}
 	if time.Now().After(expiry) {
 		delete(o.tokens, token)
+		o.persistTokensLocked()
 		return false
 	}
 	return true
@@ -251,6 +323,7 @@ func (o *OAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	token := oauthGenerateToken()
 	o.mu.Lock()
 	o.tokens[token] = time.Now().Add(o.tokenTTL)
+	o.persistTokensLocked()
 	o.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
