@@ -69,7 +69,28 @@ func main() {
 		autoCommitter.StartPeriodicPull(pullInterval)
 	}
 
-	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter)
+	var oauthServer *wiki.OAuthServer
+	if os.Getenv("GYPSUM_OAUTH_ENABLED") == "true" {
+		password := os.Getenv("GYPSUM_OAUTH_PASSWORD")
+		if password == "" {
+			log.Fatal("GYPSUM_OAUTH_PASSWORD must be set when GYPSUM_OAUTH_ENABLED=true")
+		}
+		externalURL := os.Getenv("GYPSUM_EXTERNAL_URL")
+		if externalURL == "" {
+			log.Fatal("GYPSUM_EXTERNAL_URL must be set when GYPSUM_OAUTH_ENABLED=true")
+		}
+		clientID := envOrDefault("GYPSUM_OAUTH_CLIENT_ID", "claude")
+		tokenTTL := 24 * time.Hour
+		if v := os.Getenv("GYPSUM_OAUTH_TOKEN_TTL"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+				tokenTTL = d
+			}
+		}
+		oauthServer = wiki.NewOAuthServer(clientID, password, externalURL, tokenTTL)
+		log.Printf("OAuth enabled: /mcp/external protected via OAuth (external URL: %s)", externalURL)
+	}
+
+	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter, oauthServer)
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))

@@ -2,6 +2,13 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.18.0
+
+### Added
+- **External MCP endpoint with OAuth** — new `/mcp/external` route protected by a built-in OAuth 2.0 Authorization Server (Authorization Code + PKCE, S256). Enables secure internet-facing access from Claude's remote MCP connector without relying solely on a reverse proxy like Authelia. Enabled via `GYPSUM_OAUTH_ENABLED=true` with `GYPSUM_OAUTH_PASSWORD` and `GYPSUM_EXTERNAL_URL`.
+- **Secure field redaction on external endpoint** — `{{secure_aes:...}}` encrypted fields are replaced with `[encrypted field]` in all read results (`get_page`, `get_page_revision`, `search_pages`) from `/mcp/external`. Pages that contain encrypted fields cannot be edited via the external endpoint; edits must go through the local wiki UI or the internal `/mcp` endpoint.
+- **OAuth discovery documents** — `GET /.well-known/oauth-protected-resource` and `GET /.well-known/oauth-authorization-server` served when OAuth is enabled, following RFC 8414 and the MCP 2025-03-26 spec.
+
 ## v0.17.2
 
 ### Changed

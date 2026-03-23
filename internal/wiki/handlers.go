@@ -22,6 +22,7 @@ type Handler struct {
 	renderer   *MarkdownRenderer
 	templates  string
 	autoCommit *GitAutoCommitter
+	oauth      *OAuthServer // non-nil → register /mcp/external + OAuth discovery routes
 }
 
 type ImageInfo struct {
@@ -50,13 +51,14 @@ type TemplateData struct {
 	GraphJSON    template.JS
 }
 
-func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter) *Handler {
+func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer) *Handler {
 	return &Handler{
 		store:      store,
 		crypto:     crypto,
 		renderer:   renderer,
 		templates:  templatesDir,
 		autoCommit: autoCommitter,
+		oauth:      oauth,
 	}
 }
 
@@ -80,6 +82,18 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/graph", h.handleGraph)
 	mux.HandleFunc("/convert/mediawiki", h.handleConvertMediaWiki)
 	mux.Handle("/mcp", NewMCPHandler(h.store, h.autoCommit))
+
+	if h.oauth != nil {
+		// OAuth discovery endpoints (must be bypassed in Authelia / reverse proxy)
+		mux.HandleFunc("GET /.well-known/oauth-protected-resource", h.oauth.HandleProtectedResource)
+		mux.HandleFunc("GET /.well-known/oauth-authorization-server", h.oauth.HandleAuthServerMeta)
+		// OAuth authorization flow
+		mux.HandleFunc("/oauth/authorize", h.oauth.HandleAuthorize)
+		mux.HandleFunc("POST /oauth/token", h.oauth.HandleToken)
+		// External MCP endpoint — OAuth-protected, secure fields redacted
+		mux.Handle("/mcp/external", NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth))
+	}
+
 	return mux
 }
 
