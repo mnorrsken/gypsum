@@ -19,6 +19,14 @@ const wikiFormattingGuide = "Wiki formatting conventions: " +
 	"(3) Images: use ![alt text](/images/filename.ext) — optional size hints: ![alt|500](/images/f.png) for max-width 500px, ![alt|50%](/images/f.png) for 50%, ![alt|800x400](/images/f.png) for explicit dimensions. " +
 	"(4) Secure/encrypted fields: use {{secure:plaintext}} for inline secrets. For multiline secrets, put {{secure: and }} on their own lines. On save, these are encrypted to {{secure_aes:...}} — never modify secure_aes blocks directly."
 
+// wikiFormattingGuideExternal is used on the /mcp/external endpoint where secure fields are redacted.
+const wikiFormattingGuideExternal = "Wiki formatting conventions: " +
+	"(1) If the page starts with a level-1 heading (# Title), that heading becomes the page title displayed in the browser — it is not rendered again in the body. " +
+	"(2) Use [[Page Title]] to link to other wiki pages; the title is auto-converted to a slug (spaces → underscores). Linking to a non-existent page will let users create it. " +
+	"(3) Images: use ![alt text](/images/filename.ext) — optional size hints: ![alt|500](/images/f.png) for max-width 500px, ![alt|50%](/images/f.png) for 50%, ![alt|800x400](/images/f.png) for explicit dimensions. " +
+	"(4) Secure/encrypted fields: pages may contain {{secure_aes:...}} blocks (shown as [encrypted field]). " +
+	"Pages with encrypted fields cannot be edited via this endpoint — use the local wiki UI or internal MCP endpoint instead."
+
 const wikiContentGuide = "Start with '# Page Title' as the first line to set the display title. " +
 	"Use [[Page Title]] for wiki links. " +
 	"Reference images as ![alt](/images/filename.ext). " +
@@ -88,11 +96,14 @@ type mcpCallToolResult struct {
 // MCPHandler serves the MCP Streamable HTTP transport at a single endpoint.
 // Claude's custom connector POSTs JSON-RPC messages here.
 type MCPHandler struct {
-	store      *PageStore
-	autoCommit *GitAutoCommitter
-	sessions   sync.Map // sessionID → true
+	store         *PageStore
+	autoCommit    *GitAutoCommitter
+	sessions      sync.Map // sessionID → true
+	oauth         *OAuthServer // non-nil → Bearer token required
+	redactSecure  bool         // when true, {{secure_aes:...}} blocks are hidden in read results
 }
 
+// NewMCPHandler creates an internal (unauthenticated) MCP handler.
 func NewMCPHandler(store *PageStore, autoCommitter *GitAutoCommitter) *MCPHandler {
 	return &MCPHandler{
 		store:      store,
@@ -100,12 +111,34 @@ func NewMCPHandler(store *PageStore, autoCommitter *GitAutoCommitter) *MCPHandle
 	}
 }
 
+// NewMCPHandlerExternal creates an OAuth-protected MCP handler that redacts
+// encrypted secure fields from all read results and blocks edits on pages that
+// contain them.
+func NewMCPHandlerExternal(store *PageStore, autoCommitter *GitAutoCommitter, oauth *OAuthServer) *MCPHandler {
+	return &MCPHandler{
+		store:        store,
+		autoCommit:   autoCommitter,
+		oauth:        oauth,
+		redactSecure: true,
+	}
+}
+
 func (m *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// CORS headers — required for Claude's remote MCP connector
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id, Authorization")
 	w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id")
+
+	// OAuth bearer token check (external endpoint only)
+	if m.oauth != nil && r.Method != http.MethodOptions {
+		if !m.oauth.ValidateBearer(r) {
+			w.Header().Set("WWW-Authenticate",
+				`Bearer resource_metadata="`+m.oauth.externalURL+`/.well-known/oauth-protected-resource"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
 
 	switch r.Method {
 	case http.MethodOptions:
@@ -224,9 +257,25 @@ func (m *MCPHandler) newSession() string {
 	return sid
 }
 
+// ── Secure field redaction ───────────────────────────────────────────────
+
+// redactContent replaces {{secure_aes:...}} blobs with a safe placeholder so
+// that encrypted values are never exposed over the external MCP endpoint.
+func (m *MCPHandler) redactContent(content string) string {
+	if !m.redactSecure {
+		return content
+	}
+	return secureAesMacroRe.ReplaceAllString(content, "[encrypted field]")
+}
+
 // ── Tool definitions ────────────────────────────────────────────────────
 
 func (m *MCPHandler) toolDefinitions() []mcpTool {
+	formattingGuide := wikiFormattingGuide
+	if m.redactSecure {
+		formattingGuide = wikiFormattingGuideExternal
+	}
+
 	return []mcpTool{
 		{
 			Name:        "list_pages",
@@ -246,7 +295,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Description: "Create a new wiki page. Fails if the page already exists. " +
 				"The slug is derived from the title (spaces become underscores, e.g. 'My Page' → 'My_Page'). " +
 				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page (e.g. Home or a relevant category page) so it is discoverable. " +
-				wikiFormattingGuide,
+				formattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
 				"title":   mcpPropString("Page title, e.g. 'My New Page'. This becomes the slug and the display title."),
 				"content": mcpPropString("Markdown content for the page. " + wikiContentGuide),
@@ -257,7 +306,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Description: "Update the content of an existing wiki page. Replaces the entire page content. " +
 				"Always use get_page first to read the current content before editing. " +
 				"When adding [[wiki links]] to new pages, make sure those pages exist or will be created. " +
-				wikiFormattingGuide,
+				formattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
 				"slug":    mcpPropString("Page slug to edit, e.g. 'My_Page'"),
 				"content": mcpPropString("New markdown content (replaces entire page). " + wikiContentGuide),
@@ -431,7 +480,7 @@ func (m *MCPHandler) toolGetPage(args map[string]any) mcpCallToolResult {
 	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
-	return mcpText(page.Content)
+	return mcpText(m.redactContent(page.Content))
 }
 
 func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
@@ -442,6 +491,10 @@ func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
 	content, ok := mcpArgString(args, "content")
 	if !ok {
 		return mcpError("missing required argument: content")
+	}
+
+	if m.redactSecure && secureAesMacroRe.MatchString(content) {
+		return mcpError("content contains encrypted fields ({{secure_aes:...}}); creating pages with encrypted fields is not supported via this endpoint")
 	}
 
 	slug := SlugFromTitle(title)
@@ -466,8 +519,13 @@ func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
 		return mcpError("missing required argument: content")
 	}
 
-	if _, err := m.store.Load(slug); err != nil {
+	existing, err := m.store.Load(slug)
+	if err != nil {
 		return mcpError("page not found: " + slug)
+	}
+
+	if m.redactSecure && secureAesMacroRe.MatchString(existing.Content) {
+		return mcpError("page '" + slug + "' contains encrypted fields; editing pages with encrypted fields is not supported via this endpoint — use the local wiki UI or internal MCP endpoint")
 	}
 
 	if err := m.store.Save(slug, content); err != nil {
@@ -511,7 +569,8 @@ func (m *MCPHandler) toolSearchPages(args map[string]any) mcpCallToolResult {
 
 	var sb strings.Builder
 	for _, r := range results {
-		fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n%s\n\n", r.Title, r.Slug, r.Excerpt)
+		excerpt := m.redactContent(r.Excerpt)
+		fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n%s\n\n", r.Title, r.Slug, excerpt)
 	}
 	return mcpText(sb.String())
 }
@@ -601,7 +660,7 @@ func (m *MCPHandler) toolGetPageRevision(args map[string]any) mcpCallToolResult 
 	if err != nil {
 		return mcpError("failed to get revision: " + err.Error())
 	}
-	return mcpText(content)
+	return mcpText(m.redactContent(content))
 }
 
 func (m *MCPHandler) toolPageLinks(args map[string]any) mcpCallToolResult {
@@ -651,6 +710,9 @@ func (m *MCPHandler) toolCreatePageFromMediaWiki(args map[string]any) mcpCallToo
 	}
 
 	content := ConvertMediaWikiToMarkdown(wikitext)
+	if m.redactSecure && secureAesMacroRe.MatchString(content) {
+		return mcpError("converted content contains encrypted fields; creating pages with encrypted fields is not supported via this endpoint")
+	}
 	if err := m.store.Save(slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
@@ -668,8 +730,13 @@ func (m *MCPHandler) toolEditPageFromMediaWiki(args map[string]any) mcpCallToolR
 		return mcpError("missing required argument: wikitext")
 	}
 
-	if _, err := m.store.Load(slug); err != nil {
+	existing, err := m.store.Load(slug)
+	if err != nil {
 		return mcpError("page not found: " + slug)
+	}
+
+	if m.redactSecure && secureAesMacroRe.MatchString(existing.Content) {
+		return mcpError("page '" + slug + "' contains encrypted fields; editing pages with encrypted fields is not supported via this endpoint — use the local wiki UI or internal MCP endpoint")
 	}
 
 	content := ConvertMediaWikiToMarkdown(wikitext)

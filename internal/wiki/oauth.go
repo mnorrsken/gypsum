@@ -1,0 +1,350 @@
+package wiki
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"html/template"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+)
+
+// OAuthServer implements a minimal OAuth 2.0 Authorization Server for the
+// /mcp/external endpoint. It supports the Authorization Code grant with PKCE
+// (S256), as required by the MCP 2025-03-26 spec.
+//
+// Configuration via env vars (read in main.go):
+//
+//	GYPSUM_OAUTH_ENABLED    — set to "true" to enable
+//	GYPSUM_OAUTH_PASSWORD   — single-user wiki password (required)
+//	GYPSUM_EXTERNAL_URL     — public base URL, e.g. https://wiki.example.com (required)
+//	GYPSUM_OAUTH_CLIENT_ID  — expected client_id (default: "claude")
+//	GYPSUM_OAUTH_TOKEN_TTL  — access token lifetime as Go duration (default: "24h")
+type OAuthServer struct {
+	clientID    string
+	password    string
+	tokenTTL    time.Duration
+	externalURL string // no trailing slash
+
+	mu     sync.Mutex
+	codes  map[string]pendingCode
+	tokens map[string]time.Time
+}
+
+type pendingCode struct {
+	redirectURI   string
+	codeChallenge string
+	expiry        time.Time
+}
+
+// NewOAuthServer creates an OAuthServer. externalURL must not have a trailing slash.
+func NewOAuthServer(clientID, password, externalURL string, tokenTTL time.Duration) *OAuthServer {
+	return &OAuthServer{
+		clientID:    clientID,
+		password:    password,
+		tokenTTL:    tokenTTL,
+		externalURL: strings.TrimRight(externalURL, "/"),
+		codes:       make(map[string]pendingCode),
+		tokens:      make(map[string]time.Time),
+	}
+}
+
+// ValidateBearer returns true if the Authorization header carries a valid, non-expired Bearer token.
+func (o *OAuthServer) ValidateBearer(r *http.Request) bool {
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return false
+	}
+	token := strings.TrimPrefix(auth, "Bearer ")
+	if token == "" {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	expiry, ok := o.tokens[token]
+	if !ok {
+		return false
+	}
+	if time.Now().After(expiry) {
+		delete(o.tokens, token)
+		return false
+	}
+	return true
+}
+
+// HandleProtectedResource serves GET /.well-known/oauth-protected-resource.
+// This tells clients which authorization server protects the resource.
+func (o *OAuthServer) HandleProtectedResource(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"resource":              o.externalURL + "/mcp/external",
+		"authorization_servers": []string{o.externalURL},
+	})
+}
+
+// HandleAuthServerMeta serves GET /.well-known/oauth-authorization-server.
+// This is the OAuth 2.0 Authorization Server Metadata (RFC 8414).
+func (o *OAuthServer) HandleAuthServerMeta(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"issuer":                           o.externalURL,
+		"authorization_endpoint":           o.externalURL + "/oauth/authorize",
+		"token_endpoint":                   o.externalURL + "/oauth/token",
+		"response_types_supported":         []string{"code"},
+		"grant_types_supported":            []string{"authorization_code"},
+		"code_challenge_methods_supported": []string{"S256"},
+	})
+}
+
+// HandleAuthorize serves GET and POST /oauth/authorize.
+// GET renders the login form; POST validates the password and issues an auth code.
+func (o *OAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		o.serveLoginForm(w, r, "")
+	case http.MethodPost:
+		o.processLogin(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleToken serves POST /oauth/token — exchanges an authorization code for an access token.
+func (o *OAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		oauthTokenError(w, "invalid_request", "cannot parse form body")
+		return
+	}
+
+	if r.FormValue("grant_type") != "authorization_code" {
+		oauthTokenError(w, "unsupported_grant_type", "only authorization_code is supported")
+		return
+	}
+
+	code := r.FormValue("code")
+	verifier := r.FormValue("code_verifier")
+	clientID := r.FormValue("client_id")
+	redirectURI := r.FormValue("redirect_uri")
+
+	if code == "" || verifier == "" {
+		oauthTokenError(w, "invalid_request", "missing code or code_verifier")
+		return
+	}
+	if clientID != "" && clientID != o.clientID {
+		oauthTokenError(w, "invalid_client", "unknown client_id")
+		return
+	}
+
+	o.mu.Lock()
+	pending, ok := o.codes[code]
+	if ok {
+		delete(o.codes, code) // single-use
+	}
+	o.mu.Unlock()
+
+	if !ok || time.Now().After(pending.expiry) {
+		oauthTokenError(w, "invalid_grant", "code not found or expired")
+		return
+	}
+	if redirectURI != "" && redirectURI != pending.redirectURI {
+		oauthTokenError(w, "invalid_grant", "redirect_uri mismatch")
+		return
+	}
+	if !verifyPKCE(verifier, pending.codeChallenge) {
+		oauthTokenError(w, "invalid_grant", "PKCE verification failed")
+		return
+	}
+
+	token := oauthGenerateToken()
+	o.mu.Lock()
+	o.tokens[token] = time.Now().Add(o.tokenTTL)
+	o.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"access_token": token,
+		"token_type":   "Bearer",
+		"expires_in":   int(o.tokenTTL.Seconds()),
+	})
+}
+
+func (o *OAuthServer) serveLoginForm(w http.ResponseWriter, r *http.Request, errMsg string) {
+	q := r.URL.Query()
+	if q.Get("response_type") != "code" {
+		http.Error(w, "unsupported response_type", http.StatusBadRequest)
+		return
+	}
+	if q.Get("client_id") != o.clientID {
+		http.Error(w, "unknown client_id", http.StatusBadRequest)
+		return
+	}
+	if q.Get("code_challenge_method") != "S256" {
+		http.Error(w, "only S256 code_challenge_method is supported", http.StatusBadRequest)
+		return
+	}
+	if q.Get("code_challenge") == "" {
+		http.Error(w, "missing code_challenge", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if errMsg != "" {
+		w.WriteHeader(http.StatusUnauthorized)
+	}
+	_ = oauthLoginTmpl.Execute(w, map[string]string{
+		"ClientID":            q.Get("client_id"),
+		"RedirectURI":         q.Get("redirect_uri"),
+		"CodeChallenge":       q.Get("code_challenge"),
+		"CodeChallengeMethod": q.Get("code_challenge_method"),
+		"State":               q.Get("state"),
+		"Error":               errMsg,
+	})
+}
+
+func (o *OAuthServer) processLogin(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+
+	clientID := r.FormValue("client_id")
+	redirectURI := r.FormValue("redirect_uri")
+	codeChallenge := r.FormValue("code_challenge")
+	codeChallengeMethod := r.FormValue("code_challenge_method")
+	state := r.FormValue("state")
+	password := r.FormValue("password")
+
+	if clientID != o.clientID {
+		http.Error(w, "unknown client_id", http.StatusBadRequest)
+		return
+	}
+	if codeChallenge == "" {
+		http.Error(w, "missing code_challenge", http.StatusBadRequest)
+		return
+	}
+
+	if password != o.password {
+		// Re-render the form with an error by bouncing through GET params
+		q := "?response_type=code" +
+			"&client_id=" + clientID +
+			"&redirect_uri=" + redirectURI +
+			"&code_challenge=" + codeChallenge +
+			"&code_challenge_method=" + codeChallengeMethod +
+			"&state=" + state
+		// Serve the login form directly (same request, avoid redirect loops)
+		r.URL.RawQuery = q[1:]
+		o.serveLoginForm(w, r, "Incorrect password.")
+		return
+	}
+
+	// Issue authorization code
+	code := oauthGenerateToken()
+	o.mu.Lock()
+	o.codes[code] = pendingCode{
+		redirectURI:   redirectURI,
+		codeChallenge: codeChallenge,
+		expiry:        time.Now().Add(10 * time.Minute),
+	}
+	o.mu.Unlock()
+
+	// Redirect to the client's redirect_uri with the code
+	target := redirectURI
+	sep := "?"
+	if strings.Contains(target, "?") {
+		sep = "&"
+	}
+	target += sep + "code=" + code
+	if state != "" {
+		target += "&state=" + state
+	}
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// verifyPKCE checks that SHA256(verifier) == challenge (base64url, no padding).
+func verifyPKCE(verifier, challenge string) bool {
+	h := sha256.Sum256([]byte(verifier))
+	computed := base64.RawURLEncoding.EncodeToString(h[:])
+	return computed == challenge
+}
+
+// oauthGenerateToken generates a cryptographically random 32-byte hex token.
+func oauthGenerateToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func oauthTokenError(w http.ResponseWriter, errCode, description string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":             errCode,
+		"error_description": description,
+	})
+}
+
+var oauthLoginTmpl = template.Must(template.New("oauth-login").Parse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gypsum — Authorize</title>
+  <style>
+    :root { color-scheme: dark light; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 380px;
+      margin: 80px auto;
+      padding: 0 1.5rem;
+    }
+    h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
+    .sub { color: #888; margin-top: 0; font-size: 0.9rem; }
+    .error {
+      background: #fee;
+      color: #c0392b;
+      border: 1px solid #f5c6cb;
+      border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+    label { display: block; margin-bottom: 0.4rem; font-weight: 500; font-size: 0.95rem; }
+    input[type=password] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.55rem 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      margin-top: 1rem;
+      width: 100%;
+      padding: 0.6rem;
+      font-size: 1rem;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Authorize Gypsum</h1>
+  <p class="sub">An application ({{.ClientID}}) is requesting access to your wiki.</p>
+  {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+  <form method="POST">
+    <input type="hidden" name="client_id"             value="{{.ClientID}}">
+    <input type="hidden" name="redirect_uri"          value="{{.RedirectURI}}">
+    <input type="hidden" name="code_challenge"        value="{{.CodeChallenge}}">
+    <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
+    <input type="hidden" name="state"                 value="{{.State}}">
+    <label for="password">Wiki password</label>
+    <input type="password" id="password" name="password" autofocus required placeholder="Enter your wiki password">
+    <button type="submit">Authorize</button>
+  </form>
+</body>
+</html>`))

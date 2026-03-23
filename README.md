@@ -25,6 +25,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Link graph** — interactive force-directed graph visualization at `/graph` showing how all wiki pages connect via `[[wiki links]]`; double-click a node to navigate to that page
 - **MediaWiki import** — click "Import MediaWiki" in the editor to paste MediaWiki wikitext and convert it to Markdown automatically; handles headings, bold/italic, `<syntaxhighlight>`, `<nowiki>`, lists, tables, wiki links, and space-prefixed preformatted lines
 - **MCP server** — built-in MCP (Model Context Protocol) endpoint at `/mcp` using Streamable HTTP transport; exposes the wiki as tools for AI assistants (list/read/create/edit/delete pages, search, image management, history, link analysis, MediaWiki import). Connect from Claude using a remote MCP custom connector
+- **External MCP with OAuth** — optional `/mcp/external` endpoint protected by a built-in OAuth 2.0 Authorization Server (Authorization Code + PKCE); enables secure internet-facing access from Claude without exposing the wiki UI. Encrypted `{{secure_aes:...}}` fields are redacted from all responses and pages with encrypted fields cannot be edited via this endpoint
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
 
@@ -57,6 +58,11 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 |---|---|---|
 | `GYPSUM_SECRET_KEY` | `change-me-in-production` | Passphrase used to derive the AES-256-GCM encryption key for secure fields. **Set this in production.** |
 | `GYPSUM_GIT_PULL_INTERVAL` | `5m` | How often to pull from the git remote (Go duration string, e.g. `2m`, `30s`). Only used when `GYPSUM_GIT_REMOTE_URL` is set. |
+| `GYPSUM_OAUTH_ENABLED` | _(empty)_ | Set to `true` to enable the OAuth-protected `/mcp/external` endpoint. |
+| `GYPSUM_OAUTH_PASSWORD` | _(required)_ | Single-user password for the OAuth login page. Required when `GYPSUM_OAUTH_ENABLED=true`. |
+| `GYPSUM_EXTERNAL_URL` | _(required)_ | Public base URL with no trailing slash, e.g. `https://wiki.example.com`. Used to build OAuth discovery document URLs. Required when `GYPSUM_OAUTH_ENABLED=true`. |
+| `GYPSUM_OAUTH_CLIENT_ID` | `claude` | OAuth `client_id` expected from the MCP client. |
+| `GYPSUM_OAUTH_TOKEN_TTL` | `24h` | Access token lifetime as a Go duration string, e.g. `12h`, `7d`. |
 
 ## Usage
 
@@ -140,9 +146,16 @@ Use the search bar in the top navigation or visit `/search`. Searches page title
 
 ## MCP Server
 
-Gypsum has a built-in MCP (Model Context Protocol) endpoint at `/mcp` using the Streamable HTTP transport. This lets AI assistants like Claude interact with your wiki remotely — no separate binary needed.
+Gypsum has a built-in MCP (Model Context Protocol) endpoint using the Streamable HTTP transport. This lets AI assistants like Claude interact with your wiki remotely — no separate binary needed.
 
-### Connecting from Claude
+There are two endpoints:
+
+| Endpoint | Auth | Secure fields | Use case |
+|---|---|---|---|
+| `/mcp` | None (rely on reverse proxy / Authelia) | Visible as ciphertext | Local / trusted network |
+| `/mcp/external` | OAuth 2.0 (built-in, PKCE) | Redacted — shown as `[encrypted field]` | Internet-facing / Claude remote connector |
+
+### Connecting from Claude (internal, trusted network)
 
 In Claude's settings, add a **remote MCP server** (custom connector) pointing at your Gypsum instance:
 
@@ -150,7 +163,34 @@ In Claude's settings, add a **remote MCP server** (custom connector) pointing at
 URL: https://your-wiki.example.com/mcp
 ```
 
-That's it — Claude will discover the available tools automatically via the MCP protocol.
+Protect this endpoint with your reverse proxy (e.g. Authelia, nginx auth) so it is not world-accessible.
+
+### Connecting from Claude (internet-facing, OAuth)
+
+Set the environment variables to enable OAuth (see table below), then add a remote MCP connector pointing at `/mcp/external`:
+
+```
+URL: https://your-wiki.example.com/mcp/external
+```
+
+Claude will detect the 401 response, follow the OAuth discovery documents, redirect you to the `/oauth/authorize` login page, and exchange the code for a Bearer token automatically. The token is valid for 24 hours by default.
+
+**Authelia bypass rule** — add a bypass rule so Authelia does not intercept the OAuth and MCP paths:
+
+```yaml
+access_control:
+  rules:
+    - domain: your-wiki.example.com
+      resources:
+        - "^/mcp/external.*$"
+        - "^/.well-known/oauth.*$"
+        - "^/oauth/.*$"
+      policy: bypass
+    - domain: your-wiki.example.com
+      policy: one_factor   # your normal rule for the wiki UI
+```
+
+The wiki UI at `/wiki/`, `/edit/`, etc. remains fully protected by Authelia.
 
 ### Claude Desktop (stdio proxy)
 
