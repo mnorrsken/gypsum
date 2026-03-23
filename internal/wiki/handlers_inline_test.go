@@ -17,6 +17,7 @@ func TestInlineSecureUnlock(t *testing.T) {
 		NewMarkdownRenderer(),
 		t.TempDir(),
 		nil,
+		nil,
 	).Routes()
 
 	// Encrypt some content
@@ -51,6 +52,7 @@ func TestInlineSecureUnlockBadCiphertext(t *testing.T) {
 		NewServerCrypto("test-key"),
 		NewMarkdownRenderer(),
 		t.TempDir(),
+		nil,
 		nil,
 	).Routes()
 

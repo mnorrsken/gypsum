@@ -3,6 +3,7 @@ package wiki
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -42,14 +43,38 @@ type pendingCode struct {
 }
 
 // NewOAuthServer creates an OAuthServer. externalURL must not have a trailing slash.
+// It starts a background goroutine to periodically purge expired codes and tokens.
 func NewOAuthServer(clientID, password, externalURL string, tokenTTL time.Duration) *OAuthServer {
-	return &OAuthServer{
+	o := &OAuthServer{
 		clientID:    clientID,
 		password:    password,
 		tokenTTL:    tokenTTL,
 		externalURL: strings.TrimRight(externalURL, "/"),
 		codes:       make(map[string]pendingCode),
 		tokens:      make(map[string]time.Time),
+	}
+	go o.purgeExpiredLoop()
+	return o
+}
+
+// purgeExpiredLoop removes expired authorization codes and tokens every 10 minutes.
+func (o *OAuthServer) purgeExpiredLoop() {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		now := time.Now()
+		o.mu.Lock()
+		for code, pending := range o.codes {
+			if now.After(pending.expiry) {
+				delete(o.codes, code)
+			}
+		}
+		for token, expiry := range o.tokens {
+			if now.After(expiry) {
+				delete(o.tokens, token)
+			}
+		}
+		o.mu.Unlock()
 	}
 }
 
@@ -228,7 +253,7 @@ func (o *OAuthServer) processLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if password != o.password {
+	if subtle.ConstantTimeCompare([]byte(password), []byte(o.password)) != 1 {
 		// Re-render the form with an error by bouncing through GET params
 		q := "?response_type=code" +
 			"&client_id=" + clientID +

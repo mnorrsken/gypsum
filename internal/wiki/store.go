@@ -77,12 +77,27 @@ func (s *PageStore) ListImages() ([]ImageInfo, error) {
 func (s *PageStore) findImageUsage() map[string][]string {
 	usage := make(map[string][]string)
 
-	entries, err := os.ReadDir(s.pagesDir)
+	// Read image filenames once.
+	imgEntries, err := os.ReadDir(s.imagesDir)
 	if err != nil {
 		return usage
 	}
+	imageNames := make([]string, 0, len(imgEntries))
+	for _, img := range imgEntries {
+		if !img.IsDir() {
+			imageNames = append(imageNames, img.Name())
+		}
+	}
+	if len(imageNames) == 0 {
+		return usage
+	}
 
-	for _, entry := range entries {
+	// Scan each page once for all image references.
+	pageEntries, err := os.ReadDir(s.pagesDir)
+	if err != nil {
+		return usage
+	}
+	for _, entry := range pageEntries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
 			continue
 		}
@@ -93,11 +108,9 @@ func (s *PageStore) findImageUsage() map[string][]string {
 		slug := SlugFromFilename(entry.Name())
 		text := string(content)
 
-		// Find all /images/FILENAME references
-		imgEntries, _ := os.ReadDir(s.imagesDir)
-		for _, img := range imgEntries {
-			if strings.Contains(text, "/images/"+img.Name()) {
-				usage[img.Name()] = append(usage[img.Name()], slug)
+		for _, imgName := range imageNames {
+			if strings.Contains(text, "/images/"+imgName) {
+				usage[imgName] = append(usage[imgName], slug)
 			}
 		}
 	}
@@ -345,11 +358,16 @@ func excerptForQuery(content, query string) string {
 	if clean == "" {
 		return "(no content)"
 	}
-	lower := strings.ToLower(clean)
-	idx := strings.Index(lower, query)
+
+	// Work with runes to avoid slicing mid-character on multi-byte UTF-8.
+	runes := []rune(clean)
+	lowerRunes := []rune(strings.ToLower(clean))
+	queryRunes := []rune(query)
+
+	idx := runeIndex(lowerRunes, queryRunes)
 	if idx < 0 {
-		if len(clean) > 180 {
-			return clean[:180] + "..."
+		if len(runes) > 180 {
+			return string(runes[:180]) + "..."
 		}
 		return clean
 	}
@@ -358,16 +376,39 @@ func excerptForQuery(content, query string) string {
 	if start < 0 {
 		start = 0
 	}
-	end := idx + len(query) + 70
-	if end > len(clean) {
-		end = len(clean)
+	end := idx + len(queryRunes) + 70
+	if end > len(runes) {
+		end = len(runes)
 	}
-	fragment := clean[start:end]
+	fragment := string(runes[start:end])
 	if start > 0 {
 		fragment = "..." + fragment
 	}
-	if end < len(clean) {
+	if end < len(runes) {
 		fragment += "..."
 	}
 	return fragment
+}
+
+// runeIndex returns the index of the first occurrence of needle in haystack, or -1.
+func runeIndex(haystack, needle []rune) int {
+	if len(needle) == 0 {
+		return 0
+	}
+	if len(needle) > len(haystack) {
+		return -1
+	}
+	for i := 0; i <= len(haystack)-len(needle); i++ {
+		match := true
+		for j := range needle {
+			if haystack[i+j] != needle[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
 }
