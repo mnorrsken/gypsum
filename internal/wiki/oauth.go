@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -41,15 +42,49 @@ type pendingCode struct {
 	expiry        time.Time
 }
 
+// loginFormData holds the OAuth parameters threaded through the login form.
+type loginFormData struct {
+	ClientID            string
+	RedirectURI         string
+	CodeChallenge       string
+	CodeChallengeMethod string
+	State               string
+	Error               string
+}
+
 // NewOAuthServer creates an OAuthServer. externalURL must not have a trailing slash.
 func NewOAuthServer(clientID, password, externalURL string, tokenTTL time.Duration) *OAuthServer {
-	return &OAuthServer{
+	o := &OAuthServer{
 		clientID:    clientID,
 		password:    password,
 		tokenTTL:    tokenTTL,
 		externalURL: strings.TrimRight(externalURL, "/"),
 		codes:       make(map[string]pendingCode),
 		tokens:      make(map[string]time.Time),
+	}
+	go o.cleanupLoop()
+	return o
+}
+
+// cleanupLoop periodically removes expired auth codes and access tokens to
+// prevent unbounded map growth when flows are abandoned or tokens are never reused.
+func (o *OAuthServer) cleanupLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		now := time.Now()
+		o.mu.Lock()
+		for k, expiry := range o.tokens {
+			if now.After(expiry) {
+				delete(o.tokens, k)
+			}
+		}
+		for k, c := range o.codes {
+			if now.After(c.expiry) {
+				delete(o.codes, k)
+			}
+		}
+		o.mu.Unlock()
 	}
 }
 
@@ -105,7 +140,30 @@ func (o *OAuthServer) HandleAuthServerMeta(w http.ResponseWriter, r *http.Reques
 func (o *OAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		o.serveLoginForm(w, r, "")
+		q := r.URL.Query()
+		if q.Get("response_type") != "code" {
+			http.Error(w, "unsupported response_type", http.StatusBadRequest)
+			return
+		}
+		if q.Get("client_id") != o.clientID {
+			http.Error(w, "unknown client_id", http.StatusBadRequest)
+			return
+		}
+		if q.Get("code_challenge_method") != "S256" {
+			http.Error(w, "only S256 code_challenge_method is supported", http.StatusBadRequest)
+			return
+		}
+		if q.Get("code_challenge") == "" {
+			http.Error(w, "missing code_challenge", http.StatusBadRequest)
+			return
+		}
+		o.serveLoginForm(w, loginFormData{
+			ClientID:            q.Get("client_id"),
+			RedirectURI:         q.Get("redirect_uri"),
+			CodeChallenge:       q.Get("code_challenge"),
+			CodeChallengeMethod: q.Get("code_challenge_method"),
+			State:               q.Get("state"),
+		})
 	case http.MethodPost:
 		o.processLogin(w, r)
 	default:
@@ -173,37 +231,12 @@ func (o *OAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (o *OAuthServer) serveLoginForm(w http.ResponseWriter, r *http.Request, errMsg string) {
-	q := r.URL.Query()
-	if q.Get("response_type") != "code" {
-		http.Error(w, "unsupported response_type", http.StatusBadRequest)
-		return
-	}
-	if q.Get("client_id") != o.clientID {
-		http.Error(w, "unknown client_id", http.StatusBadRequest)
-		return
-	}
-	if q.Get("code_challenge_method") != "S256" {
-		http.Error(w, "only S256 code_challenge_method is supported", http.StatusBadRequest)
-		return
-	}
-	if q.Get("code_challenge") == "" {
-		http.Error(w, "missing code_challenge", http.StatusBadRequest)
-		return
-	}
-
+func (o *OAuthServer) serveLoginForm(w http.ResponseWriter, data loginFormData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if errMsg != "" {
+	if data.Error != "" {
 		w.WriteHeader(http.StatusUnauthorized)
 	}
-	_ = oauthLoginTmpl.Execute(w, map[string]string{
-		"ClientID":            q.Get("client_id"),
-		"RedirectURI":         q.Get("redirect_uri"),
-		"CodeChallenge":       q.Get("code_challenge"),
-		"CodeChallengeMethod": q.Get("code_challenge_method"),
-		"State":               q.Get("state"),
-		"Error":               errMsg,
-	})
+	_ = oauthLoginTmpl.Execute(w, data)
 }
 
 func (o *OAuthServer) processLogin(w http.ResponseWriter, r *http.Request) {
@@ -229,16 +262,14 @@ func (o *OAuthServer) processLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if password != o.password {
-		// Re-render the form with an error by bouncing through GET params
-		q := "?response_type=code" +
-			"&client_id=" + clientID +
-			"&redirect_uri=" + redirectURI +
-			"&code_challenge=" + codeChallenge +
-			"&code_challenge_method=" + codeChallengeMethod +
-			"&state=" + state
-		// Serve the login form directly (same request, avoid redirect loops)
-		r.URL.RawQuery = q[1:]
-		o.serveLoginForm(w, r, "Incorrect password.")
+		o.serveLoginForm(w, loginFormData{
+			ClientID:            clientID,
+			RedirectURI:         redirectURI,
+			CodeChallenge:       codeChallenge,
+			CodeChallengeMethod: codeChallengeMethod,
+			State:               state,
+			Error:               "Incorrect password.",
+		})
 		return
 	}
 
@@ -252,17 +283,19 @@ func (o *OAuthServer) processLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	o.mu.Unlock()
 
-	// Redirect to the client's redirect_uri with the code
-	target := redirectURI
-	sep := "?"
-	if strings.Contains(target, "?") {
-		sep = "&"
+	// Redirect to redirect_uri with code (and state) properly encoded.
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
+		return
 	}
-	target += sep + "code=" + code
+	q := u.Query()
+	q.Set("code", code)
 	if state != "" {
-		target += "&state=" + state
+		q.Set("state", state)
 	}
-	http.Redirect(w, r, target, http.StatusFound)
+	u.RawQuery = q.Encode()
+	http.Redirect(w, r, u.String(), http.StatusFound)
 }
 
 // verifyPKCE checks that SHA256(verifier) == challenge (base64url, no padding).
