@@ -112,6 +112,7 @@ func (h *Handler) Routes() http.Handler {
 		// OAuth authorization flow
 		mux.HandleFunc("/oauth/authorize", h.oauth.HandleAuthorize)
 		mux.HandleFunc("POST /oauth/token", h.oauth.HandleToken)
+		mux.HandleFunc("POST /oauth/register", h.oauth.HandleRegister)
 		// External MCP endpoint — OAuth-protected, secure fields redacted
 		mux.Handle("/mcp/external", NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth))
 	}

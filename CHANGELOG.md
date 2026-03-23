@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.18.3
+
+### Added
+- **Dynamic Client Registration** — added `POST /oauth/register` endpoint (RFC 7591) so MCP clients like Claude can register automatically during the OAuth discovery flow. The authorize and token endpoints now accept both the static `GYPSUM_OAUTH_CLIENT_ID` and dynamically registered client IDs.
+
+### Fixed
+- **OAuth flow with Claude** — Claude's MCP connector requires Dynamic Client Registration to complete the OAuth handshake. Without `/oauth/register`, the flow failed before reaching the login page.
+
 ## v0.18.2
 
 ### Added

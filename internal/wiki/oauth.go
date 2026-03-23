@@ -32,9 +32,10 @@ type OAuthServer struct {
 	tokenTTL    time.Duration
 	externalURL string // no trailing slash
 
-	mu     sync.Mutex
-	codes  map[string]pendingCode
-	tokens map[string]time.Time
+	mu      sync.Mutex
+	codes   map[string]pendingCode
+	tokens  map[string]time.Time
+	clients map[string]bool // dynamically registered client_ids
 }
 
 type pendingCode struct {
@@ -63,6 +64,7 @@ func NewOAuthServer(clientID, password, externalURL string, tokenTTL time.Durati
 		externalURL: strings.TrimRight(externalURL, "/"),
 		codes:       make(map[string]pendingCode),
 		tokens:      make(map[string]time.Time),
+		clients:     make(map[string]bool),
 	}
 	go o.purgeExpiredLoop()
 	return o
@@ -130,10 +132,67 @@ func (o *OAuthServer) HandleAuthServerMeta(w http.ResponseWriter, r *http.Reques
 		"issuer":                           o.externalURL,
 		"authorization_endpoint":           o.externalURL + "/oauth/authorize",
 		"token_endpoint":                   o.externalURL + "/oauth/token",
+		"registration_endpoint":            o.externalURL + "/oauth/register",
 		"response_types_supported":         []string{"code"},
 		"grant_types_supported":            []string{"authorization_code"},
+		"token_endpoint_auth_methods_supported": []string{"none"},
 		"code_challenge_methods_supported": []string{"S256"},
 	})
+}
+
+// HandleRegister serves POST /oauth/register — Dynamic Client Registration (RFC 7591).
+// Any client can register; the returned client_id is accepted by the authorize and token endpoints.
+func (o *OAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RedirectURIs            []string `json:"redirect_uris"`
+		ClientName              string   `json:"client_name"`
+		GrantTypes              []string `json:"grant_types"`
+		ResponseTypes           []string `json:"response_types"`
+		TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_client_metadata",
+			"error_description": "cannot parse request body",
+		})
+		return
+	}
+
+	clientID := "gypsum-" + oauthGenerateToken()[:16]
+
+	o.mu.Lock()
+	o.clients[clientID] = true
+	o.mu.Unlock()
+
+	if len(req.GrantTypes) == 0 {
+		req.GrantTypes = []string{"authorization_code"}
+	}
+	if len(req.ResponseTypes) == 0 {
+		req.ResponseTypes = []string{"code"}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"client_id":                  clientID,
+		"client_name":               req.ClientName,
+		"redirect_uris":             req.RedirectURIs,
+		"grant_types":               req.GrantTypes,
+		"response_types":            req.ResponseTypes,
+		"token_endpoint_auth_method": "none",
+	})
+}
+
+// validClientID returns true if cid matches the static client_id or a dynamically registered one.
+func (o *OAuthServer) validClientID(cid string) bool {
+	if cid == o.clientID {
+		return true
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.clients[cid]
 }
 
 // HandleAuthorize serves GET and POST /oauth/authorize.
@@ -146,7 +205,7 @@ func (o *OAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unsupported response_type", http.StatusBadRequest)
 			return
 		}
-		if q.Get("client_id") != o.clientID {
+		if !o.validClientID(q.Get("client_id")) {
 			http.Error(w, "unknown client_id", http.StatusBadRequest)
 			return
 		}
@@ -193,7 +252,7 @@ func (o *OAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 		oauthTokenError(w, "invalid_request", "missing code or code_verifier")
 		return
 	}
-	if clientID != "" && clientID != o.clientID {
+	if clientID != "" && !o.validClientID(clientID) {
 		oauthTokenError(w, "invalid_client", "unknown client_id")
 		return
 	}
@@ -253,7 +312,7 @@ func (o *OAuthServer) processLogin(w http.ResponseWriter, r *http.Request) {
 	state := r.FormValue("state")
 	password := r.FormValue("password")
 
-	if clientID != o.clientID {
+	if !o.validClientID(clientID) {
 		http.Error(w, "unknown client_id", http.StatusBadRequest)
 		return
 	}
