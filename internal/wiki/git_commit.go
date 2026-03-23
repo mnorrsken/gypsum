@@ -219,6 +219,14 @@ func (c *GitAutoCommitter) pullRebase() {
 		return
 	}
 
+	// Stash uncommitted changes so rebase can proceed.
+	stashed := false
+	if c.hasUncommittedChanges() {
+		if err := c.runGit("stash", "--include-untracked"); err == nil {
+			stashed = true
+		}
+	}
+
 	// Try rebase on top of remote
 	err := c.runGit("rebase", remoteRef)
 	if err != nil {
@@ -226,7 +234,13 @@ func (c *GitAutoCommitter) pullRebase() {
 		_ = c.runGit("rebase", "--abort")
 		// Force-push to overwrite remote with local (ours wins)
 		c.forcePush()
-		return
+	}
+
+	// Restore stashed changes.
+	if stashed {
+		if err := c.runGit("stash", "pop"); err != nil {
+			log.Printf("git: stash pop failed: %v", err)
+		}
 	}
 }
 
@@ -336,6 +350,17 @@ func (c *GitAutoCommitter) markSafeDirectory() {
 func (c *GitAutoCommitter) isOwnRepo() bool {
 	info, err := os.Stat(filepath.Join(c.dataDir, ".git"))
 	return err == nil && info.IsDir()
+}
+
+// hasUncommittedChanges returns true if the working tree has any staged,
+// unstaged, or untracked changes.
+func (c *GitAutoCommitter) hasUncommittedChanges() bool {
+	cmd := exec.Command("git", "-C", c.dataDir, "status", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(strings.TrimSpace(string(out))) > 0
 }
 
 func (c *GitAutoCommitter) hasStagedChanges(relativeFilePath string) (bool, error) {

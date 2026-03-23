@@ -321,9 +321,9 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "search_pages",
-			Description: "Search across all wiki pages by keyword. Returns matching pages with excerpts.",
+			Description: "Search across all wiki pages by keyword. The query is split into terms (punctuation like & is ignored). Each term is matched independently against page titles and content — prefix matches work, so 'arch' finds 'architecture'. Results are ranked by relevance: title matches score higher than content matches, and pages matching all terms are boosted.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"query": mcpPropString("Search query string"),
+				"query": mcpPropString("Search query — split into terms on whitespace/punctuation, each matched independently (prefix and substring)"),
 			}, []string{"query"}),
 		},
 		{

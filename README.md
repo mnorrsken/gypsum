@@ -14,7 +14,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Page history** — view the git commit history for any page via the History tab; select two revisions and click **Compare Selected** to see a colorized unified diff between them
 - **Image uploads** — paste from clipboard, drag-and-drop onto the editor, or click **Images** to browse and insert existing uploads. Filenames are derived from the original file name where available. Images auto-scale to fit the content width. Optional size hints: `![alt|500](url)` (px), `![alt|50%](url)` (percent), `![alt|800x400](url)` (width×height)
 - **Favorites sidebar** — edit `_favorites.md` to pin pages in the sidebar
-- **Full-text search** — searches page titles and content
+- **Full-text search** — term-based search with relevance ranking; queries are split into words (punctuation stripped), each matched independently with prefix support (e.g. "lösen" finds "lösenord"); title matches rank higher than content matches
 - **Auto git commits** — every page save and image upload is committed to a git repo inside `data/`
 - **Git remote sync** — optional push-after-commit and periodic pull with "ours wins" conflict resolution, configured via environment variables
 - **Diff preview** — tick "Show diff" in the editor to review a colorized unified diff of the raw on-disk content before committing; the preference is remembered across sessions
@@ -141,7 +141,7 @@ Edit the special `_favorites.md` page (linked at the bottom of the Favorites sec
 
 ### Search
 
-Use the search bar in the top navigation or visit `/search`. Searches page titles and content (case-insensitive).
+Use the search bar in the top navigation or visit `/search`. The query is split into individual terms (punctuation like `&` is stripped), each matched independently against page titles and content. Prefix matching is supported — e.g. searching "tokens & lösen" finds "Tokens & Lösenord". Results are ranked by relevance: title matches score higher than content matches, and pages matching all search terms are boosted.
 
 ## MCP Server
 
@@ -217,7 +217,7 @@ Build it with `make build`, then configure Claude Desktop (`%APPDATA%\Claude\cla
 | `create_page` | Create a new page |
 | `edit_page` | Update an existing page |
 | `delete_page` | Delete a page |
-| `search_pages` | Full-text search across pages |
+| `search_pages` | Relevance-ranked search across pages (term-based, prefix matching) |
 | `list_images` | List uploaded images with metadata |
 | `delete_image` | Delete an image |
 | `get_recent_pages` | Recently modified pages |

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 var ErrPageNotFound = errors.New("page not found")
@@ -240,18 +241,22 @@ func (s *PageStore) LoadFavorites() ([]PageLink, error) {
 }
 
 func (s *PageStore) Search(query string) ([]SearchResult, error) {
-	trimmed := strings.TrimSpace(query)
-	if trimmed == "" {
+	terms := splitSearchTerms(query)
+	if len(terms) == 0 {
 		return []SearchResult{}, nil
 	}
-	lowerQuery := strings.ToLower(trimmed)
 
 	entries, err := os.ReadDir(s.pagesDir)
 	if err != nil {
 		return nil, err
 	}
 
-	results := make([]SearchResult, 0)
+	type scored struct {
+		result SearchResult
+		score  int
+	}
+	var results []scored
+
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
 			continue
@@ -267,20 +272,103 @@ func (s *PageStore) Search(query string) ([]SearchResult, error) {
 			continue
 		}
 		content := string(contentBytes)
-		target := strings.ToLower(title + "\n" + content)
-		if !strings.Contains(target, lowerQuery) {
+
+		score := scoreMatch(title, content, terms)
+		if score == 0 {
 			continue
 		}
 
-		excerpt := excerptForQuery(content, lowerQuery)
-		results = append(results, SearchResult{Slug: slug, Title: title, Excerpt: excerpt})
+		excerpt := excerptForTerms(content, terms)
+		results = append(results, scored{
+			result: SearchResult{Slug: slug, Title: title, Excerpt: excerpt},
+			score:  score,
+		})
 	}
 
 	sort.Slice(results, func(i, j int) bool {
-		return strings.ToLower(results[i].Title) < strings.ToLower(results[j].Title)
+		if results[i].score != results[j].score {
+			return results[i].score > results[j].score
+		}
+		return strings.ToLower(results[i].result.Title) < strings.ToLower(results[j].result.Title)
 	})
 
-	return results, nil
+	out := make([]SearchResult, len(results))
+	for i, r := range results {
+		out[i] = r.result
+	}
+	return out, nil
+}
+
+// splitSearchTerms extracts lowercase search terms from a query,
+// splitting on whitespace and punctuation so that e.g. "tokens & lösen"
+// becomes ["tokens", "lösen"].
+func splitSearchTerms(query string) []string {
+	cleaned := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return ' '
+	}, query)
+	words := strings.Fields(strings.ToLower(cleaned))
+	seen := make(map[string]bool)
+	var terms []string
+	for _, w := range words {
+		if !seen[w] {
+			seen[w] = true
+			terms = append(terms, w)
+		}
+	}
+	return terms
+}
+
+// scoreMatch returns a relevance score for a page against the search terms.
+// Returns 0 if no terms match. Title matches score higher than content matches,
+// and matching all terms gives a bonus multiplier.
+func scoreMatch(title, content string, terms []string) int {
+	lowerTitle := strings.ToLower(title)
+	lowerContent := strings.ToLower(content)
+	titleWords := strings.Fields(lowerTitle)
+
+	score := 0
+	matchedTerms := 0
+
+	for _, term := range terms {
+		termScore := 0
+
+		// Check title words for exact or prefix match.
+		for _, tw := range titleWords {
+			if tw == term {
+				termScore = 20
+				break
+			} else if strings.HasPrefix(tw, term) && termScore < 15 {
+				termScore = 15
+			}
+		}
+		// Substring match anywhere in title.
+		if termScore == 0 && strings.Contains(lowerTitle, term) {
+			termScore = 10
+		}
+		// Content match.
+		if termScore == 0 && strings.Contains(lowerContent, term) {
+			termScore = 3
+		}
+
+		if termScore > 0 {
+			matchedTerms++
+			score += termScore
+		}
+	}
+
+	if matchedTerms == 0 {
+		return 0
+	}
+
+	// Bonus for matching all terms.
+	if matchedTerms == len(terms) {
+		score *= 2
+	}
+
+	return score
 }
 
 // ExtractWikiLinks returns all [[Page Title]] link targets found in content as slugs.
@@ -352,7 +440,7 @@ func (s *PageStore) BackLinks(targetSlug string) ([]PageLink, error) {
 	return results, nil
 }
 
-func excerptForQuery(content, query string) string {
+func excerptForTerms(content string, terms []string) string {
 	replaced := strings.ReplaceAll(content, "\n", " ")
 	clean := strings.TrimSpace(replaced)
 	if clean == "" {
@@ -362,21 +450,31 @@ func excerptForQuery(content, query string) string {
 	// Work with runes to avoid slicing mid-character on multi-byte UTF-8.
 	runes := []rune(clean)
 	lowerRunes := []rune(strings.ToLower(clean))
-	queryRunes := []rune(query)
 
-	idx := runeIndex(lowerRunes, queryRunes)
-	if idx < 0 {
+	// Find the earliest matching term in the content for the excerpt window.
+	bestIdx := -1
+	bestLen := 0
+	for _, term := range terms {
+		termRunes := []rune(term)
+		idx := runeIndex(lowerRunes, termRunes)
+		if idx >= 0 && (bestIdx < 0 || idx < bestIdx) {
+			bestIdx = idx
+			bestLen = len(termRunes)
+		}
+	}
+
+	if bestIdx < 0 {
 		if len(runes) > 180 {
 			return string(runes[:180]) + "..."
 		}
 		return clean
 	}
 
-	start := idx - 70
+	start := bestIdx - 70
 	if start < 0 {
 		start = 0
 	}
-	end := idx + len(queryRunes) + 70
+	end := bestIdx + bestLen + 70
 	if end > len(runes) {
 		end = len(runes)
 	}

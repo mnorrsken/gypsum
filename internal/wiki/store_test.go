@@ -189,6 +189,63 @@ func TestPageStoreSearchMatchesTitle(t *testing.T) {
 	}
 }
 
+func TestPageStoreSearchPrefixAndRelaxed(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+
+	// Slug with double underscore (& stripped during creation), simulates "Tokens & Lösenord"
+	_ = store.Save("Tokens__Lösenord", "page about tokens and passwords")
+	_ = store.Save("Other_Page", "unrelated content")
+
+	// "tokens & lösen" should match: & is stripped, "lösen" prefix-matches "lösenord"
+	results, err := store.Search("tokens & lösen")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Slug != "Tokens__Lösenord" {
+		t.Fatalf("unexpected result slug: %s", results[0].Slug)
+	}
+}
+
+func TestPageStoreSearchRelevanceOrder(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+
+	_ = store.Save("Go_Programming", "a guide to go programming")
+	_ = store.Save("Notes", "contains the word go somewhere in content")
+
+	results, err := store.Search("go programming")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(results) < 1 {
+		t.Fatal("expected at least 1 result")
+	}
+	// Title match with both terms should rank first
+	if results[0].Slug != "Go_Programming" {
+		t.Fatalf("expected Go_Programming first, got %s", results[0].Slug)
+	}
+}
+
+func TestPageStoreSearchPartialTerm(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+
+	_ = store.Save("Kubernetes_Guide", "deploying containers")
+
+	// "kube" should prefix-match "kubernetes"
+	results, err := store.Search("kube")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result for prefix match, got %d", len(results))
+	}
+}
+
 func TestPageStorePagePath(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
@@ -275,9 +332,9 @@ func TestPageStoreListImagesTracksUsage(t *testing.T) {
 	}
 }
 
-func TestExcerptForQueryLongContent(t *testing.T) {
+func TestExcerptForTermsLongContent(t *testing.T) {
 	content := strings.Repeat("x", 200) + "KEYWORD" + strings.Repeat("y", 200)
-	excerpt := excerptForQuery(content, "keyword")
+	excerpt := excerptForTerms(content, []string{"keyword"})
 	if !strings.Contains(strings.ToLower(excerpt), "keyword") {
 		t.Fatalf("excerpt should contain keyword: %s", excerpt)
 	}
@@ -289,9 +346,9 @@ func TestExcerptForQueryLongContent(t *testing.T) {
 	}
 }
 
-func TestExcerptForQueryNoMatch(t *testing.T) {
+func TestExcerptForTermsNoMatch(t *testing.T) {
 	content := strings.Repeat("abc ", 100)
-	excerpt := excerptForQuery(content, "zzz")
+	excerpt := excerptForTerms(content, []string{"zzz"})
 	if len(excerpt) > 184 { // 180 + "..."
 		t.Fatalf("excerpt too long for no-match case: len=%d", len(excerpt))
 	}

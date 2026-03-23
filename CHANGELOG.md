@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.19.0
+
+### Added
+- **Relevance-ranked search** — search queries are split into individual terms (stripping punctuation like `&`), each matched independently against page titles and content. Prefix matching works, so "lösen" finds "lösenord" and "kube" finds "kubernetes". Results are scored by relevance: title matches rank higher than content matches, and pages matching all terms get a bonus. Results are sorted by score instead of alphabetically.
+
+### Fixed
+- **Git rebase with unstaged changes** — `pullRebase` now stashes uncommitted changes before rebasing and restores them after, preventing the "cannot rebase: You have unstaged changes" error during periodic pulls or sync.
+
 ## v0.18.4
 
 ### Added
