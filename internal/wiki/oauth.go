@@ -24,18 +24,15 @@ import (
 //	GYPSUM_OAUTH_ENABLED    — set to "true" to enable
 //	GYPSUM_OAUTH_PASSWORD   — single-user wiki password (required)
 //	GYPSUM_EXTERNAL_URL     — public base URL, e.g. https://wiki.example.com (required)
-//	GYPSUM_OAUTH_CLIENT_ID  — expected client_id (default: "claude")
 //	GYPSUM_OAUTH_TOKEN_TTL  — access token lifetime as Go duration (default: "24h")
 type OAuthServer struct {
-	clientID    string
 	password    string
 	tokenTTL    time.Duration
 	externalURL string // no trailing slash
 
-	mu      sync.Mutex
-	codes   map[string]pendingCode
-	tokens  map[string]time.Time
-	clients map[string]bool // dynamically registered client_ids
+	mu     sync.Mutex
+	codes  map[string]pendingCode
+	tokens map[string]time.Time
 }
 
 type pendingCode struct {
@@ -56,15 +53,13 @@ type loginFormData struct {
 
 // NewOAuthServer creates an OAuthServer. externalURL must not have a trailing slash.
 // It starts a background goroutine to periodically purge expired codes and tokens.
-func NewOAuthServer(clientID, password, externalURL string, tokenTTL time.Duration) *OAuthServer {
+func NewOAuthServer(password, externalURL string, tokenTTL time.Duration) *OAuthServer {
 	o := &OAuthServer{
-		clientID:    clientID,
 		password:    password,
 		tokenTTL:    tokenTTL,
 		externalURL: strings.TrimRight(externalURL, "/"),
 		codes:       make(map[string]pendingCode),
 		tokens:      make(map[string]time.Time),
-		clients:     make(map[string]bool),
 	}
 	go o.purgeExpiredLoop()
 	return o
@@ -162,10 +157,6 @@ func (o *OAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
 
 	clientID := "gypsum-" + oauthGenerateToken()[:16]
 
-	o.mu.Lock()
-	o.clients[clientID] = true
-	o.mu.Unlock()
-
 	if len(req.GrantTypes) == 0 {
 		req.GrantTypes = []string{"authorization_code"}
 	}
@@ -185,16 +176,6 @@ func (o *OAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// validClientID returns true if cid matches the static client_id or a dynamically registered one.
-func (o *OAuthServer) validClientID(cid string) bool {
-	if cid == o.clientID {
-		return true
-	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	return o.clients[cid]
-}
-
 // HandleAuthorize serves GET and POST /oauth/authorize.
 // GET renders the login form; POST validates the password and issues an auth code.
 func (o *OAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
@@ -203,10 +184,6 @@ func (o *OAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		if q.Get("response_type") != "code" {
 			http.Error(w, "unsupported response_type", http.StatusBadRequest)
-			return
-		}
-		if !o.validClientID(q.Get("client_id")) {
-			http.Error(w, "unknown client_id", http.StatusBadRequest)
 			return
 		}
 		if q.Get("code_challenge_method") != "S256" {
@@ -245,18 +222,12 @@ func (o *OAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 	code := r.FormValue("code")
 	verifier := r.FormValue("code_verifier")
-	clientID := r.FormValue("client_id")
 	redirectURI := r.FormValue("redirect_uri")
 
 	if code == "" || verifier == "" {
 		oauthTokenError(w, "invalid_request", "missing code or code_verifier")
 		return
 	}
-	if clientID != "" && !o.validClientID(clientID) {
-		oauthTokenError(w, "invalid_client", "unknown client_id")
-		return
-	}
-
 	o.mu.Lock()
 	pending, ok := o.codes[code]
 	if ok {
@@ -312,10 +283,6 @@ func (o *OAuthServer) processLogin(w http.ResponseWriter, r *http.Request) {
 	state := r.FormValue("state")
 	password := r.FormValue("password")
 
-	if !o.validClientID(clientID) {
-		http.Error(w, "unknown client_id", http.StatusBadRequest)
-		return
-	}
 	if codeChallenge == "" {
 		http.Error(w, "missing code_challenge", http.StatusBadRequest)
 		return

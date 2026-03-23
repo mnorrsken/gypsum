@@ -100,8 +100,6 @@ oauth:
   # Public base URL with no trailing slash (e.g. https://wiki.example.com).
   # Required when oauth.enabled is true.
   externalUrl: ""
-  # OAuth client_id expected from the MCP client.
-  clientId: "claude"
   # Access token lifetime (Go duration string, e.g. "24h", "12h").
   tokenTtl: "24h"
   # Reference an existing Kubernetes Secret for the OAuth password.

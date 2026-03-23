@@ -61,7 +61,6 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 | `GYPSUM_OAUTH_ENABLED` | _(empty)_ | Set to `true` to enable the OAuth-protected `/mcp/external` endpoint. |
 | `GYPSUM_OAUTH_PASSWORD` | _(required)_ | Single-user password for the OAuth login page. Required when `GYPSUM_OAUTH_ENABLED=true`. |
 | `GYPSUM_EXTERNAL_URL` | _(required)_ | Public base URL with no trailing slash, e.g. `https://wiki.example.com`. Used to build OAuth discovery document URLs. Required when `GYPSUM_OAUTH_ENABLED=true`. |
-| `GYPSUM_OAUTH_CLIENT_ID` | `claude` | OAuth `client_id` expected from the MCP client. |
 | `GYPSUM_OAUTH_TOKEN_TTL` | `24h` | Access token lifetime as a Go duration string, e.g. `12h`, `7d`. |
 
 ## Usage
@@ -322,7 +321,6 @@ Key values:
 | `oauth.enabled` | `false` | Enable the OAuth-protected `/mcp/external` endpoint |
 | `oauth.password` | `""` | Password for the OAuth login page. If empty, a pre-install hook generates one automatically |
 | `oauth.externalUrl` | `""` | Public base URL with no trailing slash (e.g. `https://wiki.example.com`). Required when `oauth.enabled` is true |
-| `oauth.clientId` | `claude` | OAuth `client_id` expected from the MCP client |
 | `oauth.tokenTtl` | `24h` | Access token lifetime (Go duration string, e.g. `24h`, `12h`) |
 | `oauth.existingSecret` | `""` | Name of an existing Secret (must contain an `oauth-password` key) |
 

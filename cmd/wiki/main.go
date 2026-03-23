@@ -79,14 +79,13 @@ func main() {
 		if externalURL == "" {
 			log.Fatal("GYPSUM_EXTERNAL_URL must be set when GYPSUM_OAUTH_ENABLED=true")
 		}
-		clientID := envOrDefault("GYPSUM_OAUTH_CLIENT_ID", "claude")
 		tokenTTL := 24 * time.Hour
 		if v := os.Getenv("GYPSUM_OAUTH_TOKEN_TTL"); v != "" {
 			if d, err := time.ParseDuration(v); err == nil && d > 0 {
 				tokenTTL = d
 			}
 		}
-		oauthServer = wiki.NewOAuthServer(clientID, password, externalURL, tokenTTL)
+		oauthServer = wiki.NewOAuthServer(password, externalURL, tokenTTL)
 		log.Printf("OAuth enabled: /mcp/external protected via OAuth (external URL: %s)", externalURL)
 	}
 
