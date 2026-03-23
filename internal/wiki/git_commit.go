@@ -69,9 +69,8 @@ func (c *GitAutoCommitter) commitDelete(relPath, message string) error {
 		return nil
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if err := c.runGit("rm", "--cached", "--ignore-unmatch", "--", relPath); err != nil {
+		c.mu.Unlock()
 		return err
 	}
 	if err := c.runGit(
@@ -80,8 +79,10 @@ func (c *GitAutoCommitter) commitDelete(relPath, message string) error {
 		"commit", "-m", message,
 		"--allow-empty",
 	); err != nil {
+		c.mu.Unlock()
 		return err
 	}
+	c.mu.Unlock()
 	c.syncAsync()
 	return nil
 }
@@ -91,17 +92,18 @@ func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 		return nil
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if err := c.runGit("add", "-f", "--", relativeFilePath); err != nil {
+		c.mu.Unlock()
 		return err
 	}
 
 	hasChanges, err := c.hasStagedChanges(relativeFilePath)
 	if err != nil {
+		c.mu.Unlock()
 		return err
 	}
 	if !hasChanges {
+		c.mu.Unlock()
 		return nil
 	}
 
@@ -111,8 +113,10 @@ func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 		"commit", "-m", message,
 		"--", relativeFilePath,
 	); err != nil {
+		c.mu.Unlock()
 		return err
 	}
+	c.mu.Unlock()
 	c.syncAsync()
 	return nil
 }
@@ -228,7 +232,7 @@ func (c *GitAutoCommitter) pullRebase() {
 
 // syncAsync pulls (rebase) and pushes to the remote in the background so that
 // the caller (HTTP handler) is not blocked by network I/O.
-// Must be called with c.mu held (it spawns a goroutine that acquires its own lock).
+// Must be called without c.mu held — the goroutine acquires the lock itself.
 func (c *GitAutoCommitter) syncAsync() {
 	if !c.hasRemote() {
 		return

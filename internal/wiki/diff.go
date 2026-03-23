@@ -88,7 +88,7 @@ func splitLines(s string) []string {
 func computeHunks(oldLines, newLines []string) []diffHunk {
 	const contextLines = 3
 
-	edits := myersDiff(oldLines, newLines)
+	edits := lcsDiff(oldLines, newLines)
 
 	// Group edits into hunks with context
 	var hunks []diffHunk
@@ -196,8 +196,9 @@ func computeHunks(oldLines, newLines []string) []diffHunk {
 	return hunks
 }
 
-// myersDiff computes the shortest edit script between two slices of strings.
-func myersDiff(a, b []string) []edit {
+// lcsDiff computes the shortest edit script between two slices of strings
+// using an O(N*M) LCS (Longest Common Subsequence) table.
+func lcsDiff(a, b []string) []edit {
 	n, m := len(a), len(b)
 	if n == 0 && m == 0 {
 		return nil

@@ -24,67 +24,65 @@ Gypsum is a personal wiki server written in Go with git-backed storage, AES-256-
 
 **Fix applied:** Added the missing `nil` argument to both call sites.
 
-### 2. OAuth password compared in constant-time? (SECURITY)
+### 2. OAuth password compared in constant-time? (SECURITY — FIXED)
 
-**File:** `internal/wiki/oauth.go:231`
+**File:** `internal/wiki/oauth.go`
 
-```go
-if password != o.password {
-```
+The password comparison used `!=`, which is vulnerable to timing side-channel attacks.
 
-The password comparison uses `!=`, which is vulnerable to timing side-channel attacks. While the risk is low for a personal wiki, this should use `crypto/subtle.ConstantTimeCompare` for defense-in-depth.
+**Fix applied:** Replaced with `crypto/subtle.ConstantTimeCompare`.
 
-### 3. `findImageUsage` has O(pages × images) complexity (PERFORMANCE)
+### 3. `findImageUsage` has O(pages × images) complexity (PERFORMANCE — FIXED)
 
-**File:** `internal/wiki/store.go:77-106`
+**File:** `internal/wiki/store.go`
 
-For every page, `findImageUsage` re-reads the images directory and does a `strings.Contains` scan for every image filename. This is quadratic. For a wiki with many pages and images, this becomes a bottleneck.
+For every page, `findImageUsage` re-read the images directory and did a `strings.Contains` scan for every image filename. This is quadratic.
 
-**Recommendation:** Read the images directory once, then iterate pages and check for each image name in the page content.
+**Fix applied:** Read the images directory once upfront, then iterate pages and check for each image name.
 
-### 4. `excerptForQuery` slices on byte index, not rune boundary (BUG)
+### 4. `excerptForQuery` slices on byte index, not rune boundary (BUG — FIXED)
 
-**File:** `internal/wiki/store.go:342-373`
+**File:** `internal/wiki/store.go`
 
-`strings.Index` returns a byte offset in the lowercased string, but `clean[start:end]` slices the original (mixed-case) string using those byte offsets. When the content contains multi-byte UTF-8 characters (common for a wiki supporting Unicode slugs like `Lösenord`), the index from the lowered string may not match the byte offsets in `clean`, potentially slicing mid-rune and producing garbled output.
+`strings.Index` returns a byte offset in the lowercased string, but the original code sliced the mixed-case string using those byte offsets. With multi-byte UTF-8 characters, this could slice mid-rune and produce garbled output.
 
-**Recommendation:** Use `strings.ToLower(clean)` consistently or convert to `[]rune` for index arithmetic.
+**Fix applied:** Converted to rune-based indexing and slicing.
 
 ---
 
 ## Moderate Issues
 
-### 5. OAuth authorization codes and tokens never expire/garbage-collect (RESOURCE LEAK)
+### 5. OAuth authorization codes and tokens never expire/garbage-collect (RESOURCE LEAK — FIXED)
 
 **File:** `internal/wiki/oauth.go`
 
-`o.codes` and `o.tokens` maps grow without bound. Expired entries are only cleaned up on access (e.g., `ValidateBearer` deletes an expired token when checked). Authorization codes that are never exchanged, or tokens that expire without being re-checked, remain in memory forever.
+`o.codes` and `o.tokens` maps grew without bound. Expired entries were only cleaned up on access.
 
-**Recommendation:** Add a periodic cleanup goroutine or a bounded map with LRU eviction.
+**Fix applied:** Added a `purgeExpiredLoop` goroutine that runs every 10 minutes to evict expired codes and tokens.
 
-### 6. `syncAsync` called with mutex held, spawns goroutine that re-acquires it (DEADLOCK RISK)
+### 6. `syncAsync` called with mutex held, spawns goroutine that re-acquires it (DEADLOCK RISK — FIXED)
 
-**File:** `internal/wiki/git_commit.go:232-242`
+**File:** `internal/wiki/git_commit.go`
 
-`syncAsync()` is called while `c.mu` is held (from `commitFile`/`commitDelete`). It spawns a goroutine that calls `c.mu.Lock()`. This works because the calling goroutine returns and releases the lock before the spawned goroutine tries to acquire it. However, this pattern is fragile — if the code flow changes so the caller doesn't immediately release the lock, it will deadlock. The comment says "Must be called with c.mu held" but the reason is not intuitive.
+`syncAsync()` was called while `c.mu` was held (from `commitFile`/`commitDelete`). It spawns a goroutine that calls `c.mu.Lock()`. This worked only because the caller happened to release the lock before the goroutine ran — a fragile pattern.
 
-**Recommendation:** Either document this more explicitly or restructure so `syncAsync` doesn't need the caller to hold the mutex.
+**Fix applied:** Restructured `commitFile` and `commitDelete` to explicitly unlock the mutex before calling `syncAsync`, eliminating the implicit ordering dependency.
 
-### 7. Templates re-parsed on every request (PERFORMANCE)
+### 7. Templates re-parsed on every request (PERFORMANCE — FIXED)
 
-**File:** `internal/wiki/handlers.go:676-700`
+**File:** `internal/wiki/handlers.go`
 
-Every call to `h.render()` re-parses the template files from disk. For a personal wiki this is fine (and aids development), but for production it adds unnecessary I/O and allocation overhead.
+Every call to `h.render()` re-parsed template files from disk.
 
-**Recommendation:** Parse templates once at startup (or use a `sync.Once`/cache). Re-parsing on every request is acceptable if this is intentional for live-reload during development — add a comment if so.
+**Fix applied:** Templates are now parsed once at startup into `h.tmplCache` and reused on every request.
 
-### 8. `myersDiff` is actually LCS-based, not Myers (NAMING)
+### 8. `myersDiff` is actually LCS-based, not Myers (NAMING — FIXED)
 
-**File:** `internal/wiki/diff.go:200`
+**File:** `internal/wiki/diff.go`
 
-The function is named `myersDiff` but the comment and implementation say "Simple O(NM) LCS-based diff." This is misleading.
+The function was named `myersDiff` but used an O(NM) LCS algorithm, not Myers' O(ND) algorithm.
 
-**Recommendation:** Rename to `lcsDiff` or similar.
+**Fix applied:** Renamed to `lcsDiff` with an accurate comment.
 
 ### 9. CORS allows all origins on MCP endpoint (SECURITY — LOW RISK)
 
@@ -188,4 +186,9 @@ The upload handler only checks file extension, not actual file content. A malici
 | File | Change |
 |------|--------|
 | `internal/wiki/handlers_inline_test.go` | Fixed missing `OAuthServer` parameter (test build failure) |
+| `internal/wiki/oauth.go` | Constant-time password comparison; periodic token/code garbage collection |
+| `internal/wiki/store.go` | Fixed `findImageUsage` O(n²) → O(n); fixed `excerptForQuery` rune boundary bug |
+| `internal/wiki/git_commit.go` | Restructured mutex handling to eliminate deadlock risk in `syncAsync` |
+| `internal/wiki/handlers.go` | Template caching at startup instead of re-parsing per request |
+| `internal/wiki/diff.go` | Renamed `myersDiff` → `lcsDiff` |
 | `CODE_REVIEW.md` | This review document |

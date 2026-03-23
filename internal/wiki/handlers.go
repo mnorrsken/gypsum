@@ -23,6 +23,7 @@ type Handler struct {
 	templates  string
 	autoCommit *GitAutoCommitter
 	oauth      *OAuthServer // non-nil → register /mcp/external + OAuth discovery routes
+	tmplCache  map[string]*template.Template
 }
 
 type ImageInfo struct {
@@ -52,13 +53,34 @@ type TemplateData struct {
 }
 
 func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer) *Handler {
-	return &Handler{
+	h := &Handler{
 		store:      store,
 		crypto:     crypto,
 		renderer:   renderer,
 		templates:  templatesDir,
 		autoCommit: autoCommitter,
 		oauth:      oauth,
+		tmplCache:  make(map[string]*template.Template),
+	}
+	h.parseTemplates()
+	return h
+}
+
+// parseTemplates pre-parses all page templates paired with the base layout.
+func (h *Handler) parseTemplates() {
+	basePath := filepath.Join(h.templates, "base.html")
+	names := []string{
+		"view", "edit", "new", "search", "pages", "history",
+		"history_diff", "images", "diff", "graph",
+	}
+	for _, name := range names {
+		pagePath := filepath.Join(h.templates, name+".html")
+		tmpl, err := template.ParseFiles(basePath, pagePath)
+		if err != nil {
+			// Templates may not exist in test environments; skip.
+			continue
+		}
+		h.tmplCache[name] = tmpl
 	}
 }
 
@@ -684,13 +706,9 @@ func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) 
 		data.RecentPages = recent
 	}
 
-	files := []string{
-		filepath.Join(h.templates, "base.html"),
-		filepath.Join(h.templates, name+".html"),
-	}
-	tmpl, err := template.ParseFiles(files...)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	tmpl := h.tmplCache[name]
+	if tmpl == nil {
+		http.Error(w, "template not found: "+name, http.StatusInternalServerError)
 		return
 	}
 
