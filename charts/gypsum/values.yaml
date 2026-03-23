@@ -90,6 +90,23 @@ git:
   # Only used when remoteUrl is set.
   pullInterval: "5m"
 
+# OAuth configuration for the external MCP endpoint (/mcp/external).
+oauth:
+  # Set to true to enable the OAuth-protected /mcp/external endpoint.
+  enabled: false
+  # Password for the OAuth login page.
+  password: ""
+  # Public base URL with no trailing slash (e.g. https://wiki.example.com).
+  # Required when oauth.enabled is true.
+  externalUrl: ""
+  # OAuth client_id expected from the MCP client.
+  clientId: "claude"
+  # Access token lifetime (Go duration string, e.g. "24h", "12h").
+  tokenTtl: "24h"
+  # Reference an existing Kubernetes Secret for the OAuth password.
+  # The secret must contain a key named "oauth-password".
+  existingSecret: ""
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

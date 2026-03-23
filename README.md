@@ -319,6 +319,12 @@ Key values:
 | `git.commitEmail` | `gypsum@local` | Git commit author email |
 | `git.remoteUrl` | `""` | Git remote URL for backup/sync |
 | `git.pullInterval` | `5m` | How often to pull from the remote (Go duration, e.g. `5m`, `30s`). Only used when `remoteUrl` is set |
+| `oauth.enabled` | `false` | Enable the OAuth-protected `/mcp/external` endpoint |
+| `oauth.password` | `""` | Password for the OAuth login page. Required when `oauth.enabled` is true |
+| `oauth.externalUrl` | `""` | Public base URL with no trailing slash (e.g. `https://wiki.example.com`). Required when `oauth.enabled` is true |
+| `oauth.clientId` | `claude` | OAuth `client_id` expected from the MCP client |
+| `oauth.tokenTtl` | `24h` | Access token lifetime (Go duration string, e.g. `24h`, `12h`) |
+| `oauth.existingSecret` | `""` | Name of an existing Secret (must contain an `oauth-password` key) |
 
 ### Secret Key Handling
 

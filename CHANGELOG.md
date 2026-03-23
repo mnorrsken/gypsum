@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.18.1
+
+### Added
+- **Helm chart OAuth support** — added `oauth.*` values for configuring the OAuth-protected `/mcp/external` endpoint via the Helm chart (`oauth.enabled`, `oauth.password`, `oauth.externalUrl`, `oauth.clientId`, `oauth.tokenTtl`, `oauth.existingSecret`). OAuth password is stored in a Kubernetes Secret.
+
+### Changed
+- **Helm chart appVersion** — updated from `0.1.1` to `0.18.0` to match the current application version; chart version bumped to `0.2.0`.
+
 ## v0.18.0
 
 ### Added

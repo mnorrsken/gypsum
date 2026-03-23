@@ -88,6 +88,25 @@ spec:
             - name: GYPSUM_GIT_PULL_INTERVAL
               value: {{ .Values.git.pullInterval | quote }}
             {{- end }}
+            {{- if .Values.oauth.enabled }}
+            - name: GYPSUM_OAUTH_ENABLED
+              value: "true"
+            - name: GYPSUM_OAUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.oauth.existingSecret | default (printf "%s-oauth" (include "gypsum.fullname" .)) }}
+                  key: oauth-password
+            - name: GYPSUM_EXTERNAL_URL
+              value: {{ .Values.oauth.externalUrl | quote }}
+            {{- if .Values.oauth.clientId }}
+            - name: GYPSUM_OAUTH_CLIENT_ID
+              value: {{ .Values.oauth.clientId | quote }}
+            {{- end }}
+            {{- if .Values.oauth.tokenTtl }}
+            - name: GYPSUM_OAUTH_TOKEN_TTL
+              value: {{ .Values.oauth.tokenTtl | quote }}
+            {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /
