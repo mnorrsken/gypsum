@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.19.2
+
+### Fixed
+- **Markdown table styling** — tables in wiki content now render with borders, left-aligned headers, and proper padding instead of the browser's unstyled default.
+
 ## v0.19.1
 
 ### Fixed
