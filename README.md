@@ -14,6 +14,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Page history** — view the git commit history for any page via the History tab; select two revisions and click **Compare Selected** to see a colorized unified diff between them
 - **Image uploads** — paste from clipboard, drag-and-drop onto the editor, or click **Images** to browse and insert existing uploads. Filenames are derived from the original file name where available. Images auto-scale to fit the content width. Optional size hints: `![alt|500](url)` (px), `![alt|50%](url)` (percent), `![alt|800x400](url)` (width×height)
 - **Favorites sidebar** — edit `_favorites.md` to pin pages in the sidebar
+- **Recent Edits** — paginated view of all wiki edits in reverse chronological order at `/recent-edits`, sourced from git history
 - **Full-text search** — term-based search with relevance ranking; queries are split into words (punctuation stripped), each matched independently with prefix support (e.g. "lösen" finds "lösenord"); title matches rank higher than content matches
 - **Auto git commits** — every page save and image upload is committed to a git repo inside `data/`
 - **Git remote sync** — optional push-after-commit and periodic pull with "ours wins" conflict resolution, configured via environment variables

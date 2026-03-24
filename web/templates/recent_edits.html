@@ -1,0 +1,44 @@
+{{define "content"}}
+<article>
+  <div class="page-header">
+    <h1>Recent Edits</h1>
+  </div>
+
+  {{if .GlobalEdits}}
+  <table class="history-table">
+    <thead>
+      <tr>
+        <th>Page</th>
+        <th>Revision</th>
+        <th>Date</th>
+        <th>Author</th>
+        <th>Summary</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .GlobalEdits}}
+      <tr>
+        <td><a href="/wiki/{{.Slug}}">{{.Title}}</a></td>
+        <td class="history-hash"><a href="/history/{{.Slug}}"><code>{{printf "%.7s" .Hash}}</code></a></td>
+        <td class="history-date">{{.Date.Format "2006-01-02 15:04"}}</td>
+        <td class="history-author">{{.Author}}</td>
+        <td class="history-message">{{.Message}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+
+  <div class="pagination">
+    {{if gt .CurrentPage 1}}
+      <a href="/recent-edits?page={{subtract .CurrentPage 1}}">&larr; Newer</a>
+    {{end}}
+    <span class="pagination-info">Page {{.CurrentPage}}</span>
+    {{if gt .TotalPages .CurrentPage}}
+      <a href="/recent-edits?page={{add .CurrentPage 1}}">Older &rarr;</a>
+    {{end}}
+  </div>
+  {{else}}
+  <p class="hint">No edits recorded yet.</p>
+  {{end}}
+</article>
+{{end}}

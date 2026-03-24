@@ -966,6 +966,29 @@ textarea {
   text-align: center;
 }
 
+/* --- Pagination --- */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  font-size: 14px;
+}
+
+.pagination a {
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+.pagination a:hover {
+  text-decoration: underline;
+}
+
+.pagination-info {
+  color: var(--color-text-muted);
+}
+
 /* --- Responsive --- */
 
 @media (max-width: 768px) {

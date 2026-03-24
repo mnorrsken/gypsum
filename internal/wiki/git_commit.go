@@ -18,6 +18,13 @@ type HistoryEntry struct {
 	Message string
 }
 
+// GlobalHistoryEntry extends HistoryEntry with the affected page slug and title.
+type GlobalHistoryEntry struct {
+	HistoryEntry
+	Slug  string
+	Title string
+}
+
 // GitRemoteConfig holds optional remote sync settings.
 type GitRemoteConfig struct {
 	RemoteName  string // e.g. "origin"
@@ -433,6 +440,72 @@ func (c *GitAutoCommitter) PageHistory(slug string, maxEntries int) ([]HistoryEn
 			Author:  strings.TrimSpace(lines[1]),
 			Date:    t,
 			Message: strings.TrimSpace(lines[3]),
+		})
+	}
+
+	return entries, nil
+}
+
+// GlobalHistory returns the most recent commits across all pages, with pagination.
+// skip is the number of entries to skip (for paging), limit is the page size.
+func (c *GitAutoCommitter) GlobalHistory(skip, limit int) ([]GlobalHistoryEntry, error) {
+	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
+		return nil, nil
+	}
+
+	// Use a unique separator so --name-only filenames don't collide with
+	// the record boundaries (a plain "---" would be interleaved with the
+	// filename lines that git appends after each formatted record).
+	const sep = "===COMMIT==="
+	format := sep + "%n%H%n%an%n%aI%n%s"
+	cmd := exec.Command("git", "-C", c.dataDir,
+		"log",
+		fmt.Sprintf("--skip=%d", skip),
+		fmt.Sprintf("--max-count=%d", limit),
+		fmt.Sprintf("--format=%s", format),
+		"--name-only",
+		"--", "pages/",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, nil
+	}
+
+	var entries []GlobalHistoryEntry
+	blocks := strings.Split(string(out), sep)
+	for _, block := range blocks {
+		block = strings.TrimSpace(block)
+		if block == "" {
+			continue
+		}
+		lines := strings.Split(block, "\n")
+		if len(lines) < 4 {
+			continue
+		}
+		t, _ := time.Parse(time.RFC3339, strings.TrimSpace(lines[2]))
+
+		// Lines after the 4th are filenames (from --name-only).
+		slug := ""
+		for _, fn := range lines[4:] {
+			fn = strings.TrimSpace(fn)
+			if strings.HasPrefix(fn, "pages/") && strings.HasSuffix(fn, ".md") {
+				slug = strings.TrimSuffix(strings.TrimPrefix(fn, "pages/"), ".md")
+				break
+			}
+		}
+		if slug == "" {
+			continue
+		}
+
+		entries = append(entries, GlobalHistoryEntry{
+			HistoryEntry: HistoryEntry{
+				Hash:    strings.TrimSpace(lines[0]),
+				Author:  strings.TrimSpace(lines[1]),
+				Date:    t,
+				Message: strings.TrimSpace(lines[3]),
+			},
+			Slug:  slug,
+			Title: TitleFromSlug(slug),
 		})
 	}
 

@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.21.0
+
+### Added
+- **Recent Edits page** — new `/recent-edits` route showing all wiki edits in reverse chronological order, sourced from git history. Displays page name, revision, date, author, and commit message. Paginated at 50 entries per page. Accessible from the sidebar navigation.
+
 ## v0.20.0
 
 ### Added

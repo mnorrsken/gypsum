@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -46,8 +47,11 @@ type TemplateData struct {
 	Query        string
 	Results      []SearchResult
 	Images       []ImageInfo
-	History      []HistoryEntry
-	IsNew        bool
+	History       []HistoryEntry
+	GlobalEdits   []GlobalHistoryEntry
+	CurrentPage   int
+	TotalPages    int
+	IsNew         bool
 	DiffHTML     template.HTML
 	GraphJSON    template.JS
 }
@@ -66,16 +70,22 @@ func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRender
 	return h
 }
 
+// templateFuncs are helper functions available in all templates.
+var templateFuncs = template.FuncMap{
+	"add":      func(a, b int) int { return a + b },
+	"subtract": func(a, b int) int { return a - b },
+}
+
 // parseTemplates pre-parses all page templates paired with the base layout.
 func (h *Handler) parseTemplates() {
 	basePath := filepath.Join(h.templates, "base.html")
 	names := []string{
 		"view", "edit", "new", "search", "pages", "history",
-		"history_diff", "images", "diff", "graph",
+		"history_diff", "images", "diff", "graph", "recent_edits",
 	}
 	for _, name := range names {
 		pagePath := filepath.Join(h.templates, name+".html")
-		tmpl, err := template.ParseFiles(basePath, pagePath)
+		tmpl, err := template.New("").Funcs(templateFuncs).ParseFiles(basePath, pagePath)
 		if err != nil {
 			// Templates may not exist in test environments; skip.
 			continue
@@ -102,6 +112,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
 	mux.HandleFunc("/delete/", h.handleDeletePage)
 	mux.HandleFunc("/graph", h.handleGraph)
+	mux.HandleFunc("/recent-edits", h.handleRecentEdits)
 	mux.HandleFunc("/convert/mediawiki", h.handleConvertMediaWiki)
 
 	// Rate limiter for MCP and OAuth endpoints: 30 requests/sec per IP, burst of 60.
@@ -418,6 +429,37 @@ func (h *Handler) handleHistory(w http.ResponseWriter, r *http.Request) {
 		Title:   "History: " + title,
 		Page:    &Page{Slug: slug, Title: title},
 		History: entries,
+	})
+}
+
+const recentEditsPerPage = 50
+
+func (h *Handler) handleRecentEdits(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	page := 1
+	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 1 {
+		page = p
+	}
+
+	skip := (page - 1) * recentEditsPerPage
+	// Fetch one extra to determine if there's a next page.
+	entries, _ := h.autoCommit.GlobalHistory(skip, recentEditsPerPage+1)
+
+	totalPages := page
+	if len(entries) > recentEditsPerPage {
+		totalPages = page + 1
+		entries = entries[:recentEditsPerPage]
+	}
+
+	h.render(w, "recent_edits", TemplateData{
+		Title:       "Recent Edits",
+		GlobalEdits: entries,
+		CurrentPage: page,
+		TotalPages:  totalPages,
 	})
 }
 
