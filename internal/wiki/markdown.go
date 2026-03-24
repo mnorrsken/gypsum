@@ -17,7 +17,6 @@ import (
 )
 
 var wikiLinkPattern = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
-var secureAesMacroPattern = regexp.MustCompile(`\{\{secure_aes:([\w+/=]+)\}\}`)
 
 // imageSizePattern matches ![alt|SIZE](url) where SIZE is one of:
 //   - 500      → max-width: 500px
@@ -112,8 +111,8 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 	// don't get wrapped in their own <p> blocks. The tokens survive HTML
 	// rendering and are swapped for real HTML afterwards.
 	var securePlaceholders []string
-	withPlaceholders := secureAesMacroPattern.ReplaceAllStringFunc(withLinks, func(match string) string {
-		captures := secureAesMacroPattern.FindStringSubmatch(match)
+	withPlaceholders := secureAesMacroRe.ReplaceAllStringFunc(withLinks, func(match string) string {
+		captures := secureAesMacroRe.FindStringSubmatch(match)
 		if len(captures) < 2 {
 			return match
 		}

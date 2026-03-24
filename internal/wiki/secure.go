@@ -155,10 +155,7 @@ func (sc *ServerCrypto) encryptForSave(markdown string, preserve map[string]stri
 	return result, encryptErr
 }
 
-// unknownTagRe matches any {{word:...}} or {{word that isn't a known tag.
-var unknownTagRe = regexp.MustCompile(`\{\{(?:secure|secure_aes)\b`)
 var anyDoubleBraceOpen = regexp.MustCompile(`\{\{`)
-var anyDoubleBraceClose = regexp.MustCompile(`\}\}`)
 
 // ValidateContent checks the content for malformed custom tags.
 // Returns a user-friendly error message or empty string if valid.
@@ -198,11 +195,6 @@ func ValidateContent(content string) string {
 			// Look for {{secure: on this line
 			idx := strings.Index(line, "{{secure:")
 			if idx < 0 {
-				// Check for stray }}
-				if strings.Contains(line, "}}") && !strings.Contains(line, "{{secure_aes:") {
-					// Only flag if it's not part of something else (template syntax etc)
-					// We allow }} in normal text, only flag in context of secure blocks
-				}
 				continue
 			}
 

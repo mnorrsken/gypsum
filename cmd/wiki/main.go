@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mnorrsken/gypsum/internal/wiki"
@@ -95,8 +99,24 @@ func main() {
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
 	addr := ":8080"
+	srv := &http.Server{Addr: addr, Handler: accessLog(mux)}
+
+	// Graceful shutdown: listen for SIGINT/SIGTERM, then drain connections.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-quit
+		log.Println("shutting down…")
+		autoCommitter.Stop()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("shutdown error: %v", err)
+		}
+	}()
+
 	log.Printf("wiki listening on http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("server failed: %v", err)
 	}
 }
@@ -143,19 +163,44 @@ func envOrDefault(key, fallback string) string {
 // using GYPSUM_GIT_TOKEN or GYPSUM_GIT_USERNAME + GYPSUM_GIT_PASSWORD.
 func injectGitAuth(rawURL string) string {
 	if token := os.Getenv("GYPSUM_GIT_TOKEN"); token != "" {
-		return injectAuth(rawURL, token)
+		return injectAuth(rawURL, url.PathEscape(token), "")
 	}
 	user := os.Getenv("GYPSUM_GIT_USERNAME")
 	pass := os.Getenv("GYPSUM_GIT_PASSWORD")
 	if user != "" && pass != "" {
-		return injectAuth(rawURL, user+":"+pass)
+		return injectAuth(rawURL, url.PathEscape(user), url.PathEscape(pass))
 	}
 	return rawURL
 }
 
-func injectAuth(url, auth string) string {
-	if strings.HasPrefix(url, "https://") {
-		return "https://" + auth + "@" + strings.TrimPrefix(url, "https://")
+func injectAuth(rawURL, user, pass string) string {
+	if strings.HasPrefix(rawURL, "https://") {
+		auth := user
+		if pass != "" {
+			auth += ":" + pass
+		}
+		return "https://" + auth + "@" + strings.TrimPrefix(rawURL, "https://")
 	}
-	return url
+	return rawURL
+}
+
+// responseRecorder wraps http.ResponseWriter to capture the status code.
+type responseRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rr *responseRecorder) WriteHeader(code int) {
+	rr.status = code
+	rr.ResponseWriter.WriteHeader(code)
+}
+
+// accessLog is middleware that logs method, path, status, and duration for each request.
+func accessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rr := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rr, r)
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, rr.status, time.Since(start).Round(time.Microsecond))
+	})
 }

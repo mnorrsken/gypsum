@@ -8,6 +8,34 @@ import (
 	"strings"
 )
 
+// Pre-compiled regexes for MediaWiki conversion.
+var (
+	mwReLang      = regexp.MustCompile(`(?i)lang=["']?(\w+)["']?`)
+	mwReSyntaxHL  = regexp.MustCompile(`(?si)<syntaxhighlight([^>]*)>(.*?)</syntaxhighlight>`)
+	mwReSource    = regexp.MustCompile(`(?si)<source([^>]*)>(.*?)</source>`)
+	mwRePre       = regexp.MustCompile(`(?si)<pre>(.*?)</pre>`)
+	mwReNowikiPre = regexp.MustCompile(`(?sm)^ <nowiki>(.*?)</nowiki>`)
+	mwReNowiki    = regexp.MustCompile(`(?si)<nowiki>(.*?)</nowiki>`)
+	mwReCode      = regexp.MustCompile(`(?si)<code>(.*?)</code>`)
+	mwReRef       = regexp.MustCompile(`(?si)<ref[^>]*>.*?</ref>`)
+	mwReRefSelf   = regexp.MustCompile(`(?i)<ref[^/]*/\s*>`)
+	mwReRefs      = regexp.MustCompile(`(?si)<references\s*(?:/>|>.*?</references>)`)
+	mwReTmpl      = regexp.MustCompile(`(?s)\{\{[^{}]*\}\}`)
+	mwReCat       = regexp.MustCompile(`(?i)\[\[Category:[^\]]*\]\]`)
+	mwReMagic     = regexp.MustCompile(`(?i)__(?:TOC|NOTOC|FORCETOC|NOEDITSECTION)__`)
+	mwReFile      = regexp.MustCompile(`(?i)\[\[(?:File|Image):([^|\]]+)(?:\|[^\]]*)?\]\]`)
+	mwReBr        = regexp.MustCompile(`(?i)<br\s*/?\s*>`)
+	mwReHTML       = regexp.MustCompile(`</?[a-zA-Z][^>]*>`)
+	mwReBold      = regexp.MustCompile(`'''(.*?)'''`)
+	mwReItalic    = regexp.MustCompile(`''(.*?)''`)
+	mwReExtLink   = regexp.MustCompile(`\[(https?://\S+)\s+([^\]]+)\]`)
+	mwReExtBare   = regexp.MustCompile(`\[(https?://\S+)\]`)
+	mwReWikiLink  = regexp.MustCompile(`\[\[([^#|\]]+)(?:#[^|\]]*)?(?:\|[^\]]+)?\]\]`)
+	mwReHR        = regexp.MustCompile(`(?m)^-{4,}\s*$`)
+	mwRePH        = regexp.MustCompile(`\x00PH(\d+)\x00`)
+	mwReBlankLines = regexp.MustCompile(`\n{3,}`)
+)
+
 // ConvertMediaWikiToMarkdown converts MediaWiki wikitext to Markdown format.
 // It handles headings, bold/italic, code blocks (<syntaxhighlight>, <source>,
 // <pre>), <nowiki>, <code>, lists, tables, wiki links, external links, and
@@ -27,14 +55,11 @@ func ConvertMediaWikiToMarkdown(input string) string {
 
 	// ── Phase 1: extract blocks that must not be further processed ──
 
-	reLang := regexp.MustCompile(`(?i)lang=["']?(\w+)["']?`)
-
 	// <syntaxhighlight lang="...">...</syntaxhighlight>
-	reSyntaxHL := regexp.MustCompile(`(?si)<syntaxhighlight([^>]*)>(.*?)</syntaxhighlight>`)
-	s = reSyntaxHL.ReplaceAllStringFunc(s, func(match string) string {
-		m := reSyntaxHL.FindStringSubmatch(match)
+	s = mwReSyntaxHL.ReplaceAllStringFunc(s, func(match string) string {
+		m := mwReSyntaxHL.FindStringSubmatch(match)
 		lang := ""
-		if lm := reLang.FindStringSubmatch(m[1]); lm != nil {
+		if lm := mwReLang.FindStringSubmatch(m[1]); lm != nil {
 			lang = lm[1]
 		}
 		code := trimCodeBlock(html.UnescapeString(m[2]))
@@ -42,11 +67,10 @@ func ConvertMediaWikiToMarkdown(input string) string {
 	})
 
 	// <source lang="...">...</source> (older MediaWiki syntax)
-	reSource := regexp.MustCompile(`(?si)<source([^>]*)>(.*?)</source>`)
-	s = reSource.ReplaceAllStringFunc(s, func(match string) string {
-		m := reSource.FindStringSubmatch(match)
+	s = mwReSource.ReplaceAllStringFunc(s, func(match string) string {
+		m := mwReSource.FindStringSubmatch(match)
 		lang := ""
-		if lm := reLang.FindStringSubmatch(m[1]); lm != nil {
+		if lm := mwReLang.FindStringSubmatch(m[1]); lm != nil {
 			lang = lm[1]
 		}
 		code := trimCodeBlock(html.UnescapeString(m[2]))
@@ -54,69 +78,56 @@ func ConvertMediaWikiToMarkdown(input string) string {
 	})
 
 	// <pre>...</pre>
-	rePre := regexp.MustCompile(`(?si)<pre>(.*?)</pre>`)
-	s = rePre.ReplaceAllStringFunc(s, func(match string) string {
-		m := rePre.FindStringSubmatch(match)
+	s = mwRePre.ReplaceAllStringFunc(s, func(match string) string {
+		m := mwRePre.FindStringSubmatch(match)
 		code := trimCodeBlock(html.UnescapeString(m[1]))
 		return ph("\n```\n" + code + "\n```\n")
 	})
 
 	// <nowiki> preceded by a space at start of line → code block
-	reNowikiPre := regexp.MustCompile(`(?sm)^ <nowiki>(.*?)</nowiki>`)
-	s = reNowikiPre.ReplaceAllStringFunc(s, func(match string) string {
-		m := reNowikiPre.FindStringSubmatch(match)
+	s = mwReNowikiPre.ReplaceAllStringFunc(s, func(match string) string {
+		m := mwReNowikiPre.FindStringSubmatch(match)
 		code := trimCodeBlock(html.UnescapeString(m[1]))
 		return ph("\n```\n" + code + "\n```\n")
 	})
 
 	// <nowiki>...</nowiki> – literal text, escape markdown special chars.
-	reNowiki := regexp.MustCompile(`(?si)<nowiki>(.*?)</nowiki>`)
-	s = reNowiki.ReplaceAllStringFunc(s, func(match string) string {
-		m := reNowiki.FindStringSubmatch(match)
+	s = mwReNowiki.ReplaceAllStringFunc(s, func(match string) string {
+		m := mwReNowiki.FindStringSubmatch(match)
 		return ph(escapeMarkdownChars(html.UnescapeString(m[1])))
 	})
 
 	// ── Phase 2: remove or convert remaining HTML-like elements ──
 
 	// <code>...</code> → inline backticks
-	reCode := regexp.MustCompile(`(?si)<code>(.*?)</code>`)
-	s = reCode.ReplaceAllString(s, "`$1`")
+	s = mwReCode.ReplaceAllString(s, "`$1`")
 
 	// Remove <ref>...</ref> and self-closing <ref ... />
-	reRef := regexp.MustCompile(`(?si)<ref[^>]*>.*?</ref>`)
-	s = reRef.ReplaceAllString(s, "")
-	reRefSelf := regexp.MustCompile(`(?i)<ref[^/]*/\s*>`)
-	s = reRefSelf.ReplaceAllString(s, "")
+	s = mwReRef.ReplaceAllString(s, "")
+	s = mwReRefSelf.ReplaceAllString(s, "")
 
 	// Remove <references/> or <references>...</references>
-	reRefs := regexp.MustCompile(`(?si)<references\s*(?:/>|>.*?</references>)`)
-	s = reRefs.ReplaceAllString(s, "")
+	s = mwReRefs.ReplaceAllString(s, "")
 
 	// Remove templates {{...}} – iterate to collapse nested braces.
-	reTmpl := regexp.MustCompile(`(?s)\{\{[^{}]*\}\}`)
-	for i := 0; i < 10 && reTmpl.MatchString(s); i++ {
-		s = reTmpl.ReplaceAllString(s, "")
+	for i := 0; i < 10 && mwReTmpl.MatchString(s); i++ {
+		s = mwReTmpl.ReplaceAllString(s, "")
 	}
 
 	// Remove categories [[Category:...]]
-	reCat := regexp.MustCompile(`(?i)\[\[Category:[^\]]*\]\]`)
-	s = reCat.ReplaceAllString(s, "")
+	s = mwReCat.ReplaceAllString(s, "")
 
 	// Remove magic words
-	reMagic := regexp.MustCompile(`(?i)__(?:TOC|NOTOC|FORCETOC|NOEDITSECTION)__`)
-	s = reMagic.ReplaceAllString(s, "")
+	s = mwReMagic.ReplaceAllString(s, "")
 
 	// [[File:name|...]] / [[Image:name|...]] → ![name](name)
-	reFile := regexp.MustCompile(`(?i)\[\[(?:File|Image):([^|\]]+)(?:\|[^\]]*)?\]\]`)
-	s = reFile.ReplaceAllString(s, "![$1]($1)")
+	s = mwReFile.ReplaceAllString(s, "![$1]($1)")
 
 	// <br> variants → newline
-	reBr := regexp.MustCompile(`(?i)<br\s*/?\s*>`)
-	s = reBr.ReplaceAllString(s, "\n")
+	s = mwReBr.ReplaceAllString(s, "\n")
 
 	// Strip any remaining HTML tags (but not our \x00 placeholders).
-	reHTML := regexp.MustCompile(`</?[a-zA-Z][^>]*>`)
-	s = reHTML.ReplaceAllString(s, "")
+	s = mwReHTML.ReplaceAllString(s, "")
 
 	// ── Phase 3: tables ──
 
@@ -150,32 +161,26 @@ func ConvertMediaWikiToMarkdown(input string) string {
 	// ── Phase 5: inline formatting ──
 
 	// Bold: '''...''' → **...**  (process before italic)
-	reBold := regexp.MustCompile(`'''(.*?)'''`)
-	s = reBold.ReplaceAllString(s, "**$1**")
+	s = mwReBold.ReplaceAllString(s, "**$1**")
 
 	// Italic: ''...'' → *...*
-	reItalic := regexp.MustCompile(`''(.*?)''`)
-	s = reItalic.ReplaceAllString(s, "*$1*")
+	s = mwReItalic.ReplaceAllString(s, "*$1*")
 
 	// External links with text: [url text] → [text](url)
-	reExtLink := regexp.MustCompile(`\[(https?://\S+)\s+([^\]]+)\]`)
-	s = reExtLink.ReplaceAllString(s, "[$2]($1)")
+	s = mwReExtLink.ReplaceAllString(s, "[$2]($1)")
 
 	// Bare external links: [url] → url
-	reExtBare := regexp.MustCompile(`\[(https?://\S+)\]`)
-	s = reExtBare.ReplaceAllString(s, "$1")
+	s = mwReExtBare.ReplaceAllString(s, "$1")
 
 	// Wiki links: strip section anchors and piped display text.
 	// [[Page#Section|display]] → [[Page]]
 	// [[Page|display]]        → [[Page]]
 	// [[Page#Section]]        → [[Page]]
 	// [[Page]]                → [[Page]]  (unchanged)
-	reWikiLink := regexp.MustCompile(`\[\[([^#|\]]+)(?:#[^|\]]*)?(?:\|[^\]]+)?\]\]`)
-	s = reWikiLink.ReplaceAllString(s, "[[$1]]")
+	s = mwReWikiLink.ReplaceAllString(s, "[[$1]]")
 
 	// Horizontal rules: ---- → ---
-	reHR := regexp.MustCompile(`(?m)^-{4,}\s*$`)
-	s = reHR.ReplaceAllString(s, "---")
+	s = mwReHR.ReplaceAllString(s, "---")
 
 	// ── Phase 6: cleanup ──
 
@@ -183,9 +188,8 @@ func ConvertMediaWikiToMarkdown(input string) string {
 	s = html.UnescapeString(s)
 
 	// Restore placeholders
-	rePH := regexp.MustCompile(`\x00PH(\d+)\x00`)
-	s = rePH.ReplaceAllStringFunc(s, func(match string) string {
-		m := rePH.FindStringSubmatch(match)
+	s = mwRePH.ReplaceAllStringFunc(s, func(match string) string {
+		m := mwRePH.FindStringSubmatch(match)
 		idx, _ := strconv.Atoi(m[1])
 		if idx < len(placeholders) {
 			return placeholders[idx]
@@ -194,8 +198,7 @@ func ConvertMediaWikiToMarkdown(input string) string {
 	})
 
 	// Collapse 3+ consecutive blank lines into 2.
-	reBlankLines := regexp.MustCompile(`\n{3,}`)
-	s = reBlankLines.ReplaceAllString(s, "\n\n")
+	s = mwReBlankLines.ReplaceAllString(s, "\n\n")
 
 	return strings.TrimSpace(s) + "\n"
 }

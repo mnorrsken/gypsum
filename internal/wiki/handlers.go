@@ -103,18 +103,22 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/delete/", h.handleDeletePage)
 	mux.HandleFunc("/graph", h.handleGraph)
 	mux.HandleFunc("/convert/mediawiki", h.handleConvertMediaWiki)
-	mux.Handle("/mcp", NewMCPHandler(h.store, h.autoCommit))
+
+	// Rate limiter for MCP and OAuth endpoints: 30 requests/sec per IP, burst of 60.
+	mcpRL := NewRateLimiter(30, 60, time.Second)
+	mux.Handle("/mcp", RateLimit(mcpRL, NewMCPHandler(h.store, h.autoCommit)))
 
 	if h.oauth != nil {
 		// OAuth discovery endpoints (must be bypassed in Authelia / reverse proxy)
 		mux.HandleFunc("GET /.well-known/oauth-protected-resource", h.oauth.HandleProtectedResource)
 		mux.HandleFunc("GET /.well-known/oauth-authorization-server", h.oauth.HandleAuthServerMeta)
-		// OAuth authorization flow
-		mux.HandleFunc("/oauth/authorize", h.oauth.HandleAuthorize)
-		mux.HandleFunc("POST /oauth/token", h.oauth.HandleToken)
-		mux.HandleFunc("POST /oauth/register", h.oauth.HandleRegister)
+		// OAuth authorization flow — stricter rate limit to prevent brute-force.
+		oauthRL := NewRateLimiter(5, 10, time.Second)
+		mux.HandleFunc("/oauth/authorize", RateLimitFunc(oauthRL, h.oauth.HandleAuthorize))
+		mux.HandleFunc("POST /oauth/token", RateLimitFunc(oauthRL, h.oauth.HandleToken))
+		mux.HandleFunc("POST /oauth/register", RateLimitFunc(oauthRL, h.oauth.HandleRegister))
 		// External MCP endpoint — OAuth-protected, secure fields redacted
-		mux.Handle("/mcp/external", NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth))
+		mux.Handle("/mcp/external", RateLimit(mcpRL, NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth)))
 	}
 
 	return mux
@@ -526,9 +530,30 @@ func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	allowed := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true}
-	if !allowed[ext] {
+	allowedExt := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true}
+	if !allowedExt[ext] {
 		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "unsupported image type"})
+		return
+	}
+
+	// Sniff actual content type from the first 512 bytes.
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	contentType := http.DetectContentType(buf[:n])
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "failed to read file"})
+		return
+	}
+	allowedMIME := map[string]bool{
+		"image/png":     true,
+		"image/jpeg":    true,
+		"image/gif":     true,
+		"image/webp":    true,
+		"image/svg+xml": true,
+		"text/xml":      true, // SVGs may be detected as text/xml
+	}
+	if !allowedMIME[contentType] {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file content does not match an allowed image type"})
 		return
 	}
 

@@ -2,6 +2,21 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.20.0
+
+### Added
+- **Graceful shutdown** — the server now handles SIGINT/SIGTERM signals, drains in-flight requests (10 s timeout), and stops background goroutines (periodic git pull) before exiting.
+- **Rate limiting** — per-IP token-bucket rate limiting on MCP endpoints (30 req/s) and OAuth endpoints (5 req/s) to prevent brute-force and abuse.
+- **Access logging** — every HTTP request is logged with method, path, status code, and duration.
+- **Image upload MIME validation** — uploaded files are now verified with `http.DetectContentType` in addition to the file-extension check, preventing non-image files from being stored with image extensions.
+
+### Fixed
+- **Empty `handlers_test.go`** — removed the placeholder file.
+- **MediaWiki regex recompilation** — all 24 regexes in `ConvertMediaWikiToMarkdown` are now compiled once at package level instead of on every call.
+- **Duplicate `secureAesMacro` regex** — `markdown.go` now shares the single regex defined in `secure.go`.
+- **Git credential URL encoding** — `injectAuth` now URL-encodes tokens and passwords so special characters (`@`, `/`, etc.) don't break the remote URL.
+- **Dead code in `ValidateContent`** — removed unused `unknownTagRe`, `anyDoubleBraceClose` regexes and a no-op code block.
+
 ## v0.19.2
 
 ### Fixed

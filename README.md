@@ -26,6 +26,9 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **MediaWiki import** — click "Import MediaWiki" in the editor to paste MediaWiki wikitext and convert it to Markdown automatically; handles headings, bold/italic, `<syntaxhighlight>`, `<nowiki>`, lists, tables, wiki links, and space-prefixed preformatted lines
 - **MCP server** — built-in MCP (Model Context Protocol) endpoint at `/mcp` using Streamable HTTP transport; exposes the wiki as tools for AI assistants (list/read/create/edit/delete pages, search, image management, history, link analysis, MediaWiki import). Connect from Claude using a remote MCP custom connector
 - **External MCP with OAuth** — optional `/mcp/external` endpoint protected by a built-in OAuth 2.0 Authorization Server (Authorization Code + PKCE, Dynamic Client Registration); enables secure internet-facing access from Claude without exposing the wiki UI. Encrypted `{{secure_aes:...}}` fields are redacted from all responses and pages with encrypted fields cannot be edited via this endpoint. Access tokens are persisted to disk so connections survive server restarts
+- **Graceful shutdown** — handles SIGINT/SIGTERM, drains in-flight requests, and stops background goroutines cleanly
+- **Rate limiting** — per-IP rate limiting on MCP and OAuth endpoints to prevent brute-force attacks
+- **Access logging** — logs every request with method, path, status code, and duration
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
 
