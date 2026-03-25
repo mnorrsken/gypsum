@@ -332,7 +332,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if err := h.autoCommit.CommitPageSave(slug); err != nil {
+		if err := h.autoCommit.CommitPageSave(slug, UsernameFromRequest(r)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -626,7 +626,7 @@ func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = h.autoCommit.CommitImageSave(filename)
+	_ = h.autoCommit.CommitImageSave(filename, UsernameFromRequest(r))
 
 	url := "/images/" + filename
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": url, "filename": filename})
@@ -711,7 +711,7 @@ func (h *Handler) handleImageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = h.autoCommit.CommitImageDelete(filename)
+	_ = h.autoCommit.CommitImageDelete(filename, UsernameFromRequest(r))
 
 	http.Redirect(w, r, "/images", http.StatusFound)
 }
@@ -741,7 +741,7 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to delete page", http.StatusInternalServerError)
 		return
 	}
-	_ = h.autoCommit.CommitPageDelete(slug)
+	_ = h.autoCommit.CommitPageDelete(slug, UsernameFromRequest(r))
 	http.Redirect(w, r, "/pages", http.StatusFound)
 }
 

@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.25.0
+
+### Added
+- **Header-based authentication** — optional reverse proxy auth via `GYPSUM_AUTH_USER_HEADER` (e.g. `Remote-User`). When enabled, all requests except OAuth endpoints require the header to be present. An optional `GYPSUM_AUTH_REQUIRED_GROUP` enforces group membership via a configurable group header. The authenticated username is used as the git commit author.
+
 ## v0.24.0
 
 ### Changed

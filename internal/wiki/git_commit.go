@@ -53,25 +53,25 @@ func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommit
 	return c
 }
 
-func (c *GitAutoCommitter) CommitPageSave(slug string) error {
-	return c.commitFile(filepath.Join("pages", MarkdownFilename(slug)), fmt.Sprintf("wiki: update page %s", slug))
+func (c *GitAutoCommitter) CommitPageSave(slug, author string) error {
+	return c.commitFile(filepath.Join("pages", MarkdownFilename(slug)), fmt.Sprintf("wiki: update page %s", slug), author)
 }
 
-func (c *GitAutoCommitter) CommitPageDelete(slug string) error {
+func (c *GitAutoCommitter) CommitPageDelete(slug, author string) error {
 	relPath := filepath.Join("pages", MarkdownFilename(slug))
-	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete page %s", slug))
+	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete page %s", slug), author)
 }
 
-func (c *GitAutoCommitter) CommitImageSave(filename string) error {
-	return c.commitFile(filepath.Join("images", filename), fmt.Sprintf("wiki: upload image %s", filename))
+func (c *GitAutoCommitter) CommitImageSave(filename, author string) error {
+	return c.commitFile(filepath.Join("images", filename), fmt.Sprintf("wiki: upload image %s", filename), author)
 }
 
-func (c *GitAutoCommitter) CommitImageDelete(filename string) error {
+func (c *GitAutoCommitter) CommitImageDelete(filename, author string) error {
 	relPath := filepath.Join("images", filename)
-	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete image %s", filename))
+	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete image %s", filename), author)
 }
 
-func (c *GitAutoCommitter) commitDelete(relPath, message string) error {
+func (c *GitAutoCommitter) commitDelete(relPath, message, author string) error {
 	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
 		return nil
 	}
@@ -80,9 +80,10 @@ func (c *GitAutoCommitter) commitDelete(relPath, message string) error {
 		c.mu.Unlock()
 		return err
 	}
+	commitName, commitEmail := c.resolveAuthor(author)
 	if err := c.runGit(
-		"-c", fmt.Sprintf("user.name=%s", c.commitName()),
-		"-c", fmt.Sprintf("user.email=%s", c.commitEmail()),
+		"-c", fmt.Sprintf("user.name=%s", commitName),
+		"-c", fmt.Sprintf("user.email=%s", commitEmail),
 		"commit", "-m", message,
 		"--allow-empty",
 	); err != nil {
@@ -94,7 +95,7 @@ func (c *GitAutoCommitter) commitDelete(relPath, message string) error {
 	return nil
 }
 
-func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
+func (c *GitAutoCommitter) commitFile(relativeFilePath, message, author string) error {
 	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
 		return nil
 	}
@@ -114,9 +115,10 @@ func (c *GitAutoCommitter) commitFile(relativeFilePath, message string) error {
 		return nil
 	}
 
+	commitName, commitEmail := c.resolveAuthor(author)
 	if err := c.runGit(
-		"-c", fmt.Sprintf("user.name=%s", c.commitName()),
-		"-c", fmt.Sprintf("user.email=%s", c.commitEmail()),
+		"-c", fmt.Sprintf("user.name=%s", commitName),
+		"-c", fmt.Sprintf("user.email=%s", commitEmail),
 		"commit", "-m", message,
 		"--", relativeFilePath,
 	); err != nil {
@@ -300,6 +302,15 @@ func (c *GitAutoCommitter) remoteName() string {
 		return c.remote.RemoteName
 	}
 	return "origin"
+}
+
+// resolveAuthor returns the commit name and email. If author is non-empty it
+// is used as the commit name; otherwise the configured default is used.
+func (c *GitAutoCommitter) resolveAuthor(author string) (string, string) {
+	if author != "" {
+		return author, c.commitEmail()
+	}
+	return c.commitName(), c.commitEmail()
 }
 
 func (c *GitAutoCommitter) commitName() string {

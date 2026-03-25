@@ -505,7 +505,7 @@ func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
 	if err := m.store.Save(slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageSave(slug)
+	_ = m.autoCommit.CommitPageSave(slug, "")
 	return mcpText(fmt.Sprintf("Created page '%s' (slug: %s)", title, slug))
 }
 
@@ -531,7 +531,7 @@ func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
 	if err := m.store.Save(slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageSave(slug)
+	_ = m.autoCommit.CommitPageSave(slug, "")
 	return mcpText(fmt.Sprintf("Updated page '%s'", slug))
 }
 
@@ -549,7 +549,7 @@ func (m *MCPHandler) toolDeletePage(args map[string]any) mcpCallToolResult {
 	if err := os.Remove(path); err != nil {
 		return mcpError("failed to delete page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageDelete(slug)
+	_ = m.autoCommit.CommitPageDelete(slug, "")
 	return mcpText(fmt.Sprintf("Deleted page '%s'", slug))
 }
 
@@ -599,7 +599,7 @@ func (m *MCPHandler) toolDeleteImage(args map[string]any) mcpCallToolResult {
 	if err := os.Remove(imgPath); err != nil {
 		return mcpError("image not found: " + filename)
 	}
-	_ = m.autoCommit.CommitImageDelete(filename)
+	_ = m.autoCommit.CommitImageDelete(filename, "")
 	return mcpText(fmt.Sprintf("Deleted image '%s'", filename))
 }
 
@@ -718,7 +718,7 @@ func (m *MCPHandler) toolCreatePageFromMediaWiki(args map[string]any) mcpCallToo
 	if err := m.store.Save(slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageSave(slug)
+	_ = m.autoCommit.CommitPageSave(slug, "")
 	return mcpText(fmt.Sprintf("Created page '%s' (slug: %s) from MediaWiki source", title, slug))
 }
 
@@ -745,7 +745,7 @@ func (m *MCPHandler) toolEditPageFromMediaWiki(args map[string]any) mcpCallToolR
 	if err := m.store.Save(slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageSave(slug)
+	_ = m.autoCommit.CommitPageSave(slug, "")
 	return mcpText(fmt.Sprintf("Updated page '%s' from MediaWiki source", slug))
 }
 

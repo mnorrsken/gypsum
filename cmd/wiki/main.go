@@ -98,8 +98,19 @@ func main() {
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
+	var root http.Handler = mux
+	if userHeader := os.Getenv("GYPSUM_AUTH_USER_HEADER"); userHeader != "" {
+		cfg := wiki.HeaderAuthConfig{
+			UserHeader:    userHeader,
+			GroupHeader:   envOrDefault("GYPSUM_AUTH_GROUP_HEADER", "Remote-Group"),
+			RequiredGroup: os.Getenv("GYPSUM_AUTH_REQUIRED_GROUP"),
+		}
+		root = wiki.HeaderAuth(cfg)(mux)
+		log.Printf("Header auth enabled: user=%s group=%s required=%s", cfg.UserHeader, cfg.GroupHeader, cfg.RequiredGroup)
+	}
+
 	addr := ":8080"
-	srv := &http.Server{Addr: addr, Handler: accessLog(mux)}
+	srv := &http.Server{Addr: addr, Handler: accessLog(root)}
 
 	// Graceful shutdown: listen for SIGINT/SIGTERM, then drain connections.
 	quit := make(chan os.Signal, 1)

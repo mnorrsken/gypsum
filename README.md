@@ -29,6 +29,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **External MCP with OAuth** — optional `/mcp/external` endpoint protected by a built-in OAuth 2.0 Authorization Server (Authorization Code + PKCE, Dynamic Client Registration); enables secure internet-facing access from Claude without exposing the wiki UI. Encrypted `{{secure_aes:...}}` fields are redacted from all responses and pages with encrypted fields cannot be edited via this endpoint. Access tokens are persisted to disk so connections survive server restarts
 - **Graceful shutdown** — handles SIGINT/SIGTERM, drains in-flight requests, and stops background goroutines cleanly
 - **Rate limiting** — per-IP rate limiting on MCP and OAuth endpoints to prevent brute-force attacks
+- **Header authentication** — optional reverse proxy auth via username/group headers (e.g. Authelia, Authentik); authenticated username is used as the git commit author
 - **Access logging** — logs every request with method, path, status code, and duration
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
@@ -66,6 +67,9 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 | `GYPSUM_OAUTH_PASSWORD` | _(required)_ | Single-user password for the OAuth login page. Required when `GYPSUM_OAUTH_ENABLED=true`. |
 | `GYPSUM_EXTERNAL_URL` | _(required)_ | Public base URL with no trailing slash, e.g. `https://wiki.example.com`. Used to build OAuth discovery document URLs. Required when `GYPSUM_OAUTH_ENABLED=true`. |
 | `GYPSUM_OAUTH_TOKEN_TTL` | `24h` | Access token lifetime as a Go duration string, e.g. `12h`, `7d`. |
+| `GYPSUM_AUTH_USER_HEADER` | _(empty)_ | Set to a header name (e.g. `Remote-User`) to enable reverse proxy authentication. When set, every request (except OAuth endpoints) must include this header. The username is used as the git commit author. |
+| `GYPSUM_AUTH_GROUP_HEADER` | `Remote-Group` | Header containing comma-separated group names. Only used when `GYPSUM_AUTH_USER_HEADER` is set. |
+| `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | If set, the group header must contain this group or the request is rejected with 403. |
 
 ## Usage
 

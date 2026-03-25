@@ -109,6 +109,16 @@ oauth:
   # The secret must contain a key named "oauth-password".
   existingSecret: ""
 
+# Header-based authentication (for use behind a reverse proxy like Authelia).
+auth:
+  # Set the user header name to enable header auth (e.g. "Remote-User").
+  # When set, every request (except OAuth endpoints) must include this header.
+  userHeader: ""
+  # Header containing comma-separated groups (default: Remote-Group).
+  groupHeader: "Remote-Group"
+  # If set, the group header must contain this group.
+  requiredGroup: ""
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

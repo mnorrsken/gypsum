@@ -105,6 +105,18 @@ spec:
               value: {{ .Values.oauth.tokenTtl | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.auth.userHeader }}
+            - name: GYPSUM_AUTH_USER_HEADER
+              value: {{ .Values.auth.userHeader | quote }}
+            {{- if .Values.auth.groupHeader }}
+            - name: GYPSUM_AUTH_GROUP_HEADER
+              value: {{ .Values.auth.groupHeader | quote }}
+            {{- end }}
+            {{- if .Values.auth.requiredGroup }}
+            - name: GYPSUM_AUTH_REQUIRED_GROUP
+              value: {{ .Values.auth.requiredGroup | quote }}
+            {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /
