@@ -70,19 +70,21 @@ spec:
             - name: GYPSUM_GIT_USERNAME
               value: {{ .Values.git.username | quote }}
             {{- end }}
-            {{- if .Values.git.password }}
+            {{- if or .Values.git.password .Values.git.existingSecret }}
             - name: GYPSUM_GIT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "gypsum.fullname" . }}-git
+                  name: {{ .Values.git.existingSecret | default (printf "%s-git" (include "gypsum.fullname" .)) }}
                   key: password
+                  optional: {{ not (empty .Values.git.existingSecret) }}
             {{- end }}
-            {{- if .Values.git.token }}
+            {{- if or .Values.git.token .Values.git.existingSecret }}
             - name: GYPSUM_GIT_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "gypsum.fullname" . }}-git
+                  name: {{ .Values.git.existingSecret | default (printf "%s-git" (include "gypsum.fullname" .)) }}
                   key: token
+                  optional: {{ not (empty .Values.git.existingSecret) }}
             {{- end }}
             {{- if .Values.git.pullInterval }}
             - name: GYPSUM_GIT_PULL_INTERVAL

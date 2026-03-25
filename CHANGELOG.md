@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.22.1
+
+### Added
+- **Helm: `git.existingSecret`** — reference a pre-existing Kubernetes Secret for git credentials instead of putting passwords/tokens in values. Keys in the secret (`password`, `token`) are optional when using `existingSecret`.
+
 ## v0.22.0
 
 ### Added
