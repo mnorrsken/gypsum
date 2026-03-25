@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.24.0
+
+### Changed
+- **Removed MCP `upload_image` tool** — MCP's JSON-only transport makes image upload impractical for AI assistants (Claude can't produce base64 data, and URL fetching is unreliable). Use the wiki UI for image uploads instead.
+
 ## v0.23.0
 
 ### Changed

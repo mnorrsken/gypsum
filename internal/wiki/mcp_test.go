@@ -2,13 +2,11 @@ package wiki
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -162,8 +160,8 @@ func TestMCPToolsList(t *testing.T) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(result.Tools) != 18 {
-		t.Fatalf("expected 18 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 17 {
+		t.Fatalf("expected 17 tools, got %d", len(result.Tools))
 	}
 	// Verify all tools have name, description, and schema
 	for _, tool := range result.Tools {
@@ -493,9 +491,6 @@ func TestMCPMissingRequiredArgs(t *testing.T) {
 		{"delete_page", map[string]any{}},
 		{"search_pages", map[string]any{}},
 		{"delete_image", map[string]any{}},
-		{"upload_image", map[string]any{}},
-		{"upload_image", map[string]any{"filename": "x.png"}},
-		{"upload_image", map[string]any{"data": "abc"}},
 		{"page_history", map[string]any{}},
 		{"get_page_revision", map[string]any{"slug": "x"}},
 		{"get_page_revision", map[string]any{"hash": "x"}},
@@ -580,85 +575,6 @@ func TestMCPLinkGraph(t *testing.T) {
 	text := toolResultText(t, resp)
 	if !bytes.Contains([]byte(text), []byte("Home")) || !bytes.Contains([]byte(text), []byte("About")) {
 		t.Fatalf("expected graph data: %s", text)
-	}
-}
-
-func TestMCPUploadImage(t *testing.T) {
-	handler, store := newTestMCP(t)
-
-	// Create a minimal valid PNG (1x1 pixel).
-	pngData := []byte{
-		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
-		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1
-		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE, // 8-bit RGB
-		0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, // IDAT chunk
-		0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00,
-		0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC, 0x33,
-		0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND chunk
-		0xAE, 0x42, 0x60, 0x82,
-	}
-	b64 := base64.StdEncoding.EncodeToString(pngData)
-
-	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name":      "upload_image",
-		"arguments": map[string]any{"filename": "test-photo.png", "data": b64},
-	})
-	text := toolResultText(t, resp)
-	if !strings.Contains(text, "Uploaded image") {
-		t.Fatalf("expected upload success message, got: %s", text)
-	}
-	if !strings.Contains(text, "/images/") {
-		t.Fatalf("expected image URL in response, got: %s", text)
-	}
-
-	// Verify the file was actually written to the images directory.
-	entries, err := os.ReadDir(store.ImagesDir())
-	if err != nil {
-		t.Fatalf("failed to read images dir: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 image file, got %d", len(entries))
-	}
-	if !strings.HasPrefix(entries[0].Name(), "test-photo-") {
-		t.Fatalf("expected filename starting with 'test-photo-', got: %s", entries[0].Name())
-	}
-}
-
-func TestMCPUploadImageBadExtension(t *testing.T) {
-	handler, _ := newTestMCP(t)
-	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name":      "upload_image",
-		"arguments": map[string]any{"filename": "malware.exe", "data": base64.StdEncoding.EncodeToString([]byte("not an image"))},
-	})
-	errText := toolResultIsError(t, resp)
-	if !strings.Contains(errText, "unsupported image type") {
-		t.Fatalf("expected unsupported type error, got: %s", errText)
-	}
-}
-
-func TestMCPUploadImageBadBase64(t *testing.T) {
-	handler, _ := newTestMCP(t)
-	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name":      "upload_image",
-		"arguments": map[string]any{"filename": "photo.png", "data": "not-valid-base64!!!"},
-	})
-	errText := toolResultIsError(t, resp)
-	if !strings.Contains(errText, "invalid base64") {
-		t.Fatalf("expected base64 error, got: %s", errText)
-	}
-}
-
-func TestMCPUploadImageBadMIME(t *testing.T) {
-	handler, _ := newTestMCP(t)
-	// Valid base64 but content is plain text, not an image.
-	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name":      "upload_image",
-		"arguments": map[string]any{"filename": "fake.png", "data": base64.StdEncoding.EncodeToString([]byte("this is not an image"))},
-	})
-	errText := toolResultIsError(t, resp)
-	if !strings.Contains(errText, "does not match") {
-		t.Fatalf("expected MIME mismatch error, got: %s", errText)
 	}
 }
 
