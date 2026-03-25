@@ -2,13 +2,16 @@ package wiki
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ── Wiki formatting guides (embedded in MCP tool descriptions) ─────────
@@ -339,6 +342,16 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"filename"}),
 		},
 		{
+			Name: "upload_image",
+			Description: "Upload an image to the wiki. The image data must be base64-encoded. " +
+				"Returns the markdown reference to use in pages. " +
+				"Supported formats: PNG, JPG, JPEG, GIF, WEBP, SVG (max 10 MB after decoding).",
+			InputSchema: mcpSchema("object", map[string]any{
+				"filename": mcpPropString("Original filename with extension, e.g. 'photo.png'. Used to derive the stored filename and validate the image type."),
+				"data":     mcpPropString("Base64-encoded image data (standard encoding, no data URI prefix)."),
+			}, []string{"filename", "data"}),
+		},
+		{
 			Name:        "get_recent_pages",
 			Description: "Get the most recently modified wiki pages.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -438,6 +451,8 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 		return m.toolListImages()
 	case "delete_image":
 		return m.toolDeleteImage(params.Arguments)
+	case "upload_image":
+		return m.toolUploadImage(params.Arguments)
 	case "get_recent_pages":
 		return m.toolGetRecentPages(params.Arguments)
 	case "get_favorites":
@@ -601,6 +616,74 @@ func (m *MCPHandler) toolDeleteImage(args map[string]any) mcpCallToolResult {
 	}
 	_ = m.autoCommit.CommitImageDelete(filename)
 	return mcpText(fmt.Sprintf("Deleted image '%s'", filename))
+}
+
+func (m *MCPHandler) toolUploadImage(args map[string]any) mcpCallToolResult {
+	filename, ok := mcpArgString(args, "filename")
+	if !ok {
+		return mcpError("missing required argument: filename")
+	}
+	dataStr, ok := mcpArgString(args, "data")
+	if !ok {
+		return mcpError("missing required argument: data")
+	}
+
+	// Validate extension.
+	ext := strings.ToLower(filepath.Ext(filename))
+	allowedExt := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true}
+	if !allowedExt[ext] {
+		return mcpError("unsupported image type: " + ext + " (allowed: png, jpg, jpeg, gif, webp, svg)")
+	}
+
+	// Decode base64.
+	raw, err := base64.StdEncoding.DecodeString(dataStr)
+	if err != nil {
+		return mcpError("invalid base64 data: " + err.Error())
+	}
+
+	const maxSize = 10 << 20 // 10 MB
+	if len(raw) > maxSize {
+		return mcpError("image too large (max 10 MB)")
+	}
+
+	// Sniff MIME type.
+	contentType := http.DetectContentType(raw)
+	allowedMIME := map[string]bool{
+		"image/png":     true,
+		"image/jpeg":    true,
+		"image/gif":     true,
+		"image/webp":    true,
+		"image/svg+xml": true,
+		"text/xml":      true, // SVGs may be detected as text/xml
+	}
+	if !allowedMIME[contentType] {
+		return mcpError("file content does not match an allowed image type (detected: " + contentType + ")")
+	}
+
+	// Generate unique filename (same logic as HTTP upload handler).
+	randBytes := make([]byte, 4)
+	_, _ = rand.Read(randBytes)
+	namePart := sanitizeImageBasename(filename)
+	datePart := time.Now().Format("20060102")
+	shortRand := hex.EncodeToString(randBytes)
+	var storedName string
+	if namePart != "" {
+		storedName = fmt.Sprintf("%s-%s-%s%s", namePart, datePart, shortRand, ext)
+	} else {
+		storedName = fmt.Sprintf("%s-%s%s", datePart, shortRand, ext)
+	}
+
+	dstPath := m.store.ImagePath(storedName)
+	if err := os.WriteFile(dstPath, raw, 0o644); err != nil {
+		return mcpError("failed to save image: " + err.Error())
+	}
+
+	if m.autoCommit != nil {
+		_ = m.autoCommit.CommitImageSave(storedName)
+	}
+
+	url := "/images/" + storedName
+	return mcpText(fmt.Sprintf("Uploaded image '%s'\nURL: %s\nMarkdown: ![%s](%s)", storedName, url, sanitizeImageBasename(filename), url))
 }
 
 func (m *MCPHandler) toolGetRecentPages(args map[string]any) mcpCallToolResult {

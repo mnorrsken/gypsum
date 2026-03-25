@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.22.0
+
+### Added
+- **MCP tool: `upload_image`** — upload images to the wiki via MCP by providing base64-encoded data and a filename. Validates file extension and MIME type, generates unique filenames, and returns the markdown reference for use in pages. Supports PNG, JPG, JPEG, GIF, WEBP, and SVG (max 10 MB).
+
 ## v0.21.0
 
 ### Added
