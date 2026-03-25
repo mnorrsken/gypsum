@@ -30,6 +30,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Graceful shutdown** — handles SIGINT/SIGTERM, drains in-flight requests, and stops background goroutines cleanly
 - **Rate limiting** — per-IP rate limiting on MCP and OAuth endpoints to prevent brute-force attacks
 - **Header authentication** — optional reverse proxy auth via username/group headers (e.g. Authelia, Authentik); authenticated username is used as the git commit author
+- **Health probes** — dedicated `/healthz` and `/readyz` endpoints on a separate port (default 9091) for Kubernetes probes, bypassing auth middleware
 - **Access logging** — logs every request with method, path, status code, and duration
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
@@ -70,6 +71,7 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 | `GYPSUM_AUTH_USER_HEADER` | _(empty)_ | Set to a header name (e.g. `Remote-User`) to enable reverse proxy authentication. When set, every request (except OAuth endpoints) must include this header. The username is used as the git commit author. |
 | `GYPSUM_AUTH_GROUP_HEADER` | `Remote-Group` | Header containing comma-separated group names. Only used when `GYPSUM_AUTH_USER_HEADER` is set. |
 | `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | If set, the group header must contain this group or the request is rejected with 403. |
+| `GYPSUM_PROBE_PORT` | `:9091` | Listen address for the health-probe server (`/healthz`, `/readyz`). Set to a different `:<port>` to change. |
 
 ## Usage
 
@@ -332,6 +334,7 @@ Key values:
 | `oauth.externalUrl` | `""` | Public base URL with no trailing slash (e.g. `https://wiki.example.com`). Required when `oauth.enabled` is true |
 | `oauth.tokenTtl` | `24h` | Access token lifetime (Go duration string, e.g. `24h`, `12h`) |
 | `oauth.existingSecret` | `""` | Name of an existing Secret (must contain an `oauth-password` key) |
+| `probePort` | `9091` | Port for the dedicated health-probe server (`/healthz`, `/readyz`). Kubernetes probes use this port to bypass auth middleware |
 
 ### Secret Handling
 

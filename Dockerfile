@@ -26,6 +26,6 @@ COPY cmd/wiki/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh && mkdir -p /app/data/pages && chown -R app:app /app
 
 USER app
-EXPOSE 8080
+EXPOSE 8080 9091
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

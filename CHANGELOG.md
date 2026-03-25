@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.26.0
+
+### Added
+- **Dedicated health-probe server** — a separate HTTP server on port 9091 (configurable via `GYPSUM_PROBE_PORT`) serves `/healthz` and `/readyz` endpoints without authentication middleware. Kubernetes liveness and readiness probes now work correctly when header-based authentication is enabled.
+
 ## v0.25.0
 
 ### Added

@@ -40,6 +40,9 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            - name: probes
+              containerPort: {{ .Values.probePort | default 9091 }}
+              protocol: TCP
           env:
             - name: GYPSUM_SECRET_KEY
               valueFrom:
@@ -117,16 +120,20 @@ spec:
               value: {{ .Values.auth.requiredGroup | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.probePort }}
+            - name: GYPSUM_PROBE_PORT
+              value: ":{{ .Values.probePort }}"
+            {{- end }}
           livenessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /healthz
+              port: probes
             initialDelaySeconds: 5
             periodSeconds: 30
           readinessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /readyz
+              port: probes
             initialDelaySeconds: 3
             periodSeconds: 10
           volumeMounts:

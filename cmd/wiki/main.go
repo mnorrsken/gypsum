@@ -112,6 +112,26 @@ func main() {
 	addr := ":8080"
 	srv := &http.Server{Addr: addr, Handler: accessLog(root)}
 
+	// Start a dedicated probe server for Kubernetes liveness/readiness checks.
+	// This runs on a separate port without auth middleware so probes always work.
+	probeAddr := envOrDefault("GYPSUM_PROBE_PORT", ":9091")
+	probeMux := http.NewServeMux()
+	probeMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+	probeMux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+	probeSrv := &http.Server{Addr: probeAddr, Handler: probeMux}
+	go func() {
+		log.Printf("probe server listening on %s", probeAddr)
+		if err := probeSrv.ListenAndServe(); err != http.ErrServerClosed {
+			log.Printf("probe server failed: %v", err)
+		}
+	}()
+
 	// Graceful shutdown: listen for SIGINT/SIGTERM, then drain connections.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -121,6 +141,7 @@ func main() {
 		autoCommitter.Stop()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		probeSrv.Shutdown(ctx)
 		if err := srv.Shutdown(ctx); err != nil {
 			log.Printf("shutdown error: %v", err)
 		}
