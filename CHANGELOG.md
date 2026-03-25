@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.23.0
+
+### Changed
+- **MCP `upload_image` supports URL download** — the tool now accepts a `url` parameter as an alternative to `data` (base64). When given a URL, the server downloads the image directly, which is more reliable for AI assistants like Claude that struggle with large base64 payloads.
+
 ## v0.22.1
 
 ### Added

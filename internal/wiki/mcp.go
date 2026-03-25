@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -343,13 +344,14 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name: "upload_image",
-			Description: "Upload an image to the wiki. The image data must be base64-encoded. " +
+			Description: "Upload an image to the wiki. Provide EITHER 'url' (preferred — the server downloads it) OR 'data' (base64-encoded). " +
 				"Returns the markdown reference to use in pages. " +
-				"Supported formats: PNG, JPG, JPEG, GIF, WEBP, SVG (max 10 MB after decoding).",
+				"Supported formats: PNG, JPG, JPEG, GIF, WEBP, SVG (max 10 MB).",
 			InputSchema: mcpSchema("object", map[string]any{
 				"filename": mcpPropString("Original filename with extension, e.g. 'photo.png'. Used to derive the stored filename and validate the image type."),
-				"data":     mcpPropString("Base64-encoded image data (standard encoding, no data URI prefix)."),
-			}, []string{"filename", "data"}),
+				"data":     mcpPropString("Base64-encoded image data (standard encoding, no data URI prefix). Use 'url' instead when possible."),
+				"url":      mcpPropString("URL to download the image from. The server fetches the image directly. Preferred over 'data'."),
+			}, []string{"filename"}),
 		},
 		{
 			Name:        "get_recent_pages",
@@ -623,10 +625,6 @@ func (m *MCPHandler) toolUploadImage(args map[string]any) mcpCallToolResult {
 	if !ok {
 		return mcpError("missing required argument: filename")
 	}
-	dataStr, ok := mcpArgString(args, "data")
-	if !ok {
-		return mcpError("missing required argument: data")
-	}
 
 	// Validate extension.
 	ext := strings.ToLower(filepath.Ext(filename))
@@ -635,13 +633,36 @@ func (m *MCPHandler) toolUploadImage(args map[string]any) mcpCallToolResult {
 		return mcpError("unsupported image type: " + ext + " (allowed: png, jpg, jpeg, gif, webp, svg)")
 	}
 
-	// Decode base64.
-	raw, err := base64.StdEncoding.DecodeString(dataStr)
-	if err != nil {
-		return mcpError("invalid base64 data: " + err.Error())
+	const maxSize = 10 << 20 // 10 MB
+
+	var raw []byte
+
+	if urlStr, ok := mcpArgString(args, "url"); ok {
+		// Download image from URL.
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Get(urlStr)
+		if err != nil {
+			return mcpError("failed to download image: " + err.Error())
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return mcpError(fmt.Sprintf("failed to download image: HTTP %d", resp.StatusCode))
+		}
+		raw, err = io.ReadAll(io.LimitReader(resp.Body, maxSize+1))
+		if err != nil {
+			return mcpError("failed to read image data: " + err.Error())
+		}
+	} else if dataStr, ok := mcpArgString(args, "data"); ok {
+		// Decode base64.
+		var err error
+		raw, err = base64.StdEncoding.DecodeString(dataStr)
+		if err != nil {
+			return mcpError("invalid base64 data: " + err.Error())
+		}
+	} else {
+		return mcpError("either 'url' or 'data' must be provided")
 	}
 
-	const maxSize = 10 << 20 // 10 MB
 	if len(raw) > maxSize {
 		return mcpError("image too large (max 10 MB)")
 	}
