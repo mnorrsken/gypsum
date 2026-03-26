@@ -16,7 +16,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Favorites sidebar** — edit `_favorites.md` to pin pages in the sidebar
 - **Recent Edits** — paginated view of all wiki edits in reverse chronological order at `/recent-edits`, sourced from git history
 - **Full-text search** — term-based search with relevance ranking; queries are split into words (punctuation stripped), each matched independently with prefix support (e.g. "lösen" finds "lösenord"); title matches rank higher than content matches
-- **Auto git commits** — every page save and image upload is committed to a git repo inside `data/`
+- **Auto git commits** — every page save and image upload is committed to a git repo inside `data/repo/`
 - **Git remote sync** — optional push-after-commit and periodic pull with "ours wins" conflict resolution, configured via environment variables
 - **Diff preview** — tick "Show diff" in the editor to review a colorized unified diff of the raw on-disk content before committing; the preference is remembered across sessions
 - **Docker-ready** — single-container deployment with optional git remote sync
@@ -77,7 +77,7 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 
 ### Pages
 
-- All pages live in `data/pages/` as `.md` files.
+- All pages live in `data/repo/pages/` as `.md` files.
 - Click **+ New Page** in the sidebar to create a page. You'll be prompted for a unique title.
 - Use `[[Page Title]]` to link between pages. The title is converted to a slug (`Page_Title`) automatically.
 - Each page has **Page**, **Edit**, and **History** tabs for quick navigation.
@@ -363,13 +363,15 @@ helm install gypsum oci://ghcr.io/mnorrsken/charts/gypsum \
 
 ```
 data/
-├── .git/          # auto-initialized git repo
-├── pages/         # markdown page files
-│   ├── Home.md
-│   ├── Scratch_Pad.md
-│   └── _favorites.md
-└── images/        # uploaded images
-    └── my-photo-20260228-a1b2c3d4.png
+├── oauth_tokens.json   # OAuth token persistence (outside git repo)
+└── repo/               # git working directory
+    ├── .git/           # auto-initialized git repo
+    ├── pages/          # markdown page files
+    │   ├── Home.md
+    │   ├── Scratch_Pad.md
+    │   └── _favorites.md
+    └── images/         # uploaded images
+        └── my-photo-20260228-a1b2c3d4.png
 ```
 
 ## Development

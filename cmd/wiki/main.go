@@ -31,8 +31,9 @@ func main() {
 		log.Println("WARNING: GYPSUM_SECRET_KEY not set, using default key")
 	}
 
-	pagesDir := filepath.Join(workspaceRoot, "data", "pages")
 	dataDir := filepath.Join(workspaceRoot, "data")
+	repoDir := filepath.Join(dataDir, "repo")
+	pagesDir := filepath.Join(repoDir, "pages")
 	templatesDir := filepath.Join(workspaceRoot, "web", "templates")
 	staticDir := filepath.Join(workspaceRoot, "web", "static")
 
@@ -62,7 +63,7 @@ func main() {
 		}
 	}
 
-	autoCommitter := wiki.NewGitAutoCommitter(dataDir, remoteConfig)
+	autoCommitter := wiki.NewGitAutoCommitter(repoDir, remoteConfig)
 	if remoteConfig != nil {
 		pullInterval := 5 * time.Minute
 		if v := os.Getenv("GYPSUM_GIT_PULL_INTERVAL"); v != "" {

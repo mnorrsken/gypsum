@@ -2,6 +2,17 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.27.0
+
+### Changed
+- **Data directory restructure** — the git repository now lives in `data/repo/` instead of directly in `data/`. Pages and images are stored under `data/repo/pages/` and `data/repo/images/`, while `oauth_tokens.json` remains in `data/` outside the git working tree. This fixes a bug where `git stash --include-untracked` during remote sync could remove or corrupt the OAuth tokens file, causing authenticated sessions to be lost.
+
+### Fixed
+- **OAuth tokens lost after git sync** — `oauth_tokens.json` was inside the git working directory and could be stashed/removed during `pullRebase()` operations. Moving it outside the repo directory prevents git from interfering with token persistence.
+
+### Migration
+- The Helm chart includes an init container that automatically migrates existing installations from the flat `data/` layout to the new `data/repo/` layout. No manual steps required.
+
 ## v0.26.0
 
 ### Added

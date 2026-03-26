@@ -30,6 +30,32 @@ spec:
       serviceAccountName: {{ include "gypsum.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: migrate-data-layout
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          command:
+            - sh
+            - -c
+            - |
+              # Migrate from flat data/ layout to data/repo/ layout (v0.27.0+).
+              # If data/pages/ exists but data/repo/ does not, move pages, images,
+              # and .git into data/repo/. Leaves oauth_tokens.json in data/.
+              DATA=/app/data
+              if [ -d "$DATA/pages" ] && [ ! -d "$DATA/repo" ]; then
+                echo "migrating data layout: data/ -> data/repo/"
+                mkdir -p "$DATA/repo"
+                for item in pages images .git .gitignore; do
+                  [ -e "$DATA/$item" ] && mv "$DATA/$item" "$DATA/repo/$item"
+                done
+                echo "migration complete"
+              else
+                echo "no migration needed"
+              fi
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
