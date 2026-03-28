@@ -185,7 +185,7 @@ URL: https://your-wiki.example.com/mcp/external
 
 Claude will detect the 401 response, follow the OAuth discovery documents, redirect you to the `/oauth/authorize` login page, and exchange the code for a Bearer token automatically. The token is valid for 24 hours by default.
 
-**Authelia bypass rule** — add a bypass rule so Authelia does not intercept the OAuth and MCP paths:
+**Authelia bypass rule** — add a bypass rule so Authelia does not intercept the OAuth, MCP, public page, and static asset paths:
 
 ```yaml
 access_control:
@@ -195,6 +195,8 @@ access_control:
         - "^/mcp/external.*$"
         - "^/.well-known/oauth.*$"
         - "^/oauth/.*$"
+        - "^/public/.*$"
+        - "^/static/.*$"
       policy: bypass
     - domain: your-wiki.example.com
       policy: one_factor   # your normal rule for the wiki UI

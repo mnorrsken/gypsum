@@ -139,6 +139,23 @@ func TestHeaderAuthSkipsPublicPaths(t *testing.T) {
 	}
 }
 
+func TestHeaderAuthSkipsStaticAssets(t *testing.T) {
+	cfg := HeaderAuthConfig{UserHeader: "X-User"}
+	mw := HeaderAuth(cfg)(echoHandler)
+
+	paths := []string{"/static/style.css", "/static/app.js", "/static/fonts/inter.woff2"}
+
+	for _, path := range paths {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", path, nil)
+		mw.ServeHTTP(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("path %s: status = %d, want 200 (static bypass)", path, w.Code)
+		}
+	}
+}
+
 func TestHeaderAuthDoesNotSkipRegularPaths(t *testing.T) {
 	cfg := HeaderAuthConfig{UserHeader: "X-User"}
 	mw := HeaderAuth(cfg)(echoHandler)

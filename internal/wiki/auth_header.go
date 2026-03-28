@@ -36,8 +36,9 @@ func HeaderAuth(cfg HeaderAuthConfig) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 
-			// Skip auth for public pages and OAuth-related endpoints — they have their own auth.
-			if strings.HasPrefix(path, "/public/") ||
+			// Skip auth for static assets, public pages, and OAuth-related endpoints.
+			if strings.HasPrefix(path, "/static/") ||
+				strings.HasPrefix(path, "/public/") ||
 				strings.HasPrefix(path, "/.well-known/") ||
 				strings.HasPrefix(path, "/oauth/") ||
 				path == "/mcp/external" {
