@@ -29,6 +29,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **External MCP with OAuth** — optional `/mcp/external` endpoint protected by a built-in OAuth 2.0 Authorization Server (Authorization Code + PKCE, Dynamic Client Registration); enables secure internet-facing access from Claude without exposing the wiki UI. Encrypted `{{secure_aes:...}}` fields are redacted from all responses and pages with encrypted fields cannot be edited via this endpoint. Access tokens are persisted to disk so connections survive server restarts
 - **Graceful shutdown** — handles SIGINT/SIGTERM, drains in-flight requests, and stops background goroutines cleanly
 - **Rate limiting** — per-IP rate limiting on MCP and OAuth endpoints to prevent brute-force attacks
+- **Public page sharing** — share any page via a secret link from the **Share** tab. Public pages are rendered in a minimal read-only layout without sidebars, editing, or navigation. Wiki links become plain text and encrypted fields are hidden. Links can be revoked or regenerated at any time
 - **Header authentication** — optional reverse proxy auth via username/group headers (e.g. Authelia, Authentik); authenticated username is used as the git commit author
 - **Health probes** — dedicated `/healthz` and `/readyz` endpoints on a separate port (default 9091) for Kubernetes probes, bypassing auth middleware
 - **Access logging** — logs every request with method, path, status code, and duration
@@ -80,7 +81,7 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 - All pages live in `data/repo/pages/` as `.md` files.
 - Click **+ New Page** in the sidebar to create a page. You'll be prompted for a unique title.
 - Use `[[Page Title]]` to link between pages. The title is converted to a slug (`Page_Title`) automatically.
-- Each page has **Page**, **Edit**, and **History** tabs for quick navigation.
+- Each page has **Page**, **Edit**, **Share**, and **History** tabs for quick navigation.
 
 ### Secure Fields
 
@@ -363,7 +364,7 @@ helm install gypsum oci://ghcr.io/mnorrsken/charts/gypsum \
 
 ```
 data/
-├── oauth_tokens.json   # OAuth token persistence (outside git repo)
+├── gypsum.db           # SQLite database (shares, OAuth tokens)
 └── repo/               # git working directory
     ├── .git/           # auto-initialized git repo
     ├── pages/          # markdown page files

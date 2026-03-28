@@ -11,8 +11,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -32,11 +30,10 @@ type OAuthServer struct {
 	password    string
 	tokenTTL    time.Duration
 	externalURL string // no trailing slash
-	dataDir     string // persistent storage directory
+	db          *DB    // SQLite database for token persistence
 
-	mu     sync.Mutex
-	codes  map[string]pendingCode
-	tokens map[string]time.Time
+	mu    sync.Mutex
+	codes map[string]pendingCode
 }
 
 type pendingCode struct {
@@ -56,18 +53,16 @@ type loginFormData struct {
 }
 
 // NewOAuthServer creates an OAuthServer. externalURL must not have a trailing slash.
-// dataDir is the persistent storage directory for token state (e.g. "data/").
-// It loads persisted tokens from disk and starts a background purge goroutine.
-func NewOAuthServer(password, externalURL string, tokenTTL time.Duration, dataDir string) *OAuthServer {
+// db is the SQLite database used for token persistence.
+// It starts a background purge goroutine for expired codes and tokens.
+func NewOAuthServer(password, externalURL string, tokenTTL time.Duration, db *DB) *OAuthServer {
 	o := &OAuthServer{
 		password:    password,
 		tokenTTL:    tokenTTL,
 		externalURL: strings.TrimRight(externalURL, "/"),
-		dataDir:     dataDir,
+		db:          db,
 		codes:       make(map[string]pendingCode),
-		tokens:      make(map[string]time.Time),
 	}
-	o.loadTokens()
 	go o.purgeExpiredLoop()
 	return o
 }
@@ -78,82 +73,18 @@ func (o *OAuthServer) purgeExpiredLoop() {
 	defer ticker.Stop()
 	for range ticker.C {
 		now := time.Now()
-		dirty := false
 		o.mu.Lock()
 		for code, pending := range o.codes {
 			if now.After(pending.expiry) {
 				delete(o.codes, code)
 			}
 		}
-		for token, expiry := range o.tokens {
-			if now.After(expiry) {
-				delete(o.tokens, token)
-				dirty = true
-			}
-		}
-		if dirty {
-			o.persistTokensLocked()
-		}
 		o.mu.Unlock()
-	}
-}
-
-const oauthTokensFile = "oauth_tokens.json"
-
-// tokenEntry is the JSON-serializable form of a token.
-type tokenEntry struct {
-	Token  string    `json:"token"`
-	Expiry time.Time `json:"expiry"`
-}
-
-// tokensPath returns the full path to the tokens persistence file.
-func (o *OAuthServer) tokensPath() string {
-	return filepath.Join(o.dataDir, oauthTokensFile)
-}
-
-// loadTokens reads persisted tokens from disk into memory, discarding expired ones.
-func (o *OAuthServer) loadTokens() {
-	if o.dataDir == "" {
-		return
-	}
-	data, err := os.ReadFile(o.tokensPath())
-	if err != nil {
-		return // file doesn't exist yet — first run
-	}
-	var entries []tokenEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
-		log.Printf("oauth: failed to parse %s: %v", oauthTokensFile, err)
-		return
-	}
-	now := time.Now()
-	loaded := 0
-	for _, e := range entries {
-		if now.Before(e.Expiry) {
-			o.tokens[e.Token] = e.Expiry
-			loaded++
+		if n, err := o.db.PurgeExpiredOAuthTokens(); err != nil {
+			log.Printf("oauth: purge error: %v", err)
+		} else if n > 0 {
+			log.Printf("oauth: purged %d expired token(s)", n)
 		}
-	}
-	if loaded > 0 {
-		log.Printf("oauth: restored %d token(s) from disk", loaded)
-	}
-}
-
-// persistTokensLocked writes the current tokens to disk. Must be called with o.mu held.
-func (o *OAuthServer) persistTokensLocked() {
-	if o.dataDir == "" {
-		return
-	}
-	entries := make([]tokenEntry, 0, len(o.tokens))
-	for token, expiry := range o.tokens {
-		entries = append(entries, tokenEntry{Token: token, Expiry: expiry})
-	}
-	data, err := json.Marshal(entries)
-	if err != nil {
-		log.Printf("oauth: failed to marshal tokens: %v", err)
-		return
-	}
-	if err := os.WriteFile(o.tokensPath(), data, 0o600); err != nil {
-		log.Printf("oauth: failed to persist tokens: %v", err)
 	}
 }
 
@@ -167,18 +98,7 @@ func (o *OAuthServer) ValidateBearer(r *http.Request) bool {
 	if token == "" {
 		return false
 	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	expiry, ok := o.tokens[token]
-	if !ok {
-		return false
-	}
-	if time.Now().After(expiry) {
-		delete(o.tokens, token)
-		o.persistTokensLocked()
-		return false
-	}
-	return true
+	return o.db.ValidateOAuthToken(token)
 }
 
 // HandleProtectedResource serves GET /.well-known/oauth-protected-resource.
@@ -196,14 +116,14 @@ func (o *OAuthServer) HandleProtectedResource(w http.ResponseWriter, r *http.Req
 func (o *OAuthServer) HandleAuthServerMeta(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"issuer":                           o.externalURL,
-		"authorization_endpoint":           o.externalURL + "/oauth/authorize",
-		"token_endpoint":                   o.externalURL + "/oauth/token",
-		"registration_endpoint":            o.externalURL + "/oauth/register",
-		"response_types_supported":         []string{"code"},
-		"grant_types_supported":            []string{"authorization_code"},
+		"issuer":                                o.externalURL,
+		"authorization_endpoint":                o.externalURL + "/oauth/authorize",
+		"token_endpoint":                        o.externalURL + "/oauth/token",
+		"registration_endpoint":                 o.externalURL + "/oauth/register",
+		"response_types_supported":              []string{"code"},
+		"grant_types_supported":                 []string{"authorization_code"},
 		"token_endpoint_auth_methods_supported": []string{"none"},
-		"code_challenge_methods_supported": []string{"S256"},
+		"code_challenge_methods_supported":      []string{"S256"},
 	})
 }
 
@@ -321,10 +241,11 @@ func (o *OAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := oauthGenerateToken()
-	o.mu.Lock()
-	o.tokens[token] = time.Now().Add(o.tokenTTL)
-	o.persistTokensLocked()
-	o.mu.Unlock()
+	if err := o.db.SaveOAuthToken(token, time.Now().Add(o.tokenTTL)); err != nil {
+		log.Printf("oauth: failed to persist token: %v", err)
+		oauthTokenError(w, "server_error", "failed to issue token")
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")

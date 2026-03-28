@@ -44,6 +44,11 @@ func main() {
 		log.Fatalf("failed to seed default pages: %v", err)
 	}
 
+	db, err := wiki.OpenDB(dataDir)
+	if err != nil {
+		log.Fatalf("failed to open database: %v", err)
+	}
+
 	store := wiki.NewPageStore(pagesDir)
 	crypto := wiki.NewServerCrypto(secretKey)
 	renderer := wiki.NewMarkdownRenderer()
@@ -90,11 +95,11 @@ func main() {
 				tokenTTL = d
 			}
 		}
-		oauthServer = wiki.NewOAuthServer(password, externalURL, tokenTTL, dataDir)
+		oauthServer = wiki.NewOAuthServer(password, externalURL, tokenTTL, db)
 		log.Printf("OAuth enabled: /mcp/external protected via OAuth (external URL: %s)", externalURL)
 	}
 
-	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter, oauthServer)
+	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter, oauthServer, db)
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
@@ -140,6 +145,7 @@ func main() {
 		<-quit
 		log.Println("shutting down…")
 		autoCommitter.Stop()
+		db.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		probeSrv.Shutdown(ctx)

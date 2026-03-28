@@ -24,6 +24,7 @@ type Handler struct {
 	templates  string
 	autoCommit *GitAutoCommitter
 	oauth      *OAuthServer // non-nil → register /mcp/external + OAuth discovery routes
+	db         *DB          // SQLite database for shares and token storage
 	tmplCache  map[string]*template.Template
 }
 
@@ -54,9 +55,12 @@ type TemplateData struct {
 	IsNew         bool
 	DiffHTML     template.HTML
 	GraphJSON    template.JS
+	ShareToken   string // non-empty if page has an active share link
+	ShareURL     string // full public URL for the share link
+	ShareCreated string // human-readable creation time
 }
 
-func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer) *Handler {
+func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB) *Handler {
 	h := &Handler{
 		store:      store,
 		crypto:     crypto,
@@ -64,6 +68,7 @@ func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRender
 		templates:  templatesDir,
 		autoCommit: autoCommitter,
 		oauth:      oauth,
+		db:         db,
 		tmplCache:  make(map[string]*template.Template),
 	}
 	h.parseTemplates()
@@ -81,7 +86,7 @@ func (h *Handler) parseTemplates() {
 	basePath := filepath.Join(h.templates, "base.html")
 	names := []string{
 		"view", "edit", "new", "search", "pages", "history",
-		"history_diff", "images", "diff", "graph", "recent_edits",
+		"history_diff", "images", "diff", "graph", "recent_edits", "share",
 	}
 	for _, name := range names {
 		pagePath := filepath.Join(h.templates, name+".html")
@@ -91,6 +96,12 @@ func (h *Handler) parseTemplates() {
 			continue
 		}
 		h.tmplCache[name] = tmpl
+	}
+
+	// Public page template is standalone (no base layout).
+	publicPath := filepath.Join(h.templates, "public.html")
+	if tmpl, err := template.New("").Funcs(templateFuncs).ParseFiles(publicPath); err == nil {
+		h.tmplCache["public"] = tmpl
 	}
 }
 
@@ -111,6 +122,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/images/list", h.handleImageList)
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
 	mux.HandleFunc("/delete/", h.handleDeletePage)
+	mux.HandleFunc("/share/", h.handleShare)
+	mux.HandleFunc("/public/", h.handlePublic)
 	mux.HandleFunc("/graph", h.handleGraph)
 	mux.HandleFunc("/recent-edits", h.handleRecentEdits)
 	mux.HandleFunc("/convert/mediawiki", h.handleConvertMediaWiki)
@@ -742,7 +755,144 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.autoCommit.CommitPageDelete(slug, UsernameFromRequest(r))
+	// Clean up any share link for this page.
+	if h.db != nil {
+		_ = h.db.DeleteShare(slug)
+	}
 	http.Redirect(w, r, "/pages", http.StatusFound)
+}
+
+func (h *Handler) handleShare(w http.ResponseWriter, r *http.Request) {
+	slug := strings.TrimPrefix(r.URL.Path, "/share/")
+	if slug == "" {
+		http.Error(w, "missing page slug", http.StatusBadRequest)
+		return
+	}
+
+	page, err := h.store.Load(slug)
+	if err != nil {
+		if errors.Is(err, ErrPageNotFound) {
+			http.Error(w, "page not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	title := page.Title
+	if h1, _ := ExtractH1Title(page.Content); h1 != "" {
+		title = h1
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		data := TemplateData{
+			Title: "Share: " + title,
+			Page:  &Page{Slug: slug, Title: title},
+		}
+		if h.db != nil {
+			if share, err := h.db.GetShare(slug); err == nil && share != nil {
+				data.ShareToken = share.Token
+				data.ShareURL = buildShareURL(r, share.Token)
+				data.ShareCreated = share.CreatedAt.Format("2006-01-02 15:04")
+			}
+		}
+		h.render(w, "share", data)
+
+	case http.MethodPost:
+		if h.db == nil {
+			http.Error(w, "sharing not available", http.StatusInternalServerError)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		switch r.FormValue("action") {
+		case "create", "regenerate":
+			if _, err := h.db.CreateShare(slug); err != nil {
+				http.Error(w, "failed to create share link", http.StatusInternalServerError)
+				return
+			}
+		case "revoke":
+			if err := h.db.DeleteShare(slug); err != nil {
+				http.Error(w, "failed to revoke share link", http.StatusInternalServerError)
+				return
+			}
+		}
+		http.Redirect(w, r, "/share/"+slug, http.StatusFound)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) handlePublic(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	token := strings.TrimPrefix(r.URL.Path, "/public/")
+	if token == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	if h.db == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	share, err := h.db.GetShareByToken(token)
+	if err != nil || share == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	page, err := h.store.Load(share.Slug)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	displayTitle := page.Title
+	renderSource := page.Content
+	if h1, rest := ExtractH1Title(page.Content); h1 != "" {
+		displayTitle = h1
+		renderSource = rest
+	}
+
+	rendered, err := h.renderer.RenderPublic(renderSource)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tmpl := h.tmplCache["public"]
+	if tmpl == nil {
+		http.Error(w, "template not found: public", http.StatusInternalServerError)
+		return
+	}
+
+	data := TemplateData{
+		Title:        displayTitle,
+		RenderedHTML: rendered,
+	}
+	if err := tmpl.ExecuteTemplate(w, "public", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// buildShareURL constructs the full public URL for a share token from the request.
+func buildShareURL(r *http.Request, token string) string {
+	scheme := "http"
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/public/%s", scheme, r.Host, token)
 }
 
 func (h *Handler) handleConvertMediaWiki(w http.ResponseWriter, r *http.Request) {

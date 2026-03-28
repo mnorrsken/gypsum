@@ -1,0 +1,329 @@
+package wiki
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// openTestDB creates a temporary database for testing.
+func openTestDB(t *testing.T) *DB {
+	t.Helper()
+	db, err := OpenDB(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+// --- Share tests ---
+
+func TestCreateAndGetShare(t *testing.T) {
+	db := openTestDB(t)
+
+	share, err := db.CreateShare("My_Page")
+	if err != nil {
+		t.Fatalf("CreateShare: %v", err)
+	}
+	if share.Slug != "My_Page" {
+		t.Fatalf("slug = %q, want My_Page", share.Slug)
+	}
+	if len(share.Token) != 64 { // 32 bytes = 64 hex chars
+		t.Fatalf("token length = %d, want 64", len(share.Token))
+	}
+
+	got, err := db.GetShare("My_Page")
+	if err != nil {
+		t.Fatalf("GetShare: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetShare returned nil for existing share")
+	}
+	if got.Token != share.Token {
+		t.Fatalf("token mismatch: got %q, want %q", got.Token, share.Token)
+	}
+}
+
+func TestGetShareByToken(t *testing.T) {
+	db := openTestDB(t)
+
+	share, err := db.CreateShare("Test_Page")
+	if err != nil {
+		t.Fatalf("CreateShare: %v", err)
+	}
+
+	got, err := db.GetShareByToken(share.Token)
+	if err != nil {
+		t.Fatalf("GetShareByToken: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetShareByToken returned nil for existing token")
+	}
+	if got.Slug != "Test_Page" {
+		t.Fatalf("slug = %q, want Test_Page", got.Slug)
+	}
+}
+
+func TestGetShareByTokenNotFound(t *testing.T) {
+	db := openTestDB(t)
+
+	got, err := db.GetShareByToken("nonexistent-token")
+	if err != nil {
+		t.Fatalf("GetShareByToken: %v", err)
+	}
+	if got != nil {
+		t.Fatal("expected nil for nonexistent token")
+	}
+}
+
+func TestGetShareNotFound(t *testing.T) {
+	db := openTestDB(t)
+
+	got, err := db.GetShare("Nonexistent")
+	if err != nil {
+		t.Fatalf("GetShare: %v", err)
+	}
+	if got != nil {
+		t.Fatal("expected nil for nonexistent slug")
+	}
+}
+
+func TestDeleteShare(t *testing.T) {
+	db := openTestDB(t)
+
+	if _, err := db.CreateShare("Delete_Me"); err != nil {
+		t.Fatalf("CreateShare: %v", err)
+	}
+
+	if err := db.DeleteShare("Delete_Me"); err != nil {
+		t.Fatalf("DeleteShare: %v", err)
+	}
+
+	got, err := db.GetShare("Delete_Me")
+	if err != nil {
+		t.Fatalf("GetShare: %v", err)
+	}
+	if got != nil {
+		t.Fatal("share should be nil after delete")
+	}
+}
+
+func TestDeleteShareNonexistent(t *testing.T) {
+	db := openTestDB(t)
+
+	// Should not error even if no row exists.
+	if err := db.DeleteShare("Never_Created"); err != nil {
+		t.Fatalf("DeleteShare: %v", err)
+	}
+}
+
+func TestCreateShareReplacesExisting(t *testing.T) {
+	db := openTestDB(t)
+
+	first, err := db.CreateShare("Page")
+	if err != nil {
+		t.Fatalf("CreateShare (1st): %v", err)
+	}
+
+	second, err := db.CreateShare("Page")
+	if err != nil {
+		t.Fatalf("CreateShare (2nd): %v", err)
+	}
+
+	if first.Token == second.Token {
+		t.Fatal("regenerated share should have a new token")
+	}
+
+	// Old token should no longer resolve.
+	got, err := db.GetShareByToken(first.Token)
+	if err != nil {
+		t.Fatalf("GetShareByToken (old): %v", err)
+	}
+	if got != nil {
+		t.Fatal("old token should not resolve after replacement")
+	}
+
+	// New token should resolve.
+	got, err = db.GetShareByToken(second.Token)
+	if err != nil {
+		t.Fatalf("GetShareByToken (new): %v", err)
+	}
+	if got == nil || got.Token != second.Token {
+		t.Fatal("new token should resolve")
+	}
+}
+
+func TestMultipleSharesDifferentPages(t *testing.T) {
+	db := openTestDB(t)
+
+	s1, err := db.CreateShare("Page_A")
+	if err != nil {
+		t.Fatalf("CreateShare A: %v", err)
+	}
+	s2, err := db.CreateShare("Page_B")
+	if err != nil {
+		t.Fatalf("CreateShare B: %v", err)
+	}
+
+	if s1.Token == s2.Token {
+		t.Fatal("different pages should get different tokens")
+	}
+
+	gotA, _ := db.GetShare("Page_A")
+	gotB, _ := db.GetShare("Page_B")
+	if gotA == nil || gotB == nil {
+		t.Fatal("both shares should exist")
+	}
+	if gotA.Token != s1.Token || gotB.Token != s2.Token {
+		t.Fatal("token mismatch on lookup")
+	}
+}
+
+// --- OAuth token tests ---
+
+func TestSaveAndValidateOAuthToken(t *testing.T) {
+	db := openTestDB(t)
+
+	token := "test-token-abc123"
+	if err := db.SaveOAuthToken(token, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("SaveOAuthToken: %v", err)
+	}
+
+	if !db.ValidateOAuthToken(token) {
+		t.Fatal("expected token to be valid")
+	}
+}
+
+func TestValidateOAuthTokenNotFound(t *testing.T) {
+	db := openTestDB(t)
+
+	if db.ValidateOAuthToken("nonexistent") {
+		t.Fatal("expected false for nonexistent token")
+	}
+}
+
+func TestValidateOAuthTokenExpired(t *testing.T) {
+	db := openTestDB(t)
+
+	token := "expired-token"
+	if err := db.SaveOAuthToken(token, time.Now().Add(-time.Hour)); err != nil {
+		t.Fatalf("SaveOAuthToken: %v", err)
+	}
+
+	if db.ValidateOAuthToken(token) {
+		t.Fatal("expected false for expired token")
+	}
+
+	// Should also have been cleaned up — a second call should also return false.
+	if db.ValidateOAuthToken(token) {
+		t.Fatal("expired token should have been deleted on first validate")
+	}
+}
+
+func TestPurgeExpiredOAuthTokens(t *testing.T) {
+	db := openTestDB(t)
+
+	// Insert 2 expired and 1 valid token.
+	db.SaveOAuthToken("expired-1", time.Now().Add(-time.Hour))
+	db.SaveOAuthToken("expired-2", time.Now().Add(-2*time.Hour))
+	db.SaveOAuthToken("valid-1", time.Now().Add(time.Hour))
+
+	n, err := db.PurgeExpiredOAuthTokens()
+	if err != nil {
+		t.Fatalf("PurgeExpiredOAuthTokens: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("purged %d tokens, want 2", n)
+	}
+
+	if !db.ValidateOAuthToken("valid-1") {
+		t.Fatal("valid token should survive purge")
+	}
+	if db.ValidateOAuthToken("expired-1") {
+		t.Fatal("expired-1 should be gone")
+	}
+}
+
+func TestSaveOAuthTokenOverwrite(t *testing.T) {
+	db := openTestDB(t)
+
+	token := "overwrite-me"
+	db.SaveOAuthToken(token, time.Now().Add(-time.Hour))
+	if db.ValidateOAuthToken(token) {
+		t.Fatal("should be expired initially")
+	}
+
+	// Overwrite with a future expiry.
+	db.SaveOAuthToken(token, time.Now().Add(time.Hour))
+	if !db.ValidateOAuthToken(token) {
+		t.Fatal("should be valid after overwrite")
+	}
+}
+
+// --- Migration tests ---
+
+func TestMigrateOAuthTokensFromJSON(t *testing.T) {
+	dir := t.TempDir()
+
+	validExpiry := time.Now().Add(time.Hour).Truncate(time.Second)
+	expiredExpiry := time.Now().Add(-time.Hour).Truncate(time.Second)
+
+	entries := []struct {
+		Token  string    `json:"token"`
+		Expiry time.Time `json:"expiry"`
+	}{
+		{"valid-token", validExpiry},
+		{"expired-token", expiredExpiry},
+	}
+	data, _ := json.Marshal(entries)
+	jsonPath := filepath.Join(dir, "oauth_tokens.json")
+	if err := os.WriteFile(jsonPath, data, 0o644); err != nil {
+		t.Fatalf("write JSON: %v", err)
+	}
+
+	db, err := OpenDB(dir)
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+
+	// Valid token should have been migrated.
+	if !db.ValidateOAuthToken("valid-token") {
+		t.Fatal("valid-token should have been migrated")
+	}
+
+	// Expired token should not be present.
+	if db.ValidateOAuthToken("expired-token") {
+		t.Fatal("expired-token should not have been migrated")
+	}
+
+	// JSON file should be removed.
+	if _, err := os.Stat(jsonPath); !os.IsNotExist(err) {
+		t.Fatal("oauth_tokens.json should be removed after migration")
+	}
+}
+
+func TestMigrateNoJSONFile(t *testing.T) {
+	// OpenDB should not fail when there is no oauth_tokens.json.
+	db, err := OpenDB(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	db.Close()
+}
+
+func TestOpenDBCreatesFile(t *testing.T) {
+	dir := t.TempDir()
+	db, err := OpenDB(dir)
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	db.Close()
+
+	if _, err := os.Stat(filepath.Join(dir, "gypsum.db")); err != nil {
+		t.Fatalf("database file should exist: %v", err)
+	}
+}

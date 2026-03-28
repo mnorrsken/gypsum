@@ -1458,3 +1458,149 @@ textarea {
   font-size: 13px;
   color: var(--color-text-muted);
 }
+
+/* --- Share page --- */
+
+.share-settings {
+  max-width: 640px;
+  margin-top: 1.5rem;
+}
+
+.share-status {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.share-status h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.share-status p {
+  margin: 0.25rem 0;
+  color: var(--color-text-secondary);
+  font-size: 0.93rem;
+}
+
+.share-link-row {
+  display: flex;
+  gap: 8px;
+  margin: 0.75rem 0;
+}
+
+.share-url-input {
+  flex: 1;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.9rem;
+  font-family: monospace;
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.share-hint {
+  font-size: 0.82rem;
+  color: var(--color-text-muted) !important;
+}
+
+.share-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 1rem;
+}
+
+.share-info {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 1rem 1.5rem;
+}
+
+.share-info h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.share-info ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.share-info li {
+  margin-bottom: 0.25rem;
+}
+
+.btn {
+  display: inline-block;
+  padding: 0.45rem 1rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--color-link);
+  color: #fff;
+  text-decoration: none;
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-input-border);
+}
+
+.btn-secondary:hover {
+  background: var(--color-hover-bg);
+}
+
+.btn-danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+}
+
+/* --- Public page (standalone layout) --- */
+
+.public-page {
+  background: var(--color-bg);
+}
+
+.public-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.public-header-inner {
+  max-width: 820px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1.5rem;
+}
+
+.public-content {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.public-content article {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 2rem;
+}

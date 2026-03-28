@@ -1,0 +1,68 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>{{.Page.Title}}</h1>
+    <hr class="title-rule" />
+    <div class="page-tabs">
+      <a href="/wiki/{{.Page.Slug}}">Page</a>
+      <a href="/edit/{{.Page.Slug}}">Edit</a>
+      <a href="/share/{{.Page.Slug}}" class="active">Share</a>
+      <a href="/history/{{.Page.Slug}}">History</a>
+    </div>
+  </div>
+
+  <div class="share-settings">
+    {{if .ShareToken}}
+    <div class="share-status share-active">
+      <h3>Public sharing is enabled</h3>
+      <p>Anyone with this link can view this page:</p>
+      <div class="share-link-row">
+        <input type="text" readonly value="{{.ShareURL}}" id="share-url" class="share-url-input" />
+        <button type="button" class="btn" id="copy-btn" onclick="copyShareLink()">Copy</button>
+      </div>
+      <p class="share-hint">Created: {{.ShareCreated}}</p>
+      <div class="share-actions">
+        <form method="POST" style="display:inline">
+          <input type="hidden" name="action" value="regenerate" />
+          <button type="submit" class="btn btn-secondary">Regenerate link</button>
+        </form>
+        <form method="POST" style="display:inline" onsubmit="return confirm('Revoke the public link? Anyone with the current link will no longer be able to access this page.')">
+          <input type="hidden" name="action" value="revoke" />
+          <button type="submit" class="btn btn-danger">Revoke</button>
+        </form>
+      </div>
+    </div>
+    {{else}}
+    <div class="share-status share-inactive">
+      <h3>Public sharing is disabled</h3>
+      <p>Create a secret link to share this page publicly. Anyone with the link will be able to view it without logging in.</p>
+      <form method="POST">
+        <input type="hidden" name="action" value="create" />
+        <button type="submit" class="btn">Enable sharing</button>
+      </form>
+    </div>
+    {{end}}
+
+    <div class="share-info">
+      <h4>About public pages</h4>
+      <ul>
+        <li>Public pages are read-only &mdash; no editing capabilities are exposed.</li>
+        <li>Links to other wiki pages are displayed as plain text.</li>
+        <li>Encrypted (secure) fields are hidden on public pages.</li>
+        <li>The page is rendered without sidebars or navigation menus.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<script>
+function copyShareLink() {
+  var input = document.getElementById('share-url');
+  navigator.clipboard.writeText(input.value).then(function() {
+    var btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+  });
+}
+</script>
+{{end}}

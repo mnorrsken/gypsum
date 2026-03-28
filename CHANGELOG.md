@@ -2,6 +2,15 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.28.0
+
+### Added
+- **Public page sharing** — share any page publicly via a secret link. A new **Share** tab on every page lets you enable/disable sharing, copy the link, regenerate it, or revoke access. Public pages are rendered in a minimal read-only layout without sidebars, editing capabilities, or navigation links. Wiki links appear as plain text and encrypted `{{secure_aes:...}}` fields are stripped entirely.
+- **SQLite database** — a `gypsum.db` SQLite database in `data/` stores share links and OAuth tokens. Replaces the previous `oauth_tokens.json` file (existing tokens are automatically migrated on first startup).
+
+### Changed
+- **OAuth token storage** — tokens are now persisted in SQLite instead of a JSON file. The migration is automatic and transparent.
+
 ## v0.27.0
 
 ### Changed

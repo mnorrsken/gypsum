@@ -1,0 +1,57 @@
+{{define "public"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{.Title}} - Gypsum</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    (function() {
+      var t = localStorage.getItem('theme');
+      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
+</head>
+<body class="public-page">
+  <header class="public-header">
+    <div class="public-header-inner">
+      <div class="brand">Gypsum</div>
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <span class="icon-sun">&#9728;&#65039;</span>
+        <span class="icon-moon">&#127769;</span>
+      </button>
+    </div>
+    <div class="topbar-rules">
+      <div class="rule-red"></div>
+    </div>
+  </header>
+
+  <main class="public-content">
+    <article>
+      <div class="page-title-area">
+        <h1>{{.Title}}</h1>
+        <hr class="title-rule" />
+      </div>
+      <div class="wiki-content">{{.RenderedHTML}}</div>
+    </article>
+  </main>
+
+  <script>
+  (function() {
+    var themeBtn = document.getElementById("theme-toggle");
+    themeBtn.addEventListener("click", function() {
+      var isDark = document.documentElement.getAttribute("data-theme") === "dark";
+      if (isDark) {
+        document.documentElement.removeAttribute("data-theme");
+        localStorage.setItem("theme", "light");
+      } else {
+        document.documentElement.setAttribute("data-theme", "dark");
+        localStorage.setItem("theme", "dark");
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
+{{end}}

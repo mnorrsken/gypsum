@@ -87,25 +87,7 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 		return fmt.Sprintf("[%s](/wiki/%s?title=%s)", title, slug, url.QueryEscape(title))
 	})
 
-	// Replace sized image macros: ![alt|SIZE](url) → raw <img> with inline style.
-	// SIZE formats: 500 (max-width px), 50% (max-width %), 500x300 (width×height px).
-	withLinks = imageSizePattern.ReplaceAllStringFunc(withLinks, func(match string) string {
-		caps := imageSizePattern.FindStringSubmatch(match)
-		if len(caps) < 4 {
-			return match
-		}
-		alt, size, url := caps[1], caps[2], caps[3]
-		var style string
-		if strings.HasSuffix(size, "%") {
-			style = fmt.Sprintf("max-width:%s;height:auto", size)
-		} else if idx := strings.Index(size, "x"); idx != -1 {
-			w, h := size[:idx], size[idx+1:]
-			style = fmt.Sprintf("width:%spx;height:%spx", w, h)
-		} else {
-			style = fmt.Sprintf("max-width:%spx;height:auto", size)
-		}
-		return fmt.Sprintf(`<img src="%s" alt="%s" style="%s">`, url, alt, style)
-	})
+	withLinks = r.expandImageSizeMacros(withLinks)
 
 	// Replace secure_aes macros with placeholder tokens before goldmark so they
 	// don't get wrapped in their own <p> blocks. The tokens survive HTML
@@ -138,4 +120,51 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 	}
 
 	return template.HTML(result), nil
+}
+
+// RenderPublic renders markdown for public (shared) pages:
+// - Wiki links [[Page]] become plain text (not clickable)
+// - Secure macros {{secure_aes:...}} are stripped entirely
+func (r *MarkdownRenderer) RenderPublic(source string) (template.HTML, error) {
+	// Convert wiki links to plain text (no links)
+	withLinks := wikiLinkPattern.ReplaceAllStringFunc(source, func(match string) string {
+		captures := wikiLinkPattern.FindStringSubmatch(match)
+		if len(captures) < 2 {
+			return match
+		}
+		return strings.TrimSpace(captures[1])
+	})
+
+	withLinks = r.expandImageSizeMacros(withLinks)
+
+	// Strip secure macros entirely — they must not render on public pages.
+	withLinks = secureAesMacroRe.ReplaceAllString(withLinks, "")
+
+	var rendered bytes.Buffer
+	if err := r.engine.Convert([]byte(withLinks), &rendered); err != nil {
+		return "", err
+	}
+
+	return template.HTML(rendered.String()), nil
+}
+
+// expandImageSizeMacros replaces ![alt|SIZE](url) with raw <img> tags.
+func (r *MarkdownRenderer) expandImageSizeMacros(source string) string {
+	return imageSizePattern.ReplaceAllStringFunc(source, func(match string) string {
+		caps := imageSizePattern.FindStringSubmatch(match)
+		if len(caps) < 4 {
+			return match
+		}
+		alt, size, imgURL := caps[1], caps[2], caps[3]
+		var style string
+		if strings.HasSuffix(size, "%") {
+			style = fmt.Sprintf("max-width:%s;height:auto", size)
+		} else if idx := strings.Index(size, "x"); idx != -1 {
+			w, h := size[:idx], size[idx+1:]
+			style = fmt.Sprintf("width:%spx;height:%spx", w, h)
+		} else {
+			style = fmt.Sprintf("max-width:%spx;height:auto", size)
+		}
+		return fmt.Sprintf(`<img src="%s" alt="%s" style="%s">`, imgURL, alt, style)
+	})
 }
