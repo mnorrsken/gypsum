@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.28.3
+
+### Fixed
+- **Checkbox rendering** — task list checkboxes (`- [x]` / `- [ ]`) no longer stretch to full width; the global `input { width: 100% }` rule now excludes checkboxes, and task list items get proper inline styling.
+
 ## v0.28.2
 
 ### Changed
