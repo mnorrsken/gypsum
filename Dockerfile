@@ -12,7 +12,7 @@ COPY internal ./internal
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/gypsum ./cmd/wiki
 
-FROM alpine:3.21
+FROM alpine:3.23
 
 RUN apk add --no-cache git ca-certificates \
     && addgroup -g 1000 -S app \
