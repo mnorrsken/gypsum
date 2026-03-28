@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.28.2
+
+### Changed
+- **Dependency updates** — bumped Alpine base image from 3.21 to 3.23, goldmark from 1.7.8 to 1.8.1, and GitHub Actions (`actions/checkout` v6, `docker/login-action` v4, `docker/metadata-action` v6, `docker/setup-buildx-action` v4, `azure/setup-helm` v5).
+
 ## v0.28.1
 
 ### Fixed
