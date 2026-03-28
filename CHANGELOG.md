@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.28.1
+
+### Fixed
+- **Build compatibility** — upgrade to Go 1.25 for modernc.org/sqlite compatibility.
+- **Public page static assets** — bypass authentication for CSS/JS on public shared pages so they render correctly for anonymous visitors.
+
 ## v0.28.0
 
 ### Added
