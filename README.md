@@ -40,7 +40,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 
 ### Prerequisites
 
-- Go 1.23+ (for building from source)
+- Go 1.25+ (for building from source)
 - Git (for auto-commit functionality)
 
 ### Build and Run
