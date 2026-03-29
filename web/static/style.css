@@ -1615,3 +1615,35 @@ textarea {
   border-radius: 6px;
   padding: 2rem;
 }
+
+/* --- Print --- */
+
+@media print {
+  .topbar,
+  .sidebar,
+  .sidebar-overlay,
+  .page-tabs,
+  .secure-inline,
+  .secure-copy-btn {
+    display: none !important;
+  }
+
+  .layout {
+    display: block;
+  }
+
+  .content {
+    padding: 0;
+  }
+
+  article {
+    border: none;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  body {
+    background: white;
+    color: black;
+  }
+}

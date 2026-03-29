@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.29.0
+
+### Added
+- **Print-friendly pages** — browser print renders only the page title and content, hiding the topbar, sidebar, tabs, and encrypted fields.
+
 ## v0.28.3
 
 ### Fixed

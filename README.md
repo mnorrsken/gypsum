@@ -34,6 +34,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - **Health probes** — dedicated `/healthz` and `/readyz` endpoints on a separate port (default 9091) for Kubernetes probes, bypassing auth middleware
 - **Access logging** — logs every request with method, path, status code, and duration
 - **Editor help panel** — expandable markdown and syntax reference panel next to the editor
+- **Print-friendly pages** — use your browser's print function to get a clean page with just the title and content; navigation, sidebar, and encrypted fields are hidden
 - **Unicode support** — page slugs support non-ASCII characters (e.g. `Lösenord`)
 
 ## Quick Start
