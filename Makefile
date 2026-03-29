@@ -35,8 +35,10 @@ build:
 	mkdir -p bin
 	go build -o bin/$(APP_NAME) $(CMD_PATH)
 	go build -o bin/mcp-proxy ./cmd/mcp-proxy
+	go build -o bin/rekey ./cmd/rekey
 	GOOS=windows GOARCH=amd64 go build -o bin/$(APP_NAME).exe $(CMD_PATH)
 	GOOS=windows GOARCH=amd64 go build -o bin/mcp-proxy.exe ./cmd/mcp-proxy
+	GOOS=windows GOARCH=amd64 go build -o bin/rekey.exe ./cmd/rekey
 
 run:
 	go run $(CMD_PATH)
