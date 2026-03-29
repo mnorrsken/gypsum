@@ -6,6 +6,7 @@ All notable changes to Gypsum are documented in this file.
 
 ### Added
 - **Print-friendly pages** — browser print renders only the page title and content, hiding the topbar, sidebar, tabs, and encrypted fields.
+- **Documentation** — moved detailed docs (usage, authentication, MCP, Docker, Helm, configuration) into a `docs/` folder; README trimmed to a concise overview.
 
 ## v0.28.3
 
