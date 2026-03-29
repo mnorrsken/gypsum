@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.30.0
+
+### Added
+- **Built-in documentation section** — markdown files in `docs/` are served read-only at `/docs/` with the same wiki styling. A "Documentation" section appears in the sidebar when docs are present. Secure fields are stripped from rendered output.
+
 ## v0.29.0
 
 ### Added

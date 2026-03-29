@@ -100,6 +100,10 @@ func main() {
 	}
 
 	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter, oauthServer, db)
+	docsDir := filepath.Join(workspaceRoot, "docs")
+	if info, err := os.Stat(docsDir); err == nil && info.IsDir() {
+		handler.SetDocsDir(docsDir)
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))

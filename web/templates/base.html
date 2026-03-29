@@ -49,6 +49,13 @@
       <a href="/graph">Link Graph</a>
       <a href="/new" class="create-link">+ New Page</a>
 
+      {{if .DocPages}}
+      <h3>Documentation</h3>
+      {{range .DocPages}}
+        <a href="/docs/{{.Slug}}">{{.Title}}</a>
+      {{end}}
+      {{end}}
+
       {{if .Favorites}}
       <h3>Favorites</h3>
       {{range .Favorites}}

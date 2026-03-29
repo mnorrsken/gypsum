@@ -1,0 +1,15 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>Documentation</h1>
+    <hr class="title-rule" />
+  </div>
+  <div class="wiki-content">
+    <ul>
+    {{range .DocPages}}
+      <li><a href="/docs/{{.Slug}}">{{.Title}}</a></li>
+    {{end}}
+    </ul>
+  </div>
+</article>
+{{end}}

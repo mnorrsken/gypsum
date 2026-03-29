@@ -21,6 +21,7 @@ WORKDIR /app
 
 COPY --from=builder /out/gypsum /app/gypsum
 COPY web /app/web
+COPY docs /app/docs
 COPY cmd/wiki/docker-entrypoint.sh /app/docker-entrypoint.sh
 
 RUN chmod +x /app/docker-entrypoint.sh && mkdir -p /app/data/pages && chown -R app:app /app
