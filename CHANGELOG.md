@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.30.2
+
+### Fixed
+- **Docker build** — added `docs/` to `.dockerignore` allowlist so the built-in documentation section is included in container images.
+
 ## v0.30.1
 
 ### Added
