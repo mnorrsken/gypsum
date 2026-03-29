@@ -19,6 +19,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - Public page sharing via secret links
 - Header authentication (Authelia, Authentik, etc.)
 - Built-in documentation section (serves `docs/` as read-only wiki pages)
+- Rekey CLI tool for rotating encryption keys
 - Dark/light theme, responsive layout, print-friendly pages
 - Docker and Helm chart support
 - Health probes for Kubernetes

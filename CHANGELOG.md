@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.30.1
+
+### Added
+- **Rekey CLI tool** — `rekey` command re-encrypts all `{{secure_aes:...}}` fields when rotating `GYPSUM_SECRET_KEY`. Supports `-dry-run` to preview changes.
+
 ## v0.30.0
 
 ### Added
