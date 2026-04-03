@@ -327,3 +327,246 @@ func TestOpenDBCreatesFile(t *testing.T) {
 		t.Fatalf("database file should exist: %v", err)
 	}
 }
+
+// --- FTS5 tests ---
+
+func TestFTSIndexAndSearch(t *testing.T) {
+	db := openTestDB(t)
+
+	if err := db.IndexPage("Go_Guide", "Go Guide", "A comprehensive guide to Go programming"); err != nil {
+		t.Fatalf("IndexPage: %v", err)
+	}
+	if err := db.IndexPage("Rust_Notes", "Rust Notes", "Notes about the Rust programming language"); err != nil {
+		t.Fatalf("IndexPage: %v", err)
+	}
+
+	results, err := db.SearchFTS("go programming")
+	if err != nil {
+		t.Fatalf("SearchFTS: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected at least 1 result")
+	}
+	// "Go Guide" should match because both terms appear.
+	found := false
+	for _, r := range results {
+		if r.Slug == "Go_Guide" {
+			found = true
+			if len(r.Snippets) == 0 {
+				t.Fatal("expected at least one snippet")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected Go_Guide in results")
+	}
+}
+
+func TestFTSPrefixMatch(t *testing.T) {
+	db := openTestDB(t)
+
+	db.IndexPage("Kubernetes_Guide", "Kubernetes Guide", "deploying containers with kubectl")
+
+	results, err := db.SearchFTS("kube")
+	if err != nil {
+		t.Fatalf("SearchFTS: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result for prefix match, got %d", len(results))
+	}
+	if results[0].Slug != "Kubernetes_Guide" {
+		t.Fatalf("unexpected slug: %s", results[0].Slug)
+	}
+}
+
+func TestFTSEmptyQuery(t *testing.T) {
+	db := openTestDB(t)
+
+	db.IndexPage("Page", "Page", "content")
+
+	results, err := db.SearchFTS("")
+	if err != nil {
+		t.Fatalf("SearchFTS: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("empty query should return 0 results, got %d", len(results))
+	}
+}
+
+func TestFTSNoResults(t *testing.T) {
+	db := openTestDB(t)
+
+	db.IndexPage("Page", "Page", "content here")
+
+	results, err := db.SearchFTS("nonexistent")
+	if err != nil {
+		t.Fatalf("SearchFTS: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestFTSRemovePage(t *testing.T) {
+	db := openTestDB(t)
+
+	db.IndexPage("Temp", "Temp", "temporary page content")
+
+	results, _ := db.SearchFTS("temporary")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result before delete, got %d", len(results))
+	}
+
+	if err := db.RemovePage("Temp"); err != nil {
+		t.Fatalf("RemovePage: %v", err)
+	}
+
+	results, _ = db.SearchFTS("temporary")
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results after delete, got %d", len(results))
+	}
+}
+
+func TestFTSReindexPages(t *testing.T) {
+	db := openTestDB(t)
+
+	db.IndexPage("Old", "Old", "this should be removed on reindex")
+
+	pages := []Page{
+		{Slug: "New_A", Title: "New A", Content: "alpha content"},
+		{Slug: "New_B", Title: "New B", Content: "beta content"},
+	}
+	if err := db.ReindexPages(pages); err != nil {
+		t.Fatalf("ReindexPages: %v", err)
+	}
+
+	// Old page should be gone.
+	results, _ := db.SearchFTS("removed")
+	if len(results) != 0 {
+		t.Fatalf("expected old page gone, got %d results", len(results))
+	}
+
+	// New pages should be findable.
+	results, _ = db.SearchFTS("alpha")
+	if len(results) != 1 || results[0].Slug != "New_A" {
+		t.Fatalf("expected New_A, got %v", results)
+	}
+}
+
+func TestFTSUpdatePage(t *testing.T) {
+	db := openTestDB(t)
+
+	db.IndexPage("Page", "Page", "original content with apples")
+
+	results, _ := db.SearchFTS("apples")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result for original content, got %d", len(results))
+	}
+
+	// Update the page content.
+	db.IndexPage("Page", "Page", "updated content with oranges")
+
+	results, _ = db.SearchFTS("apples")
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results for old content, got %d", len(results))
+	}
+	results, _ = db.SearchFTS("oranges")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result for updated content, got %d", len(results))
+	}
+}
+
+func TestBuildFTSQuery(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"", ""},
+		{"go", `"go"*`},
+		{"go programming", `"go"* AND "programming"*`},
+		{"tokens & lösen", `"tokens"* AND "lösen"*`},
+		{"Go go GO", `"go"*`}, // dedup + lowercase
+	}
+	for _, tt := range tests {
+		got := buildFTSQuery(tt.input)
+		if got != tt.want {
+			t.Errorf("buildFTSQuery(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestPageStoreSearchWithFTS(t *testing.T) {
+	dir := t.TempDir()
+	db := openTestDB(t)
+	store := NewPageStore(dir)
+
+	// Save pages before wiring DB (simulating pre-existing data).
+	store.Save("Zoo", "Animals in the wild")
+	store.Save("Alpha", "Contains keyword: gypsum rocks")
+
+	// Wire DB — triggers reindex of existing pages.
+	store.SetDB(db)
+
+	results, err := store.Search("gypsum")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Slug != "Alpha" {
+		t.Fatalf("unexpected slug: %s", results[0].Slug)
+	}
+	if len(results[0].Snippets) == 0 {
+		t.Fatal("expected FTS snippets")
+	}
+}
+
+func TestPageStoreDeleteRemovesFromIndex(t *testing.T) {
+	dir := t.TempDir()
+	db := openTestDB(t)
+	store := NewPageStore(dir)
+	store.SetDB(db)
+
+	store.Save("Temp_Page", "deletable content here")
+
+	results, _ := store.Search("deletable")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result before delete, got %d", len(results))
+	}
+
+	if err := store.Delete("Temp_Page"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	results, _ = store.Search("deletable")
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results after delete, got %d", len(results))
+	}
+}
+
+func TestPageStoreSaveUpdatesIndex(t *testing.T) {
+	dir := t.TempDir()
+	db := openTestDB(t)
+	store := NewPageStore(dir)
+	store.SetDB(db)
+
+	store.Save("Notes", "first version about cats")
+
+	results, _ := store.Search("cats")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	// Update the page.
+	store.Save("Notes", "second version about dogs")
+
+	results, _ = store.Search("cats")
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results for old content, got %d", len(results))
+	}
+	results, _ = store.Search("dogs")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result for updated content, got %d", len(results))
+	}
+}

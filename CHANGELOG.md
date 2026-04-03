@@ -2,6 +2,13 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.31.0
+
+### Added
+- **FTS5 full-text search** — search is now powered by a SQLite FTS5 index with BM25 ranking, replacing the previous filesystem scan. Results include highlighted context snippets showing where terms matched. The index is built on startup and updated incrementally on page save/delete.
+- **Incremental reindex after git pull** — periodic pulls diff changed files and reindex only affected pages instead of rescanning the entire wiki.
+- **MCP search context** — the `search_pages` MCP tool now returns context snippets around matched terms, giving AI assistants better visibility into where keywords appear on a page.
+
 ## v0.30.2
 
 ### Fixed

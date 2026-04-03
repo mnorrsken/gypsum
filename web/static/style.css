@@ -482,6 +482,13 @@ textarea {
   font-size: 13px;
 }
 
+.result-list mark {
+  background: var(--color-accent-bg, #fff3cd);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
 /* --- All pages list --- */
 
 .page-list {

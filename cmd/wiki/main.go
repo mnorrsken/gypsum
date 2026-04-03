@@ -50,6 +50,7 @@ func main() {
 	}
 
 	store := wiki.NewPageStore(pagesDir)
+	store.SetDB(db)
 	crypto := wiki.NewServerCrypto(secretKey)
 	renderer := wiki.NewMarkdownRenderer()
 
@@ -69,6 +70,7 @@ func main() {
 	}
 
 	autoCommitter := wiki.NewGitAutoCommitter(repoDir, remoteConfig)
+	autoCommitter.SetAfterPull(store.ReindexChanged)
 	if remoteConfig != nil {
 		pullInterval := 5 * time.Minute
 		if v := os.Getenv("GYPSUM_GIT_PULL_INTERVAL"); v != "" {

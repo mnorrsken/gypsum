@@ -34,10 +34,11 @@ type GitRemoteConfig struct {
 }
 
 type GitAutoCommitter struct {
-	dataDir string
-	remote  *GitRemoteConfig
-	mu      sync.Mutex // serialise git operations
-	stopCh  chan struct{}
+	dataDir   string
+	remote    *GitRemoteConfig
+	mu        sync.Mutex // serialise git operations
+	stopCh    chan struct{}
+	afterPull func(changedSlugs []string) // optional; called after pull with slugs of changed pages (nil = reindex all)
 }
 
 func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommitter {
@@ -51,6 +52,13 @@ func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommit
 	c.configureRemote()
 	c.initialPull()
 	return c
+}
+
+// SetAfterPull registers a callback invoked after every successful pull/rebase.
+// The callback receives the slugs of pages that changed; a nil slice means the
+// diff could not be determined and a full reindex is recommended.
+func (c *GitAutoCommitter) SetAfterPull(fn func(changedSlugs []string)) {
+	c.afterPull = fn
 }
 
 func (c *GitAutoCommitter) CommitPageSave(slug, author string) error {
@@ -228,6 +236,9 @@ func (c *GitAutoCommitter) pullRebase() {
 		return
 	}
 
+	// Record HEAD before rebase so we can diff afterwards.
+	headBefore := c.revParseHEAD()
+
 	// Stash uncommitted changes so rebase can proceed.
 	stashed := false
 	if c.hasUncommittedChanges() {
@@ -250,6 +261,10 @@ func (c *GitAutoCommitter) pullRebase() {
 		if err := c.runGit("stash", "pop"); err != nil {
 			log.Printf("git: stash pop failed: %v", err)
 		}
+	}
+
+	if c.afterPull != nil {
+		c.afterPull(c.changedPageSlugs(headBefore))
 	}
 }
 
@@ -402,6 +417,50 @@ func (c *GitAutoCommitter) runGit(args ...string) error {
 		return fmt.Errorf("git %v failed: %v (%s)", args, err, string(out))
 	}
 	return nil
+}
+
+func (c *GitAutoCommitter) runGitOutput(args ...string) (string, error) {
+	fullArgs := make([]string, 0, len(args)+2)
+	fullArgs = append(fullArgs, "-C", c.dataDir)
+	fullArgs = append(fullArgs, args...)
+	out, err := exec.Command("git", fullArgs...).Output()
+	return strings.TrimSpace(string(out)), err
+}
+
+// revParseHEAD returns the current HEAD commit hash, or "" on error.
+func (c *GitAutoCommitter) revParseHEAD() string {
+	h, _ := c.runGitOutput("rev-parse", "HEAD")
+	return h
+}
+
+// changedPageSlugs diffs HEAD against oldHead and returns slugs for any
+// changed/added/deleted files under pages/. Returns nil if the diff cannot
+// be determined (signals the caller to do a full reindex).
+func (c *GitAutoCommitter) changedPageSlugs(oldHead string) []string {
+	if oldHead == "" {
+		return nil
+	}
+	newHead := c.revParseHEAD()
+	if newHead == "" || newHead == oldHead {
+		return []string{} // no change
+	}
+	out, err := c.runGitOutput("diff", "--name-only", oldHead, newHead, "--", "pages/")
+	if err != nil || out == "" {
+		return nil // can't determine — caller should full-reindex
+	}
+	var slugs []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// lines look like "pages/Some_Page.md"
+		base := filepath.Base(line)
+		if filepath.Ext(base) == ".md" {
+			slugs = append(slugs, SlugFromFilename(base))
+		}
+	}
+	return slugs
 }
 
 // PageContentAtRevision returns the content of a page file at a specific git revision.

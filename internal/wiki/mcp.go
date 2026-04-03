@@ -321,9 +321,9 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "search_pages",
-			Description: "Search across all wiki pages by keyword. The query is split into terms (punctuation like & is ignored). Each term is matched independently against page titles and content — prefix matches work, so 'arch' finds 'architecture'. Results are ranked by relevance: title matches score higher than content matches, and pages matching all terms are boosted.",
+			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. The query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets showing where terms were found in the page content.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"query": mcpPropString("Search query — split into terms on whitespace/punctuation, each matched independently (prefix and substring)"),
+				"query": mcpPropString("Search query — split into terms on whitespace/punctuation, each prefix-matched independently"),
 			}, []string{"query"}),
 		},
 		{
@@ -545,8 +545,7 @@ func (m *MCPHandler) toolDeletePage(args map[string]any) mcpCallToolResult {
 		return mcpError("page not found: " + slug)
 	}
 
-	path := m.store.PagePath(slug)
-	if err := os.Remove(path); err != nil {
+	if err := m.store.Delete(slug); err != nil {
 		return mcpError("failed to delete page: " + err.Error())
 	}
 	_ = m.autoCommit.CommitPageDelete(slug, "")
@@ -569,8 +568,15 @@ func (m *MCPHandler) toolSearchPages(args map[string]any) mcpCallToolResult {
 
 	var sb strings.Builder
 	for _, r := range results {
-		excerpt := m.redactContent(r.Excerpt)
-		fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n%s\n\n", r.Title, r.Slug, excerpt)
+		fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n", r.Title, r.Slug)
+		if len(r.Snippets) > 0 {
+			for _, snip := range r.Snippets {
+				fmt.Fprintf(&sb, "> %s\n", m.redactContent(snip))
+			}
+		} else if r.Excerpt != "" {
+			fmt.Fprintf(&sb, "> %s\n", m.redactContent(r.Excerpt))
+		}
+		sb.WriteString("\n")
 	}
 	return mcpText(sb.String())
 }

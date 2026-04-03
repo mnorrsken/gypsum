@@ -19,9 +19,10 @@ type PageLink struct {
 }
 
 type SearchResult struct {
-	Slug    string
-	Title   string
-	Excerpt string
+	Slug     string
+	Title    string
+	Excerpt  string   // primary excerpt (first snippet or legacy fallback)
+	Snippets []string // all context snippets around matched terms
 }
 
 var nonSlugChar = regexp.MustCompile(`[^\p{L}\p{N}_\-]+`)

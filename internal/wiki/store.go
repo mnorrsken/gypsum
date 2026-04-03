@@ -2,6 +2,7 @@ package wiki
 
 import (
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,12 +15,81 @@ var ErrPageNotFound = errors.New("page not found")
 type PageStore struct {
 	pagesDir  string
 	imagesDir string
+	db        *DB // optional; enables FTS5 search when non-nil
 }
 
 func NewPageStore(pagesDir string) *PageStore {
 	imagesDir := filepath.Join(filepath.Dir(pagesDir), "images")
 	_ = os.MkdirAll(imagesDir, 0o755)
 	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir}
+}
+
+// SetDB attaches a database for FTS5 full-text search and triggers a full reindex.
+func (s *PageStore) SetDB(db *DB) {
+	s.db = db
+	if db != nil {
+		s.reindex()
+	}
+}
+
+// ReindexChanged reindexes only the given page slugs, or does a full reindex
+// if changedSlugs is nil (meaning the diff could not be determined).
+// An empty slice means nothing changed.
+func (s *PageStore) ReindexChanged(changedSlugs []string) {
+	if s.db == nil {
+		return
+	}
+	if changedSlugs == nil {
+		s.reindex()
+		return
+	}
+	if len(changedSlugs) == 0 {
+		return
+	}
+	for _, slug := range changedSlugs {
+		path := filepath.Join(s.pagesDir, MarkdownFilename(slug))
+		content, err := os.ReadFile(path)
+		if err != nil {
+			// File was deleted.
+			_ = s.db.RemovePage(slug)
+			continue
+		}
+		_ = s.db.IndexPage(slug, TitleFromSlug(slug), string(content))
+	}
+	log.Printf("fts: reindexed %d changed page(s)", len(changedSlugs))
+}
+
+// reindex rebuilds the FTS index from all markdown files on disk.
+func (s *PageStore) reindex() {
+	entries, err := os.ReadDir(s.pagesDir)
+	if err != nil {
+		log.Printf("fts: reindex failed to read pages dir: %v", err)
+		return
+	}
+	var pages []Page
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		slug := SlugFromFilename(entry.Name())
+		if strings.HasPrefix(slug, "_") {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(s.pagesDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		pages = append(pages, Page{
+			Slug:    slug,
+			Title:   TitleFromSlug(slug),
+			Content: string(content),
+		})
+	}
+	if err := s.db.ReindexPages(pages); err != nil {
+		log.Printf("fts: reindex failed: %v", err)
+	} else {
+		log.Printf("fts: indexed %d pages", len(pages))
+	}
 }
 
 func (s *PageStore) ImagesDir() string {
@@ -138,7 +208,25 @@ func (s *PageStore) Load(slug string) (*Page, error) {
 
 func (s *PageStore) Save(slug, content string) error {
 	fullPath := filepath.Join(s.pagesDir, MarkdownFilename(slug))
-	return os.WriteFile(fullPath, []byte(content), 0o644)
+	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+		return err
+	}
+	if s.db != nil {
+		_ = s.db.IndexPage(slug, TitleFromSlug(slug), content)
+	}
+	return nil
+}
+
+// Delete removes a page from disk and the FTS index.
+func (s *PageStore) Delete(slug string) error {
+	fullPath := filepath.Join(s.pagesDir, MarkdownFilename(slug))
+	if err := os.Remove(fullPath); err != nil {
+		return err
+	}
+	if s.db != nil {
+		_ = s.db.RemovePage(slug)
+	}
+	return nil
 }
 
 func (s *PageStore) List() ([]PageLink, error) {
@@ -241,6 +329,39 @@ func (s *PageStore) LoadFavorites() ([]PageLink, error) {
 }
 
 func (s *PageStore) Search(query string) ([]SearchResult, error) {
+	// Use FTS5 when a database is available.
+	if s.db != nil {
+		return s.searchFTS(query)
+	}
+	return s.searchFilesystem(query)
+}
+
+// searchFTS delegates to the FTS5 index in SQLite.
+func (s *PageStore) searchFTS(query string) ([]SearchResult, error) {
+	ftsResults, err := s.db.SearchFTS(query)
+	if err != nil {
+		// Fallback to filesystem scan on FTS error.
+		log.Printf("fts: search failed, falling back to filesystem: %v", err)
+		return s.searchFilesystem(query)
+	}
+	results := make([]SearchResult, len(ftsResults))
+	for i, r := range ftsResults {
+		excerpt := ""
+		if len(r.Snippets) > 0 {
+			excerpt = r.Snippets[0]
+		}
+		results[i] = SearchResult{
+			Slug:     r.Slug,
+			Title:    r.Title,
+			Excerpt:  excerpt,
+			Snippets: r.Snippets,
+		}
+	}
+	return results, nil
+}
+
+// searchFilesystem is the legacy brute-force search across all page files.
+func (s *PageStore) searchFilesystem(query string) ([]SearchResult, error) {
 	terms := splitSearchTerms(query)
 	if len(terms) == 0 {
 		return []SearchResult{}, nil

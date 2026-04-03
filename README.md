@@ -10,7 +10,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM
 - Image uploads (paste, drag-and-drop, or image picker) with optional size hints
 - Page history with revision diffs
-- Full-text search with relevance ranking
+- Full-text search with FTS5 indexing, BM25 ranking, and highlighted context snippets
 - Auto git commits with optional remote sync
 - Visual table editor
 - Interactive link graph
@@ -61,7 +61,7 @@ OAuth and Docker-specific variables are documented in [Configuration](docs/confi
 
 ```
 data/
-├── gypsum.db           # SQLite database (shares, OAuth tokens)
+├── gypsum.db           # SQLite database (shares, OAuth tokens, FTS search index)
 └── repo/               # git working directory
     ├── pages/           # markdown files
     └── images/          # uploaded images

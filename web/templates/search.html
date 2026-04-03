@@ -12,7 +12,13 @@
       {{range .Results}}
       <li>
         <a href="/wiki/{{.Slug}}">{{.Title}}</a>
-        <p>{{.Excerpt}}</p>
+        {{if .Snippets}}
+          {{range .Snippets}}
+          <p class="excerpt">{{highlightSnippet .}}</p>
+          {{end}}
+        {{else if .Excerpt}}
+          <p class="excerpt">{{.Excerpt}}</p>
+        {{end}}
       </li>
       {{end}}
     </ul>

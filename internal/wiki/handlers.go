@@ -86,6 +86,12 @@ func (h *Handler) SetDocsDir(dir string) {
 var templateFuncs = template.FuncMap{
 	"add":      func(a, b int) int { return a + b },
 	"subtract": func(a, b int) int { return a - b },
+	"highlightSnippet": func(s string) template.HTML {
+		escaped := template.HTMLEscapeString(s)
+		escaped = strings.ReplaceAll(escaped, "&lt;&lt;", "<mark>")
+		escaped = strings.ReplaceAll(escaped, "&gt;&gt;", "</mark>")
+		return template.HTML(escaped)
+	},
 }
 
 // parseTemplates pre-parses all page templates paired with the base layout.
@@ -762,7 +768,7 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.Remove(h.store.PagePath(slug)); err != nil {
+	if err := h.store.Delete(slug); err != nil {
 		http.Error(w, "failed to delete page", http.StatusInternalServerError)
 		return
 	}

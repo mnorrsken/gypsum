@@ -8,7 +8,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode"
 
 	_ "modernc.org/sqlite"
 )
@@ -38,6 +40,12 @@ func OpenDB(dataDir string) (*DB, error) {
 		CREATE TABLE IF NOT EXISTS oauth_tokens (
 			token      TEXT PRIMARY KEY,
 			expires_at DATETIME NOT NULL
+		);
+		CREATE VIRTUAL TABLE IF NOT EXISTS fts_pages USING fts5(
+			slug UNINDEXED,
+			title,
+			content,
+			tokenize='unicode61'
 		);
 	`); err != nil {
 		db.Close()
@@ -180,4 +188,130 @@ func (d *DB) migrateOAuthTokens(dataDir string) {
 	} else if migrated > 0 {
 		log.Printf("db: migrated %d OAuth token(s) from JSON to SQLite", migrated)
 	}
+}
+
+// ---------- Full-text search (FTS5) operations ----------
+
+// FTSSearchResult is a single search hit from the FTS index.
+type FTSSearchResult struct {
+	Slug     string
+	Title    string
+	Snippets []string // context snippets around matched terms
+}
+
+// IndexPage inserts or replaces a page in the FTS index.
+func (d *DB) IndexPage(slug, title, content string) error {
+	// FTS5 does not support INSERT OR REPLACE, so delete first.
+	d.db.Exec("DELETE FROM fts_pages WHERE slug = ?", slug)
+	_, err := d.db.Exec(
+		"INSERT INTO fts_pages (slug, title, content) VALUES (?, ?, ?)",
+		slug, title, content,
+	)
+	return err
+}
+
+// RemovePage removes a page from the FTS index.
+func (d *DB) RemovePage(slug string) error {
+	_, err := d.db.Exec("DELETE FROM fts_pages WHERE slug = ?", slug)
+	return err
+}
+
+// ReindexPages replaces the entire FTS index with the given pages.
+func (d *DB) ReindexPages(pages []Page) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM fts_pages"); err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare("INSERT INTO fts_pages (slug, title, content) VALUES (?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, p := range pages {
+		if _, err := stmt.Exec(p.Slug, p.Title, p.Content); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// SearchFTS performs a full-text search and returns results with context snippets.
+// Each result includes up to 3 snippets showing where terms matched in the content.
+func (d *DB) SearchFTS(query string) ([]FTSSearchResult, error) {
+	// Build an FTS5 query: each term gets a prefix match (*) so "kube" matches "kubernetes".
+	ftsQuery := buildFTSQuery(query)
+	if ftsQuery == "" {
+		return nil, nil
+	}
+
+	rows, err := d.db.Query(`
+		SELECT
+			slug,
+			title,
+			snippet(fts_pages, 2, '<<', '>>', '…', 48) AS snip1,
+			snippet(fts_pages, 1, '<<', '>>', '…', 48) AS title_snip
+		FROM fts_pages
+		WHERE fts_pages MATCH ?
+		ORDER BY rank
+		LIMIT 50
+	`, ftsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []FTSSearchResult
+	for rows.Next() {
+		var slug, title, contentSnip, titleSnip string
+		if err := rows.Scan(&slug, &title, &contentSnip, &titleSnip); err != nil {
+			return nil, err
+		}
+		var snippets []string
+		if contentSnip != "" {
+			snippets = append(snippets, contentSnip)
+		}
+		results = append(results, FTSSearchResult{
+			Slug:     slug,
+			Title:    title,
+			Snippets: snippets,
+		})
+	}
+	return results, rows.Err()
+}
+
+// buildFTSQuery converts a user query into an FTS5 MATCH expression.
+// "tokens lösen" → "tokens* AND lösen*" (prefix matching on each term).
+func buildFTSQuery(query string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return ' '
+	}, query)
+	words := strings.Fields(strings.TrimSpace(cleaned))
+	if len(words) == 0 {
+		return ""
+	}
+	// Deduplicate.
+	seen := make(map[string]bool)
+	var terms []string
+	for _, w := range words {
+		low := strings.ToLower(w)
+		if !seen[low] {
+			seen[low] = true
+			terms = append(terms, low)
+		}
+	}
+	// Each term becomes a prefix query joined with AND.
+	for i, t := range terms {
+		// Quote the term and append * for prefix matching.
+		terms[i] = `"` + t + `"` + "*"
+	}
+	return strings.Join(terms, " AND ")
 }
