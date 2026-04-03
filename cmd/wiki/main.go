@@ -93,6 +93,8 @@ func main() {
 		if v := os.Getenv("GYPSUM_OAUTH_TOKEN_TTL"); v != "" {
 			if d, err := time.ParseDuration(v); err == nil && d > 0 {
 				tokenTTL = d
+			} else {
+				log.Printf("WARNING: invalid GYPSUM_OAUTH_TOKEN_TTL %q: %v — using default %v", v, err, tokenTTL)
 			}
 		}
 		oauthServer = wiki.NewOAuthServer(password, externalURL, tokenTTL, db)

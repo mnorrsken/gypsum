@@ -92,7 +92,7 @@ func TestHandleProtectedResource(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body["resource"] != "https://wiki.example.com/mcp/external" {
+	if body["resource"] != "https://wiki.example.com" {
 		t.Fatalf("unexpected resource: %v", body["resource"])
 	}
 }

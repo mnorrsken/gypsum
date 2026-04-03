@@ -20,7 +20,7 @@ These are required when enabling the OAuth-protected external MCP endpoint.
 | `GYPSUM_OAUTH_ENABLED` | _(empty)_ | Set to `true` to enable the `/mcp/external` endpoint. |
 | `GYPSUM_OAUTH_PASSWORD` | _(required)_ | Single-user password for the OAuth login page. |
 | `GYPSUM_EXTERNAL_URL` | _(required)_ | Public base URL with no trailing slash, e.g. `https://wiki.example.com`. Used for OAuth discovery documents. |
-| `GYPSUM_OAUTH_TOKEN_TTL` | `24h` | Access token lifetime (Go duration string). |
+| `GYPSUM_OAUTH_TOKEN_TTL` | `24h` | Access token lifetime as a Go duration string (e.g. `2160h` for 90 days). Valid units: `s`, `m`, `h`. Note: `d` is **not** supported — use hours instead. |
 
 ## Docker Variables
 

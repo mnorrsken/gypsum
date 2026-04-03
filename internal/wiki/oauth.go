@@ -25,7 +25,7 @@ import (
 //	GYPSUM_OAUTH_ENABLED    — set to "true" to enable
 //	GYPSUM_OAUTH_PASSWORD   — single-user wiki password (required)
 //	GYPSUM_EXTERNAL_URL     — public base URL, e.g. https://wiki.example.com (required)
-//	GYPSUM_OAUTH_TOKEN_TTL  — access token lifetime as Go duration (default: "24h")
+//	GYPSUM_OAUTH_TOKEN_TTL  — access token lifetime as Go duration, e.g. "2160h" for 90 days (default: "24h"; valid units: s, m, h — "d" is not supported)
 type OAuthServer struct {
 	password    string
 	tokenTTL    time.Duration
@@ -106,7 +106,7 @@ func (o *OAuthServer) ValidateBearer(r *http.Request) bool {
 func (o *OAuthServer) HandleProtectedResource(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"resource":              o.externalURL + "/mcp/external",
+		"resource":              o.externalURL,
 		"authorization_servers": []string{o.externalURL},
 	})
 }

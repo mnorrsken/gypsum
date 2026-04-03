@@ -1,3 +1,10 @@
+# Building
+
+Always output binaries to `bin/`:
+```bash
+go build -o bin/ ./cmd/wiki/
+```
+
 # Gypsum Release Process
 
 ## Version scheme
