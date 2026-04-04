@@ -501,13 +501,13 @@ func TestPageStoreSearchWithFTS(t *testing.T) {
 	store := NewPageStore(dir)
 
 	// Save pages before wiring DB (simulating pre-existing data).
-	store.Save("Zoo", "Animals in the wild")
-	store.Save("Alpha", "Contains keyword: gypsum rocks")
+	store.Save(KindPage,"Zoo", "Animals in the wild")
+	store.Save(KindPage,"Alpha", "Contains keyword: gypsum rocks")
 
 	// Wire DB — triggers reindex of existing pages.
 	store.SetDB(db)
 
-	results, err := store.Search("gypsum")
+	results, err := store.Search(KindPage,"gypsum")
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -528,18 +528,18 @@ func TestPageStoreDeleteRemovesFromIndex(t *testing.T) {
 	store := NewPageStore(dir)
 	store.SetDB(db)
 
-	store.Save("Temp_Page", "deletable content here")
+	store.Save(KindPage,"Temp_Page", "deletable content here")
 
-	results, _ := store.Search("deletable")
+	results, _ := store.Search(KindPage,"deletable")
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result before delete, got %d", len(results))
 	}
 
-	if err := store.Delete("Temp_Page"); err != nil {
+	if err := store.Delete(KindPage,"Temp_Page"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	results, _ = store.Search("deletable")
+	results, _ = store.Search(KindPage,"deletable")
 	if len(results) != 0 {
 		t.Fatalf("expected 0 results after delete, got %d", len(results))
 	}
@@ -551,21 +551,21 @@ func TestPageStoreSaveUpdatesIndex(t *testing.T) {
 	store := NewPageStore(dir)
 	store.SetDB(db)
 
-	store.Save("Notes", "first version about cats")
+	store.Save(KindPage,"Notes", "first version about cats")
 
-	results, _ := store.Search("cats")
+	results, _ := store.Search(KindPage,"cats")
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 
 	// Update the page.
-	store.Save("Notes", "second version about dogs")
+	store.Save(KindPage,"Notes", "second version about dogs")
 
-	results, _ = store.Search("cats")
+	results, _ = store.Search(KindPage,"cats")
 	if len(results) != 0 {
 		t.Fatalf("expected 0 results for old content, got %d", len(results))
 	}
-	results, _ = store.Search("dogs")
+	results, _ = store.Search(KindPage,"dogs")
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result for updated content, got %d", len(results))
 	}

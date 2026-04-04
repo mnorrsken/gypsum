@@ -56,6 +56,17 @@
       {{end}}
       {{end}}
 
+      <h3>Skills</h3>
+      {{if .Skills}}
+      {{range .Skills}}
+        <a href="/skills/{{.Slug}}">{{.Title}}</a>
+      {{end}}
+      {{else}}
+      <p class="sidebar-hint">No skills yet.</p>
+      {{end}}
+      <a href="/skills" class="sidebar-edit">all</a>
+      <a href="/new-skill" class="create-link">+ New Skill</a>
+
       {{if .Favorites}}
       <h3>Favorites</h3>
       {{range .Favorites}}

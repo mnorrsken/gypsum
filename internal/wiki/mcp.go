@@ -276,7 +276,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		formattingGuide = wikiFormattingGuideExternal
 	}
 
-	return []mcpTool{
+	tools := []mcpTool{
 		{
 			Name:        "list_pages",
 			Description: "List all wiki pages (alphabetically sorted). Returns page slugs and titles.",
@@ -416,6 +416,70 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"slug", "wikitext"}),
 		},
 	}
+
+	// ── Skill tools ──────────────────────────────────────────────────
+
+	skillTools := []mcpTool{
+		{
+			Name: "list_skills",
+			Description: "List all skills (procedural knowledge pages for AI retrieval). " +
+				"Returns each skill's slug, title, and tags. " +
+				"Skills document how to perform tasks — build processes, testing conventions, deployment steps, coding patterns.",
+			InputSchema: mcpSchema("object", nil, nil),
+		},
+		{
+			Name: "get_skill",
+			Description: "Get the raw markdown content of a skill. " +
+				"The returned content is the full markdown source.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug": mcpPropString("Skill slug, e.g. 'Go_Testing_Conventions'. Slugs use underscores for spaces."),
+			}, []string{"slug"}),
+		},
+		{
+			Name: "create_skill",
+			Description: "Create a new skill (procedural knowledge for AI retrieval). " +
+				"Skills document how to perform tasks — build processes, testing conventions, deployment steps, coding patterns. " +
+				"Recommended structure: start with '# Title', then a brief description of what this skill covers, " +
+				"a '## When to Use' section describing when to apply it, " +
+				"a '## Instructions' section with the actual steps, " +
+				"and end with a 'Tags: keyword1, keyword2, ...' line for discoverability. " +
+				"The slug is derived from the title (spaces become underscores). " +
+				"Fails if the skill already exists.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"title":   mcpPropString("Skill title, e.g. 'Go Testing Conventions'. This becomes the slug and display title."),
+				"content": mcpPropString("Markdown content for the skill. Start with '# Title' as the first line."),
+			}, []string{"title", "content"}),
+		},
+		{
+			Name: "edit_skill",
+			Description: "Update the content of an existing skill. Replaces the entire skill content. " +
+				"Always use get_skill first to read the current content before editing.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug":    mcpPropString("Skill slug to edit, e.g. 'Go_Testing_Conventions'"),
+				"content": mcpPropString("New markdown content (replaces entire skill)."),
+			}, []string{"slug", "content"}),
+		},
+		{
+			Name:        "delete_skill",
+			Description: "Delete a skill permanently.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug": mcpPropString("Skill slug to delete"),
+			}, []string{"slug"}),
+		},
+		{
+			Name: "search_skills",
+			Description: "Search for procedural skills/instructions by keyword. " +
+				"Searches across skill titles, tags, and content with tag matches ranked highest. " +
+				"Use this before starting implementation tasks (writing code, tests, builds, deployments) " +
+				"to find relevant conventions and instructions. " +
+				"Example: search for 'go testing' before writing Go tests.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"query": mcpPropString("Search query — split into terms, each prefix-matched. E.g. 'go testing' or 'deploy kubernetes'"),
+			}, []string{"query"}),
+		},
+	}
+
+	return append(tools, skillTools...)
 }
 
 // ── Tool dispatch ───────────────────────────────────────────────────────
@@ -456,6 +520,18 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 		return m.toolCreatePageFromMediaWiki(params.Arguments)
 	case "edit_page_from_mediawiki":
 		return m.toolEditPageFromMediaWiki(params.Arguments)
+	case "list_skills":
+		return m.toolListSkills()
+	case "get_skill":
+		return m.toolGetSkill(params.Arguments)
+	case "create_skill":
+		return m.toolCreateSkill(params.Arguments)
+	case "edit_skill":
+		return m.toolEditSkill(params.Arguments)
+	case "delete_skill":
+		return m.toolDeleteSkill(params.Arguments)
+	case "search_skills":
+		return m.toolSearchSkills(params.Arguments)
 	default:
 		return mcpError("unknown tool: " + params.Name)
 	}
@@ -464,7 +540,7 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 // ── Tool implementations ────────────────────────────────────────────────
 
 func (m *MCPHandler) toolListPages() mcpCallToolResult {
-	pages, err := m.store.List()
+	pages, err := m.store.List(KindPage)
 	if err != nil {
 		return mcpError("failed to list pages: " + err.Error())
 	}
@@ -476,7 +552,7 @@ func (m *MCPHandler) toolGetPage(args map[string]any) mcpCallToolResult {
 	if !ok {
 		return mcpError("missing required argument: slug")
 	}
-	page, err := m.store.Load(slug)
+	page, err := m.store.Load(KindPage, slug)
 	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
@@ -498,14 +574,14 @@ func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
 	}
 
 	slug := SlugFromTitle(title)
-	if _, err := m.store.Load(slug); err == nil {
+	if _, err := m.store.Load(KindPage, slug); err == nil {
 		return mcpError("page already exists: " + slug)
 	}
 
-	if err := m.store.Save(slug, content); err != nil {
+	if err := m.store.Save(KindPage, slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageSave(slug, "")
+	_ = m.autoCommit.CommitSave(KindPage, slug, "")
 	return mcpText(fmt.Sprintf("Created page '%s' (slug: %s)", title, slug))
 }
 
@@ -519,7 +595,7 @@ func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
 		return mcpError("missing required argument: content")
 	}
 
-	existing, err := m.store.Load(slug)
+	existing, err := m.store.Load(KindPage, slug)
 	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
@@ -528,10 +604,10 @@ func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
 		return mcpError("page '" + slug + "' contains encrypted fields; editing pages with encrypted fields is not supported via this endpoint — use the local wiki UI or internal MCP endpoint")
 	}
 
-	if err := m.store.Save(slug, content); err != nil {
+	if err := m.store.Save(KindPage, slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageSave(slug, "")
+	_ = m.autoCommit.CommitSave(KindPage, slug, "")
 	return mcpText(fmt.Sprintf("Updated page '%s'", slug))
 }
 
@@ -541,14 +617,14 @@ func (m *MCPHandler) toolDeletePage(args map[string]any) mcpCallToolResult {
 		return mcpError("missing required argument: slug")
 	}
 
-	if _, err := m.store.Load(slug); err != nil {
+	if _, err := m.store.Load(KindPage, slug); err != nil {
 		return mcpError("page not found: " + slug)
 	}
 
-	if err := m.store.Delete(slug); err != nil {
+	if err := m.store.Delete(KindPage, slug); err != nil {
 		return mcpError("failed to delete page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageDelete(slug, "")
+	_ = m.autoCommit.CommitDelete(KindPage, slug, "")
 	return mcpText(fmt.Sprintf("Deleted page '%s'", slug))
 }
 
@@ -558,7 +634,7 @@ func (m *MCPHandler) toolSearchPages(args map[string]any) mcpCallToolResult {
 		return mcpError("missing required argument: query")
 	}
 
-	results, err := m.store.Search(query)
+	results, err := m.store.Search(KindPage, query)
 	if err != nil {
 		return mcpError("search failed: " + err.Error())
 	}
@@ -644,7 +720,7 @@ func (m *MCPHandler) toolPageHistory(args map[string]any) mcpCallToolResult {
 		count = int(n)
 	}
 
-	entries, err := m.autoCommit.PageHistory(slug, count)
+	entries, err := m.autoCommit.DocHistory(KindPage, slug, count)
 	if err != nil {
 		return mcpError("failed to get history: " + err.Error())
 	}
@@ -664,7 +740,7 @@ func (m *MCPHandler) toolGetPageRevision(args map[string]any) mcpCallToolResult 
 		return mcpError("missing required argument: hash")
 	}
 
-	content, err := m.autoCommit.PageContentAtRevision(slug, hash)
+	content, err := m.autoCommit.DocContentAtRevision(KindPage, slug, hash)
 	if err != nil {
 		return mcpError("failed to get revision: " + err.Error())
 	}
@@ -676,7 +752,7 @@ func (m *MCPHandler) toolPageLinks(args map[string]any) mcpCallToolResult {
 	if !ok {
 		return mcpError("missing required argument: slug")
 	}
-	page, err := m.store.Load(slug)
+	page, err := m.store.Load(KindPage, slug)
 	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
@@ -713,7 +789,7 @@ func (m *MCPHandler) toolCreatePageFromMediaWiki(args map[string]any) mcpCallToo
 	}
 
 	slug := SlugFromTitle(title)
-	if _, err := m.store.Load(slug); err == nil {
+	if _, err := m.store.Load(KindPage, slug); err == nil {
 		return mcpError("page already exists: " + slug)
 	}
 
@@ -721,10 +797,10 @@ func (m *MCPHandler) toolCreatePageFromMediaWiki(args map[string]any) mcpCallToo
 	if m.redactSecure && secureAesMacroRe.MatchString(content) {
 		return mcpError("converted content contains encrypted fields; creating pages with encrypted fields is not supported via this endpoint")
 	}
-	if err := m.store.Save(slug, content); err != nil {
+	if err := m.store.Save(KindPage, slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageSave(slug, "")
+	_ = m.autoCommit.CommitSave(KindPage, slug, "")
 	return mcpText(fmt.Sprintf("Created page '%s' (slug: %s) from MediaWiki source", title, slug))
 }
 
@@ -738,7 +814,7 @@ func (m *MCPHandler) toolEditPageFromMediaWiki(args map[string]any) mcpCallToolR
 		return mcpError("missing required argument: wikitext")
 	}
 
-	existing, err := m.store.Load(slug)
+	existing, err := m.store.Load(KindPage, slug)
 	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
@@ -748,10 +824,10 @@ func (m *MCPHandler) toolEditPageFromMediaWiki(args map[string]any) mcpCallToolR
 	}
 
 	content := ConvertMediaWikiToMarkdown(wikitext)
-	if err := m.store.Save(slug, content); err != nil {
+	if err := m.store.Save(KindPage, slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitPageSave(slug, "")
+	_ = m.autoCommit.CommitSave(KindPage, slug, "")
 	return mcpText(fmt.Sprintf("Updated page '%s' from MediaWiki source", slug))
 }
 
@@ -761,6 +837,120 @@ func (m *MCPHandler) toolLinkGraph() mcpCallToolResult {
 		return mcpError("failed to build link graph: " + err.Error())
 	}
 	return mcpJSON(graph)
+}
+
+// ── Skill tool implementations ─────────────────────────────────────────
+
+func (m *MCPHandler) toolListSkills() mcpCallToolResult {
+	skills, err := m.store.ListSkillEntries()
+	if err != nil {
+		return mcpError("failed to list skills: " + err.Error())
+	}
+	if len(skills) == 0 {
+		return mcpText("No skills created yet.")
+	}
+	return mcpJSON(skills)
+}
+
+func (m *MCPHandler) toolGetSkill(args map[string]any) mcpCallToolResult {
+	slug, ok := mcpArgString(args, "slug")
+	if !ok {
+		return mcpError("missing required argument: slug")
+	}
+	skill, err := m.store.Load(KindSkill, slug)
+	if err != nil {
+		return mcpError("skill not found: " + slug)
+	}
+	return mcpText(m.redactContent(skill.Content))
+}
+
+func (m *MCPHandler) toolCreateSkill(args map[string]any) mcpCallToolResult {
+	title, ok := mcpArgString(args, "title")
+	if !ok {
+		return mcpError("missing required argument: title")
+	}
+	content, ok := mcpArgString(args, "content")
+	if !ok {
+		return mcpError("missing required argument: content")
+	}
+
+	slug := SlugFromTitle(title)
+	if _, err := m.store.Load(KindSkill, slug); err == nil {
+		return mcpError("skill already exists: " + slug)
+	}
+
+	if err := m.store.Save(KindSkill, slug, content); err != nil {
+		return mcpError("failed to save skill: " + err.Error())
+	}
+	_ = m.autoCommit.CommitSave(KindSkill, slug, "")
+	return mcpText(fmt.Sprintf("Created skill '%s' (slug: %s)", title, slug))
+}
+
+func (m *MCPHandler) toolEditSkill(args map[string]any) mcpCallToolResult {
+	slug, ok := mcpArgString(args, "slug")
+	if !ok {
+		return mcpError("missing required argument: slug")
+	}
+	content, ok := mcpArgString(args, "content")
+	if !ok {
+		return mcpError("missing required argument: content")
+	}
+
+	if _, err := m.store.Load(KindSkill, slug); err != nil {
+		return mcpError("skill not found: " + slug)
+	}
+
+	if err := m.store.Save(KindSkill, slug, content); err != nil {
+		return mcpError("failed to save skill: " + err.Error())
+	}
+	_ = m.autoCommit.CommitSave(KindSkill, slug, "")
+	return mcpText(fmt.Sprintf("Updated skill '%s'", slug))
+}
+
+func (m *MCPHandler) toolDeleteSkill(args map[string]any) mcpCallToolResult {
+	slug, ok := mcpArgString(args, "slug")
+	if !ok {
+		return mcpError("missing required argument: slug")
+	}
+
+	if _, err := m.store.Load(KindSkill, slug); err != nil {
+		return mcpError("skill not found: " + slug)
+	}
+
+	if err := m.store.Delete(KindSkill, slug); err != nil {
+		return mcpError("failed to delete skill: " + err.Error())
+	}
+	_ = m.autoCommit.CommitDelete(KindSkill, slug, "")
+	return mcpText(fmt.Sprintf("Deleted skill '%s'", slug))
+}
+
+func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
+	query, ok := mcpArgString(args, "query")
+	if !ok {
+		return mcpError("missing required argument: query")
+	}
+
+	results, err := m.store.Search(KindSkill, query)
+	if err != nil {
+		return mcpError("search failed: " + err.Error())
+	}
+	if len(results) == 0 {
+		return mcpText("No skills found for: " + query)
+	}
+
+	var sb strings.Builder
+	for _, r := range results {
+		fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n", r.Title, r.Slug)
+		if len(r.Snippets) > 0 {
+			for _, snip := range r.Snippets {
+				fmt.Fprintf(&sb, "> %s\n", m.redactContent(snip))
+			}
+		} else if r.Excerpt != "" {
+			fmt.Fprintf(&sb, "> %s\n", m.redactContent(r.Excerpt))
+		}
+		sb.WriteString("\n")
+	}
+	return mcpText(sb.String())
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────

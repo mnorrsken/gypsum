@@ -15,80 +15,133 @@ var ErrPageNotFound = errors.New("page not found")
 type PageStore struct {
 	pagesDir  string
 	imagesDir string
+	skillsDir string
 	db        *DB // optional; enables FTS5 search when non-nil
 }
 
+// docDir returns the filesystem directory for the given document kind.
+func (s *PageStore) docDir(kind DocKind) string {
+	if kind == KindSkill {
+		return s.skillsDir
+	}
+	return s.pagesDir
+}
+
 func NewPageStore(pagesDir string) *PageStore {
-	imagesDir := filepath.Join(filepath.Dir(pagesDir), "images")
+	parent := filepath.Dir(pagesDir)
+	imagesDir := filepath.Join(parent, "images")
+	skillsDir := filepath.Join(parent, "skills")
 	_ = os.MkdirAll(imagesDir, 0o755)
-	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir}
+	_ = os.MkdirAll(skillsDir, 0o755)
+	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir, skillsDir: skillsDir}
 }
 
 // SetDB attaches a database for FTS5 full-text search and triggers a full reindex.
 func (s *PageStore) SetDB(db *DB) {
 	s.db = db
 	if db != nil {
-		s.reindex()
+		s.reindex(KindPage)
+		s.reindex(KindSkill)
 	}
 }
 
-// ReindexChanged reindexes only the given page slugs, or does a full reindex
-// if changedSlugs is nil (meaning the diff could not be determined).
-// An empty slice means nothing changed.
-func (s *PageStore) ReindexChanged(changedSlugs []string) {
+// ReindexChanged reindexes only the given slugs for the specified kind, or
+// does a full reindex if changedSlugs is nil (meaning the diff could not be
+// determined). An empty slice means nothing changed.
+func (s *PageStore) ReindexChanged(kind DocKind, changedSlugs []string) {
 	if s.db == nil {
 		return
 	}
 	if changedSlugs == nil {
-		s.reindex()
+		s.reindex(kind)
 		return
 	}
 	if len(changedSlugs) == 0 {
 		return
 	}
+	dir := s.docDir(kind)
 	for _, slug := range changedSlugs {
-		path := filepath.Join(s.pagesDir, MarkdownFilename(slug))
+		path := filepath.Join(dir, MarkdownFilename(slug))
 		content, err := os.ReadFile(path)
 		if err != nil {
 			// File was deleted.
-			_ = s.db.RemovePage(slug)
+			if kind == KindSkill {
+				_ = s.db.RemoveSkill(slug)
+			} else {
+				_ = s.db.RemovePage(slug)
+			}
 			continue
 		}
-		_ = s.db.IndexPage(slug, TitleFromSlug(slug), string(content))
+		if kind == KindSkill {
+			tags := strings.Join(ExtractTags(string(content)), " ")
+			_ = s.db.IndexSkill(slug, TitleFromSlug(slug), tags, string(content))
+		} else {
+			_ = s.db.IndexPage(slug, TitleFromSlug(slug), string(content))
+		}
 	}
-	log.Printf("fts: reindexed %d changed page(s)", len(changedSlugs))
+	log.Printf("fts: reindexed %d changed %s(s)", len(changedSlugs), kind.Label())
 }
 
-// reindex rebuilds the FTS index from all markdown files on disk.
-func (s *PageStore) reindex() {
-	entries, err := os.ReadDir(s.pagesDir)
+// reindex rebuilds the FTS index for the given kind from all markdown files on disk.
+func (s *PageStore) reindex(kind DocKind) {
+	dir := s.docDir(kind)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		log.Printf("fts: reindex failed to read pages dir: %v", err)
+		log.Printf("fts: reindex %s failed to read dir: %v", kind, err)
 		return
 	}
-	var pages []Page
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
-			continue
+	if kind == KindSkill {
+		var skills []FTSSkillEntry
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+				continue
+			}
+			slug := SlugFromFilename(entry.Name())
+			if strings.HasPrefix(slug, "_") {
+				continue
+			}
+			content, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+			if err != nil {
+				continue
+			}
+			tags := strings.Join(ExtractTags(string(content)), " ")
+			skills = append(skills, FTSSkillEntry{
+				Slug:    slug,
+				Title:   TitleFromSlug(slug),
+				Tags:    tags,
+				Content: string(content),
+			})
 		}
-		slug := SlugFromFilename(entry.Name())
-		if strings.HasPrefix(slug, "_") {
-			continue
+		if err := s.db.ReindexSkills(skills); err != nil {
+			log.Printf("fts: reindex skills failed: %v", err)
+		} else {
+			log.Printf("fts: indexed %d skills", len(skills))
 		}
-		content, err := os.ReadFile(filepath.Join(s.pagesDir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		pages = append(pages, Page{
-			Slug:    slug,
-			Title:   TitleFromSlug(slug),
-			Content: string(content),
-		})
-	}
-	if err := s.db.ReindexPages(pages); err != nil {
-		log.Printf("fts: reindex failed: %v", err)
 	} else {
-		log.Printf("fts: indexed %d pages", len(pages))
+		var pages []Page
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+				continue
+			}
+			slug := SlugFromFilename(entry.Name())
+			if strings.HasPrefix(slug, "_") {
+				continue
+			}
+			content, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+			if err != nil {
+				continue
+			}
+			pages = append(pages, Page{
+				Slug:    slug,
+				Title:   TitleFromSlug(slug),
+				Content: string(content),
+			})
+		}
+		if err := s.db.ReindexPages(pages); err != nil {
+			log.Printf("fts: reindex failed: %v", err)
+		} else {
+			log.Printf("fts: indexed %d pages", len(pages))
+		}
 	}
 }
 
@@ -96,8 +149,12 @@ func (s *PageStore) ImagesDir() string {
 	return s.imagesDir
 }
 
+func (s *PageStore) DocPath(kind DocKind, slug string) string {
+	return filepath.Join(s.docDir(kind), MarkdownFilename(slug))
+}
+
 func (s *PageStore) PagePath(slug string) string {
-	return filepath.Join(s.pagesDir, MarkdownFilename(slug))
+	return s.DocPath(KindPage, slug)
 }
 
 func (s *PageStore) ImagePath(filename string) string {
@@ -189,8 +246,8 @@ func (s *PageStore) findImageUsage() map[string][]string {
 	return usage
 }
 
-func (s *PageStore) Load(slug string) (*Page, error) {
-	fullPath := filepath.Join(s.pagesDir, MarkdownFilename(slug))
+func (s *PageStore) Load(kind DocKind, slug string) (*Page, error) {
+	fullPath := filepath.Join(s.docDir(kind), MarkdownFilename(slug))
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -206,32 +263,45 @@ func (s *PageStore) Load(slug string) (*Page, error) {
 	}, nil
 }
 
-func (s *PageStore) Save(slug, content string) error {
-	fullPath := filepath.Join(s.pagesDir, MarkdownFilename(slug))
+func (s *PageStore) Save(kind DocKind, slug, content string) error {
+	fullPath := filepath.Join(s.docDir(kind), MarkdownFilename(slug))
 	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
 		return err
 	}
 	if s.db != nil {
-		_ = s.db.IndexPage(slug, TitleFromSlug(slug), content)
+		if kind == KindSkill {
+			tags := strings.Join(ExtractTags(content), " ")
+			_ = s.db.IndexSkill(slug, TitleFromSlug(slug), tags, content)
+		} else {
+			_ = s.db.IndexPage(slug, TitleFromSlug(slug), content)
+		}
 	}
 	return nil
 }
 
-// Delete removes a page from disk and the FTS index.
-func (s *PageStore) Delete(slug string) error {
-	fullPath := filepath.Join(s.pagesDir, MarkdownFilename(slug))
+// Delete removes a document from disk and the FTS index.
+func (s *PageStore) Delete(kind DocKind, slug string) error {
+	fullPath := filepath.Join(s.docDir(kind), MarkdownFilename(slug))
 	if err := os.Remove(fullPath); err != nil {
 		return err
 	}
 	if s.db != nil {
-		_ = s.db.RemovePage(slug)
+		if kind == KindSkill {
+			_ = s.db.RemoveSkill(slug)
+		} else {
+			_ = s.db.RemovePage(slug)
+		}
 	}
 	return nil
 }
 
-func (s *PageStore) List() ([]PageLink, error) {
-	entries, err := os.ReadDir(s.pagesDir)
+func (s *PageStore) List(kind DocKind) ([]PageLink, error) {
+	dir := s.docDir(kind)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -328,21 +398,27 @@ func (s *PageStore) LoadFavorites() ([]PageLink, error) {
 	return favs, nil
 }
 
-func (s *PageStore) Search(query string) ([]SearchResult, error) {
+func (s *PageStore) Search(kind DocKind, query string) ([]SearchResult, error) {
 	// Use FTS5 when a database is available.
 	if s.db != nil {
-		return s.searchFTS(query)
+		return s.searchFTS(kind, query)
 	}
-	return s.searchFilesystem(query)
+	return s.searchFilesystem(kind, query)
 }
 
 // searchFTS delegates to the FTS5 index in SQLite.
-func (s *PageStore) searchFTS(query string) ([]SearchResult, error) {
-	ftsResults, err := s.db.SearchFTS(query)
+func (s *PageStore) searchFTS(kind DocKind, query string) ([]SearchResult, error) {
+	var ftsResults []FTSSearchResult
+	var err error
+	if kind == KindSkill {
+		ftsResults, err = s.db.SearchFTSSkills(query)
+	} else {
+		ftsResults, err = s.db.SearchFTS(query)
+	}
 	if err != nil {
 		// Fallback to filesystem scan on FTS error.
-		log.Printf("fts: search failed, falling back to filesystem: %v", err)
-		return s.searchFilesystem(query)
+		log.Printf("fts: %s search failed, falling back to filesystem: %v", kind.Label(), err)
+		return s.searchFilesystem(kind, query)
 	}
 	results := make([]SearchResult, len(ftsResults))
 	for i, r := range ftsResults {
@@ -360,15 +436,19 @@ func (s *PageStore) searchFTS(query string) ([]SearchResult, error) {
 	return results, nil
 }
 
-// searchFilesystem is the legacy brute-force search across all page files.
-func (s *PageStore) searchFilesystem(query string) ([]SearchResult, error) {
+// searchFilesystem is the legacy brute-force search across all document files.
+func (s *PageStore) searchFilesystem(kind DocKind, query string) ([]SearchResult, error) {
 	terms := splitSearchTerms(query)
 	if len(terms) == 0 {
 		return []SearchResult{}, nil
 	}
 
-	entries, err := os.ReadDir(s.pagesDir)
+	dir := s.docDir(kind)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []SearchResult{}, nil
+		}
 		return nil, err
 	}
 
@@ -388,7 +468,7 @@ func (s *PageStore) searchFilesystem(query string) ([]SearchResult, error) {
 		}
 		title := TitleFromSlug(slug)
 
-		contentBytes, err := os.ReadFile(filepath.Join(s.pagesDir, entry.Name()))
+		contentBytes, err := os.ReadFile(filepath.Join(dir, entry.Name()))
 		if err != nil {
 			continue
 		}
@@ -630,4 +710,44 @@ func runeIndex(haystack, needle []rune) int {
 		}
 	}
 	return -1
+}
+
+// ListSkillEntries returns all skills with extracted tags (skill-specific).
+func (s *PageStore) ListSkillEntries() ([]SkillListEntry, error) {
+	entries, err := os.ReadDir(s.skillsDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var skills []SkillListEntry
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		slug := SlugFromFilename(entry.Name())
+		if strings.HasPrefix(slug, "_") {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(s.skillsDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		tags := ExtractTags(string(content))
+		if tags == nil {
+			tags = []string{}
+		}
+		skills = append(skills, SkillListEntry{
+			Slug:  slug,
+			Title: TitleFromSlug(slug),
+			Tags:  tags,
+		})
+	}
+
+	sort.Slice(skills, func(i, j int) bool {
+		return strings.ToLower(skills[i].Title) < strings.ToLower(skills[j].Title)
+	})
+	return skills, nil
 }

@@ -59,7 +59,9 @@ type TemplateData struct {
 	ShareToken   string // non-empty if page has an active share link
 	ShareURL     string // full public URL for the share link
 	ShareCreated string // human-readable creation time
-	DocPages     []PageLink // documentation pages from docs/
+	DocPages     []PageLink       // documentation pages from docs/
+	Skills       []SkillListEntry // skill pages with tags
+	SkillTags    []string         // tags for the current skill being viewed
 }
 
 func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB) *Handler {
@@ -101,6 +103,7 @@ func (h *Handler) parseTemplates() {
 		"view", "edit", "new", "search", "pages", "history",
 		"history_diff", "images", "diff", "graph", "recent_edits", "share",
 		"doc", "docs",
+		"skills", "skill_view", "skill_edit",
 	}
 	for _, name := range names {
 		pagePath := filepath.Join(h.templates, name+".html")
@@ -141,6 +144,12 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/graph", h.handleGraph)
 	mux.HandleFunc("/recent-edits", h.handleRecentEdits)
 	mux.HandleFunc("/convert/mediawiki", h.handleConvertMediaWiki)
+	mux.HandleFunc("/skills", h.handleSkillsList)
+	mux.HandleFunc("/skills/", h.handleSkillView)
+	mux.HandleFunc("/new-skill", h.handleNewSkill)
+	mux.HandleFunc("/edit-skill/", h.handleEditSkill)
+	mux.HandleFunc("/delete-skill/", h.handleDeleteSkill)
+	mux.HandleFunc("/skill-history/", h.handleSkillHistory)
 	if h.docsDir != "" {
 		mux.HandleFunc("/docs", h.handleDocsList)
 		mux.HandleFunc("/docs/", h.handleDocs)
@@ -194,7 +203,7 @@ func (h *Handler) handleNewPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slug := SlugFromTitle(title)
-		_, err := h.store.Load(slug)
+		_, err := h.store.Load(KindPage, slug)
 		if err == nil {
 			// page already exists
 			h.render(w, "new", TemplateData{
@@ -221,7 +230,7 @@ func (h *Handler) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, err := h.store.Load(slug)
+	page, err := h.store.Load(KindPage, slug)
 	if err != nil {
 		if errors.Is(err, ErrPageNotFound) {
 			editURL := fmt.Sprintf("/edit/%s", slug)
@@ -268,7 +277,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		page, err := h.store.Load(slug)
+		page, err := h.store.Load(KindPage, slug)
 		if err != nil && !errors.Is(err, ErrPageNotFound) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -314,7 +323,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 		// Validate custom tags before saving
 		if validationErr := ValidateContent(content); validationErr != "" {
 			title := TitleFromSlug(slug)
-			page, _ := h.store.Load(slug)
+			page, _ := h.store.Load(KindPage, slug)
 			isNew := page == nil
 			prefix := "Edit: "
 			if isNew {
@@ -334,7 +343,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("showdiff") == "1" {
 			title := TitleFromSlug(slug)
 			oldContent := ""
-			if page, _ := h.store.Load(slug); page != nil {
+			if page, _ := h.store.Load(KindPage, slug); page != nil {
 				oldContent = page.Content
 			}
 			// Encrypt the incoming editor content, preserving original
@@ -359,11 +368,11 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if err := h.store.Save(slug, encrypted); err != nil {
+		if err := h.store.Save(KindPage, slug, encrypted); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if err := h.autoCommit.CommitPageSave(slug, UsernameFromRequest(r)); err != nil {
+		if err := h.autoCommit.CommitSave(KindPage, slug, UsernameFromRequest(r)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -410,7 +419,7 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	results, err := h.store.Search(query)
+	results, err := h.store.Search(KindPage, query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -429,7 +438,7 @@ func (h *Handler) handlePages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allPages, err := h.store.List()
+	allPages, err := h.store.List(KindPage)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -454,7 +463,7 @@ func (h *Handler) handleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := TitleFromSlug(slug)
-	entries, _ := h.autoCommit.PageHistory(slug, 50)
+	entries, _ := h.autoCommit.DocHistory(KindPage, slug, 50)
 
 	h.render(w, "history", TemplateData{
 		Title:   "History: " + title,
@@ -513,12 +522,12 @@ func (h *Handler) handleHistoryDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oldContent, err := h.autoCommit.PageContentAtRevision(slug, fromHash)
+	oldContent, err := h.autoCommit.DocContentAtRevision(KindPage, slug, fromHash)
 	if err != nil {
 		http.Error(w, "could not load old revision: "+err.Error(), http.StatusNotFound)
 		return
 	}
-	newContent, err := h.autoCommit.PageContentAtRevision(slug, toHash)
+	newContent, err := h.autoCommit.DocContentAtRevision(KindPage, slug, toHash)
 	if err != nil {
 		http.Error(w, "could not load new revision: "+err.Error(), http.StatusNotFound)
 		return
@@ -759,7 +768,7 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.store.Load(slug); err != nil {
+	if _, err := h.store.Load(KindPage, slug); err != nil {
 		if errors.Is(err, ErrPageNotFound) {
 			http.Error(w, "page not found", http.StatusNotFound)
 			return
@@ -768,11 +777,11 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.store.Delete(slug); err != nil {
+	if err := h.store.Delete(KindPage, slug); err != nil {
 		http.Error(w, "failed to delete page", http.StatusInternalServerError)
 		return
 	}
-	_ = h.autoCommit.CommitPageDelete(slug, UsernameFromRequest(r))
+	_ = h.autoCommit.CommitDelete(KindPage, slug, UsernameFromRequest(r))
 	// Clean up any share link for this page.
 	if h.db != nil {
 		_ = h.db.DeleteShare(slug)
@@ -787,7 +796,7 @@ func (h *Handler) handleShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, err := h.store.Load(slug)
+	page, err := h.store.Load(KindPage, slug)
 	if err != nil {
 		if errors.Is(err, ErrPageNotFound) {
 			http.Error(w, "page not found", http.StatusNotFound)
@@ -868,7 +877,7 @@ func (h *Handler) handlePublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, err := h.store.Load(share.Slug)
+	page, err := h.store.Load(KindPage, share.Slug)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -931,6 +940,197 @@ func (h *Handler) handleConvertMediaWiki(w http.ResponseWriter, r *http.Request)
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "markdown": markdown})
 }
 
+// ── Skill handlers ─────────────────────────────────────────────────────
+
+func (h *Handler) handleSkillsList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	skills, err := h.store.ListSkillEntries()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.render(w, "skills", TemplateData{
+		Title:  "Skills",
+		Skills: skills,
+	})
+}
+
+func (h *Handler) handleSkillView(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slug := strings.TrimPrefix(r.URL.Path, "/skills/")
+	if slug == "" {
+		http.Redirect(w, r, "/skills", http.StatusFound)
+		return
+	}
+
+	skill, err := h.store.Load(KindSkill, slug)
+	if err != nil {
+		if errors.Is(err, ErrPageNotFound) {
+			http.Redirect(w, r, fmt.Sprintf("/edit-skill/%s?title=%s", slug, url.QueryEscape(TitleFromSlug(slug))), http.StatusFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	displayTitle := skill.Title
+	renderSource := skill.Content
+	if h1, rest := ExtractH1Title(skill.Content); h1 != "" {
+		displayTitle = h1
+		renderSource = rest
+	}
+
+	html, err := h.renderer.Render(renderSource)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.render(w, "skill_view", TemplateData{
+		Title:        displayTitle,
+		Page:         skill,
+		RenderedHTML: html,
+		SkillTags:    ExtractTags(skill.Content),
+	})
+}
+
+func (h *Handler) handleNewSkill(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.render(w, "skill_edit", TemplateData{
+			Title: "New Skill",
+			Page:  &Page{Slug: "New_Skill", Title: "New Skill"},
+			IsNew: true,
+			RawContent: "# Skill Title\n\nBrief description of what this skill covers.\n\n" +
+				"## When to Use\n\nDescribe when to apply this skill.\n\n" +
+				"## Instructions\n\n1. Step one\n2. Step two\n\n" +
+				"Tags: keyword1, keyword2",
+		})
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		title := strings.TrimSpace(r.FormValue("title"))
+		if title == "" {
+			title = "New Skill"
+		}
+		slug := SlugFromTitle(title)
+		http.Redirect(w, r, fmt.Sprintf("/edit-skill/%s?title=%s", slug, url.QueryEscape(title)), http.StatusFound)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) handleEditSkill(w http.ResponseWriter, r *http.Request) {
+	slug := strings.TrimPrefix(r.URL.Path, "/edit-skill/")
+	if slug == "" {
+		http.Redirect(w, r, "/skills", http.StatusFound)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		skill, err := h.store.Load(KindSkill, slug)
+		isNew := false
+		if err != nil {
+			title := TitleFromSlug(slug)
+			if t := r.URL.Query().Get("title"); t != "" {
+				title = t
+			}
+			skill = &Page{Slug: slug, Title: title}
+			isNew = true
+		}
+
+		rawContent := skill.Content
+		if h.crypto != nil {
+			rawContent = h.crypto.DecryptForEdit(rawContent)
+		}
+
+		h.render(w, "skill_edit", TemplateData{
+			Title:      skill.Title,
+			Page:       skill,
+			RawContent: rawContent,
+			IsNew:      isNew,
+		})
+
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		content := r.FormValue("content")
+		if h.crypto != nil {
+			encrypted, err := h.crypto.EncryptForSave(content)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			content = encrypted
+		}
+
+		if err := h.store.Save(KindSkill, slug, content); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = h.autoCommit.CommitSave(KindSkill, slug, "")
+		http.Redirect(w, r, "/skills/"+slug, http.StatusFound)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) handleDeleteSkill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	slug := strings.TrimPrefix(r.URL.Path, "/delete-skill/")
+	if slug == "" {
+		http.Redirect(w, r, "/skills", http.StatusFound)
+		return
+	}
+	if err := h.store.Delete(KindSkill, slug); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = h.autoCommit.CommitDelete(KindSkill, slug, "")
+	http.Redirect(w, r, "/skills", http.StatusFound)
+}
+
+func (h *Handler) handleSkillHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slug := strings.TrimPrefix(r.URL.Path, "/skill-history/")
+	if slug == "" {
+		http.Redirect(w, r, "/skills", http.StatusFound)
+		return
+	}
+
+	entries, err := h.autoCommit.DocHistory(KindSkill, slug, 50)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.render(w, "history", TemplateData{
+		Title:   TitleFromSlug(slug) + " — History",
+		Page:    &Page{Slug: slug, Title: TitleFromSlug(slug)},
+		History: entries,
+	})
+}
+
 func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) {
 	favorites, err := h.store.LoadFavorites()
 	if err == nil {
@@ -944,6 +1144,10 @@ func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) 
 
 	if h.docsDir != "" {
 		data.DocPages = h.listDocPages()
+	}
+
+	if skills, err := h.store.ListSkillEntries(); err == nil {
+		data.Skills = skills
 	}
 
 	tmpl := h.tmplCache[name]

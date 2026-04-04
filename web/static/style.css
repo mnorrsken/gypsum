@@ -503,6 +503,28 @@ textarea {
   border-bottom: 1px solid var(--color-border-light);
 }
 
+/* --- Skill tags --- */
+
+.skill-tag {
+  display: inline-block;
+  background: var(--color-border-light);
+  color: var(--color-text-secondary);
+  font-size: 0.75em;
+  padding: 1px 7px;
+  border-radius: 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.skill-tags-bar {
+  margin: 8px 0 16px;
+}
+
+.skill-tags-bar .skill-tag {
+  margin-left: 0;
+  margin-right: 6px;
+}
+
 /* --- Wiki content --- */
 
 .wiki-content img {

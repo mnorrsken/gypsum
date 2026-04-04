@@ -47,6 +47,13 @@ func OpenDB(dataDir string) (*DB, error) {
 			content,
 			tokenize='unicode61'
 		);
+		CREATE VIRTUAL TABLE IF NOT EXISTS fts_skills USING fts5(
+			slug UNINDEXED,
+			title,
+			tags,
+			content,
+			tokenize='unicode61'
+		);
 	`); err != nil {
 		db.Close()
 		return nil, err
@@ -270,6 +277,100 @@ func (d *DB) SearchFTS(query string) ([]FTSSearchResult, error) {
 	for rows.Next() {
 		var slug, title, contentSnip, titleSnip string
 		if err := rows.Scan(&slug, &title, &contentSnip, &titleSnip); err != nil {
+			return nil, err
+		}
+		var snippets []string
+		if contentSnip != "" {
+			snippets = append(snippets, contentSnip)
+		}
+		results = append(results, FTSSearchResult{
+			Slug:     slug,
+			Title:    title,
+			Snippets: snippets,
+		})
+	}
+	return results, rows.Err()
+}
+
+// ---------- Skill FTS5 operations ----------
+
+// FTSSkillEntry holds the data needed to index a skill.
+type FTSSkillEntry struct {
+	Slug    string
+	Title   string
+	Tags    string
+	Content string
+}
+
+// IndexSkill inserts or replaces a skill in the FTS index.
+func (d *DB) IndexSkill(slug, title, tags, content string) error {
+	d.db.Exec("DELETE FROM fts_skills WHERE slug = ?", slug)
+	_, err := d.db.Exec(
+		"INSERT INTO fts_skills (slug, title, tags, content) VALUES (?, ?, ?, ?)",
+		slug, title, tags, content,
+	)
+	return err
+}
+
+// RemoveSkill removes a skill from the FTS index.
+func (d *DB) RemoveSkill(slug string) error {
+	_, err := d.db.Exec("DELETE FROM fts_skills WHERE slug = ?", slug)
+	return err
+}
+
+// ReindexSkills replaces the entire skill FTS index.
+func (d *DB) ReindexSkills(skills []FTSSkillEntry) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM fts_skills"); err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare("INSERT INTO fts_skills (slug, title, tags, content) VALUES (?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, s := range skills {
+		if _, err := stmt.Exec(s.Slug, s.Title, s.Tags, s.Content); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// SearchFTSSkills performs a full-text search across skills with tag boosting.
+// BM25 weights: slug=0 (unindexed), title=10, tags=15, content=1.
+func (d *DB) SearchFTSSkills(query string) ([]FTSSearchResult, error) {
+	ftsQuery := buildFTSQuery(query)
+	if ftsQuery == "" {
+		return nil, nil
+	}
+
+	rows, err := d.db.Query(`
+		SELECT
+			slug,
+			title,
+			snippet(fts_skills, 3, '<<', '>>', '…', 48) AS snip1,
+			snippet(fts_skills, 2, '<<', '>>', '…', 48) AS tag_snip
+		FROM fts_skills
+		WHERE fts_skills MATCH ?
+		ORDER BY bm25(fts_skills, 0, 10.0, 15.0, 1.0)
+		LIMIT 50
+	`, ftsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []FTSSearchResult
+	for rows.Next() {
+		var slug, title, contentSnip, tagSnip string
+		if err := rows.Scan(&slug, &title, &contentSnip, &tagSnip); err != nil {
 			return nil, err
 		}
 		var snippets []string

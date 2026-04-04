@@ -1,0 +1,40 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>{{.Page.Title}}</h1>
+    <hr class="title-rule" />
+    <div class="page-tabs">
+      <a href="/skills/{{.Page.Slug}}">Skill</a>
+      <a href="/edit-skill/{{.Page.Slug}}" class="active">Edit</a>
+      <a href="/skill-history/{{.Page.Slug}}">History</a>
+    </div>
+  </div>
+  {{if .Query}}<p class="error">{{.Query}}</p>{{end}}
+  <p class="hint">{{if .IsNew}}Creating a new skill.{{else}}Editing skill.{{end}} End with a <code>Tags: keyword1, keyword2</code> line for discoverability.</p>
+  <div class="editor-layout">
+    <form method="post" action="/edit-skill/{{.Page.Slug}}" class="editor-form">
+      <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
+      <div class="page-actions">
+        <button type="submit">Save</button>
+        <a class="button secondary" href="/skills/{{.Page.Slug}}">Cancel</a>
+        {{if not .IsNew}}<button type="button" class="button danger" id="delete-skill-btn">Delete</button>{{end}}
+      </div>
+    </form>
+    {{if not .IsNew}}
+    <form id="delete-skill-form" method="post" action="/delete-skill/{{.Page.Slug}}" style="display:none"></form>
+    {{end}}
+  </div>
+</article>
+<script>
+(() => {
+  const deleteBtn = document.getElementById("delete-skill-btn");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", () => {
+      if (confirm("Are you sure you want to delete this skill? This cannot be undone.")) {
+        document.getElementById("delete-skill-form").submit();
+      }
+    });
+  }
+})();
+</script>
+{{end}}

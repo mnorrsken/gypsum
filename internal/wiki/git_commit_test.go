@@ -29,7 +29,7 @@ func TestGitAutoCommitterAutoInitsRepo(t *testing.T) {
 		t.Fatalf("expected .git directory to be auto-created in data dir")
 	}
 
-	if err := committer.CommitPageSave("Home", ""); err != nil {
+	if err := committer.CommitSave(KindPage,"Home", ""); err != nil {
 		t.Fatalf("CommitPageSave failed after auto-init: %v", err)
 	}
 }
@@ -50,7 +50,7 @@ func TestGitAutoCommitterCommitsChangedFile(t *testing.T) {
 	}
 
 	committer := NewGitAutoCommitter(dataDir, nil) // auto-initializes repo
-	if err := committer.CommitPageSave("Home", ""); err != nil {
+	if err := committer.CommitSave(KindPage,"Home", ""); err != nil {
 		t.Fatalf("CommitPageSave failed: %v", err)
 	}
 
@@ -59,7 +59,7 @@ func TestGitAutoCommitterCommitsChangedFile(t *testing.T) {
 		t.Fatalf("expected one commit, got %q", count)
 	}
 
-	if err := committer.CommitPageSave("Home", ""); err != nil {
+	if err := committer.CommitSave(KindPage,"Home", ""); err != nil {
 		t.Fatalf("second CommitPageSave failed: %v", err)
 	}
 	count = strings.TrimSpace(runGit(t, dataDir, "rev-list", "--count", "HEAD"))
@@ -88,7 +88,7 @@ func TestGitAutoCommitterCommitsIgnoredFavoritesFile(t *testing.T) {
 	}
 
 	committer := NewGitAutoCommitter(dataDir, nil)
-	if err := committer.CommitPageSave("_favorites", ""); err != nil {
+	if err := committer.CommitSave(KindPage,"_favorites", ""); err != nil {
 		t.Fatalf("CommitPageSave for _favorites failed: %v", err)
 	}
 

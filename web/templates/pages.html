@@ -13,5 +13,20 @@
   {{else}}
     <p class="hint">No pages yet. Create one to get started.</p>
   {{end}}
+
+  {{if .Skills}}
+  <div class="page-header" style="margin-top: 32px;">
+    <h2>Skills</h2>
+    <a class="edit-link" href="/new-skill">+ New Skill</a>
+  </div>
+  <ul class="page-list">
+    {{range .Skills}}
+    <li>
+      <a href="/skills/{{.Slug}}">{{.Title}}</a>
+      {{range .Tags}}<span class="skill-tag">{{.}}</span>{{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
 </article>
 {{end}}

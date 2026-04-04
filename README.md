@@ -15,6 +15,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - Visual table editor
 - Interactive link graph
 - MediaWiki import
+- Skills system for AI-retrievable procedural knowledge (build steps, testing conventions, etc.)
 - MCP server for AI assistants (local and OAuth-protected endpoints)
 - Public page sharing via secret links
 - Header authentication (Authelia, Authentik, etc.)
@@ -64,6 +65,7 @@ data/
 ├── gypsum.db           # SQLite database (shares, OAuth tokens, FTS search index)
 └── repo/               # git working directory
     ├── pages/           # markdown files
+    ├── skills/          # skill pages (procedural knowledge for AI)
     └── images/          # uploaded images
 ```
 

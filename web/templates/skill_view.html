@@ -1,0 +1,19 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>{{.Page.Title}}</h1>
+    <hr class="title-rule" />
+    <div class="page-tabs">
+      <a href="/skills/{{.Page.Slug}}" class="active">Skill</a>
+      <a href="/edit-skill/{{.Page.Slug}}">Edit</a>
+      <a href="/skill-history/{{.Page.Slug}}">History</a>
+    </div>
+  </div>
+  {{if .SkillTags}}
+  <div class="skill-tags-bar">
+    {{range .SkillTags}}<span class="skill-tag">{{.}}</span>{{end}}
+  </div>
+  {{end}}
+  <div class="wiki-content">{{.RenderedHTML}}</div>
+</article>
+{{end}}

@@ -34,11 +34,11 @@ type GitRemoteConfig struct {
 }
 
 type GitAutoCommitter struct {
-	dataDir   string
-	remote    *GitRemoteConfig
-	mu        sync.Mutex // serialise git operations
-	stopCh    chan struct{}
-	afterPull func(changedSlugs []string) // optional; called after pull with slugs of changed pages (nil = reindex all)
+	dataDir        string
+	remote         *GitRemoteConfig
+	mu             sync.Mutex // serialise git operations
+	stopCh         chan struct{}
+	afterPull func(kind DocKind, changedSlugs []string) // optional; called after pull per doc kind
 }
 
 func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommitter {
@@ -55,19 +55,19 @@ func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommit
 }
 
 // SetAfterPull registers a callback invoked after every successful pull/rebase.
-// The callback receives the slugs of pages that changed; a nil slice means the
-// diff could not be determined and a full reindex is recommended.
-func (c *GitAutoCommitter) SetAfterPull(fn func(changedSlugs []string)) {
+// The callback receives the document kind and the slugs that changed; a nil
+// slice means the diff could not be determined and a full reindex is recommended.
+func (c *GitAutoCommitter) SetAfterPull(fn func(kind DocKind, changedSlugs []string)) {
 	c.afterPull = fn
 }
 
-func (c *GitAutoCommitter) CommitPageSave(slug, author string) error {
-	return c.commitFile(filepath.Join("pages", MarkdownFilename(slug)), fmt.Sprintf("wiki: update page %s", slug), author)
+func (c *GitAutoCommitter) CommitSave(kind DocKind, slug, author string) error {
+	return c.commitFile(filepath.Join(string(kind), MarkdownFilename(slug)), fmt.Sprintf("wiki: update %s %s", kind.Label(), slug), author)
 }
 
-func (c *GitAutoCommitter) CommitPageDelete(slug, author string) error {
-	relPath := filepath.Join("pages", MarkdownFilename(slug))
-	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete page %s", slug), author)
+func (c *GitAutoCommitter) CommitDelete(kind DocKind, slug, author string) error {
+	relPath := filepath.Join(string(kind), MarkdownFilename(slug))
+	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete %s %s", kind.Label(), slug), author)
 }
 
 func (c *GitAutoCommitter) CommitImageSave(filename, author string) error {
@@ -264,7 +264,8 @@ func (c *GitAutoCommitter) pullRebase() {
 	}
 
 	if c.afterPull != nil {
-		c.afterPull(c.changedPageSlugs(headBefore))
+		c.afterPull(KindPage, c.changedDocSlugs("pages", headBefore))
+		c.afterPull(KindSkill, c.changedDocSlugs("skills", headBefore))
 	}
 }
 
@@ -433,10 +434,11 @@ func (c *GitAutoCommitter) revParseHEAD() string {
 	return h
 }
 
-// changedPageSlugs diffs HEAD against oldHead and returns slugs for any
-// changed/added/deleted files under pages/. Returns nil if the diff cannot
-// be determined (signals the caller to do a full reindex).
-func (c *GitAutoCommitter) changedPageSlugs(oldHead string) []string {
+// changedDocSlugs diffs HEAD against oldHead and returns slugs for any
+// changed/added/deleted files under the given subdirectory (e.g. "pages" or
+// "skills"). Returns nil if the diff cannot be determined (signals the caller
+// to do a full reindex).
+func (c *GitAutoCommitter) changedDocSlugs(subdir, oldHead string) []string {
 	if oldHead == "" {
 		return nil
 	}
@@ -444,7 +446,7 @@ func (c *GitAutoCommitter) changedPageSlugs(oldHead string) []string {
 	if newHead == "" || newHead == oldHead {
 		return []string{} // no change
 	}
-	out, err := c.runGitOutput("diff", "--name-only", oldHead, newHead, "--", "pages/")
+	out, err := c.runGitOutput("diff", "--name-only", oldHead, newHead, "--", subdir+"/")
 	if err != nil || out == "" {
 		return nil // can't determine — caller should full-reindex
 	}
@@ -454,7 +456,6 @@ func (c *GitAutoCommitter) changedPageSlugs(oldHead string) []string {
 		if line == "" {
 			continue
 		}
-		// lines look like "pages/Some_Page.md"
 		base := filepath.Base(line)
 		if filepath.Ext(base) == ".md" {
 			slugs = append(slugs, SlugFromFilename(base))
@@ -463,28 +464,13 @@ func (c *GitAutoCommitter) changedPageSlugs(oldHead string) []string {
 	return slugs
 }
 
-// PageContentAtRevision returns the content of a page file at a specific git revision.
-func (c *GitAutoCommitter) PageContentAtRevision(slug, hash string) (string, error) {
-	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
-		return "", fmt.Errorf("git not available")
-	}
-
-	relPath := filepath.Join("pages", MarkdownFilename(slug))
-	cmd := exec.Command("git", "-C", c.dataDir, "show", hash+":"+relPath)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("revision not found")
-	}
-	return string(out), nil
-}
-
-// PageHistory returns the git log for a page file.
-func (c *GitAutoCommitter) PageHistory(slug string, maxEntries int) ([]HistoryEntry, error) {
+// DocHistory returns the git log for a document file (page or skill).
+func (c *GitAutoCommitter) DocHistory(kind DocKind, slug string, maxEntries int) ([]HistoryEntry, error) {
 	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
 		return nil, nil
 	}
 
-	relPath := filepath.Join("pages", MarkdownFilename(slug))
+	relPath := filepath.Join(string(kind), MarkdownFilename(slug))
 	format := "%H%n%an%n%aI%n%s%n---" // hash, author, ISO date, subject, separator
 
 	cmd := exec.Command("git", "-C", c.dataDir,
@@ -512,8 +498,22 @@ func (c *GitAutoCommitter) PageHistory(slug string, maxEntries int) ([]HistoryEn
 			Message: strings.TrimSpace(lines[3]),
 		})
 	}
-
 	return entries, nil
+}
+
+// DocContentAtRevision returns the content of a document file at a specific git revision.
+func (c *GitAutoCommitter) DocContentAtRevision(kind DocKind, slug, hash string) (string, error) {
+	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
+		return "", fmt.Errorf("git not available")
+	}
+
+	relPath := filepath.Join(string(kind), MarkdownFilename(slug))
+	cmd := exec.Command("git", "-C", c.dataDir, "show", hash+":"+relPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("revision not found")
+	}
+	return string(out), nil
 }
 
 // GlobalHistory returns the most recent commits across all pages, with pagination.

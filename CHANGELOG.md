@@ -2,6 +2,17 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.32.0
+
+### Added
+- **Skills system** — new skill pages for storing procedural knowledge (build instructions, testing conventions, deployment steps). Skills live in a separate `skills/` directory, have tag-based discoverability, and are optimized for AI retrieval via MCP.
+- **6 new MCP tools** — `list_skills`, `get_skill`, `create_skill`, `edit_skill`, `delete_skill`, `search_skills` with FTS5 tag-boosted search (tags weighted 15x over content).
+- **Skills web UI** — skills section in sidebar, dedicated list/view/edit pages, tag display, and inclusion in the All Pages view.
+- **Skills documentation** — added skills guide to the MCP docs page, including recommended structure and Claude Code auto-lookup instructions.
+
+### Changed
+- **Unified document storage** — pages and skills now share a single set of `Load`/`Save`/`Delete`/`List`/`Search` methods parameterized by `DocKind`, replacing duplicate implementations. Git commit/history methods similarly unified.
+
 ## v0.31.0
 
 ### Added
