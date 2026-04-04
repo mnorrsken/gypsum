@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.33.1
+
+### Fixed
+- **Skills directory auto-created** — `Save` now calls `MkdirAll` before writing, so the `skills/` folder is always created on first use even on pre-existing Docker volumes that predate the skills feature.
+- **MCP tool descriptions** — clarified when to use page tools vs skill tools: `create_page`/`edit_page` now mention "document on my wiki" / "add a note to my wiki" as triggers; `create_skill`/`edit_skill`/`delete_skill` now say to only use them when the user explicitly says "skill".
+
 ## v0.33.0
 
 ### Added

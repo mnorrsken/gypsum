@@ -5,6 +5,13 @@ Always output binaries to `bin/`:
 go build -o bin/ ./cmd/wiki/
 ```
 
+## Wiki Skills
+
+Before starting implementation tasks (writing code, tests, builds, deployments, refactoring),
+search the Gypsum wiki for relevant skills using `search_skills` with keywords matching
+the language/framework and task type. Follow any matching skill instructions.
+
+
 # Gypsum Release Process
 
 ## Version scheme

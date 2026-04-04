@@ -407,7 +407,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:    "create_page",
 			Section: MCPSectionEdit,
-			Description: "Create a new wiki page. Fails if the page already exists. " +
+			Description: "Create a new wiki page. Use this when the user says things like 'document on my wiki', 'add a note to my wiki', 'save this to the wiki', or 'create a wiki page'. " +
+				"Fails if the page already exists. " +
 				"The slug is derived from the title (spaces become underscores, e.g. 'My Page' → 'My_Page'). " +
 				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page (e.g. Home or a relevant category page) so it is discoverable. " +
 				formattingGuide,
@@ -419,7 +420,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:    "edit_page",
 			Section: MCPSectionEdit,
-			Description: "Update the content of an existing wiki page. Replaces the entire page content. " +
+			Description: "Update the content of an existing wiki page. Use this when the user says things like 'update my wiki', 'edit the wiki page', or 'add this to my wiki'. " +
+				"Replaces the entire page content. " +
 				"Always use get_page first to read the current content before editing. " +
 				"When adding [[wiki links]] to new pages, make sure those pages exist or will be created. " +
 				formattingGuide,
@@ -499,6 +501,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Name:    "create_skill",
 			Section: MCPSectionSkills,
 			Description: "Create a new skill (procedural knowledge for AI retrieval). " +
+				"ONLY use this tool when the user explicitly mentions 'skill' (e.g. 'add a skill', 'create a skill', 'save this as a skill'). " +
+				"Do NOT use for general wiki notes or documentation — use create_page instead. " +
 				"Skills document how to perform tasks — build processes, testing conventions, deployment steps, coding patterns. " +
 				"Recommended structure: start with '# Title', then a brief description of what this skill covers, " +
 				"a '## When to Use' section describing when to apply it, " +
@@ -514,8 +518,10 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:    "edit_skill",
 			Section: MCPSectionSkills,
-			Description: "Update the content of an existing skill. Replaces the entire skill content. " +
-				"Always use get_skill first to read the current content before editing.",
+			Description: "Update the content of an existing skill. " +
+				"ONLY use this tool when the user explicitly mentions 'skill' (e.g. 'update the skill', 'edit this skill'). " +
+				"Do NOT use for general wiki page edits — use edit_page instead. " +
+				"Replaces the entire skill content. Always use get_skill first to read the current content before editing.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"slug":    mcpPropString("Skill slug to edit, e.g. 'Go_Testing_Conventions'"),
 				"content": mcpPropString("New markdown content (replaces entire skill)."),
@@ -524,7 +530,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:        "delete_skill",
 			Section:     MCPSectionSkills,
-			Description: "Delete a skill permanently.",
+			Description: "Delete a skill permanently. ONLY use when the user explicitly asks to delete a skill.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"slug": mcpPropString("Skill slug to delete"),
 			}, []string{"slug"}),

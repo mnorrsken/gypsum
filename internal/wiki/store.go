@@ -264,7 +264,11 @@ func (s *PageStore) Load(kind DocKind, slug string) (*Page, error) {
 }
 
 func (s *PageStore) Save(kind DocKind, slug, content string) error {
-	fullPath := filepath.Join(s.docDir(kind), MarkdownFilename(slug))
+	dir := s.docDir(kind)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	fullPath := filepath.Join(dir, MarkdownFilename(slug))
 	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
 		return err
 	}
