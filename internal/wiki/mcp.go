@@ -318,9 +318,11 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 	allTools := []mcpTool{
 		// ── Read tools ───────────────────────────────────────────────
 		{
-			Name:        "list_pages",
-			Section:     MCPSectionRead,
-			Description: "List all wiki pages (alphabetically sorted). Returns page slugs and titles.",
+			Name:    "list_pages",
+			Section: MCPSectionRead,
+			Description: "List all wiki pages (alphabetically sorted). Returns page slugs and titles. " +
+				"Prefer search_pages over this tool when looking for specific pages — " +
+				"do not list all pages just to find one.",
 			InputSchema: mcpSchema("object", nil, nil),
 		},
 		{
@@ -335,9 +337,9 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:        "search_pages",
 			Section:     MCPSectionRead,
-			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. The query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets showing where terms were found in the page content.",
+			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. Each query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets showing where terms were found in the page content. Multiple queries can be provided to search for different topics at once.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"query": mcpPropString("Search query — split into terms on whitespace/punctuation, each prefix-matched independently"),
+				"query": mcpPropStringArray("Search queries — each is split into terms on whitespace/punctuation, each prefix-matched independently. Multiple queries search for different topics in one call."),
 			}, []string{"query"}),
 		},
 		{
@@ -410,11 +412,16 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Description: "Create a new wiki page. Use this when the user says things like 'document on my wiki', 'add a note to my wiki', 'save this to the wiki', or 'create a wiki page'. " +
 				"Fails if the page already exists. " +
 				"The slug is derived from the title (spaces become underscores, e.g. 'My Page' → 'My_Page'). " +
+				"IMPORTANT: Before creating a page, use the optional 'query' parameter to check if a similar page already exists — " +
+				"do NOT use list_pages for this, trust the search instead. " +
+				"If the query finds existing pages, search results are returned and the page is NOT created — review them and decide whether to use an existing page. " +
+				"Call again without 'query' to force creation. " +
 				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page (e.g. Home or a relevant category page) so it is discoverable. " +
 				formattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
 				"title":   mcpPropString("Page title, e.g. 'My New Page'. This becomes the slug and the display title."),
 				"content": mcpPropString("Markdown content for the page. " + wikiContentGuide),
+				"query":   mcpPropStringArray("Optional duplicate-check queries. If any query returns search results, the page is NOT created and results are returned instead. Omit to skip the check and force creation."),
 			}, []string{"title", "content"}),
 		},
 		{
@@ -485,7 +492,9 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Section: MCPSectionSkills,
 			Description: "List all skills (procedural knowledge pages for AI retrieval). " +
 				"Returns each skill's slug, title, and tags. " +
-				"Skills document how to perform tasks — build processes, testing conventions, deployment steps, coding patterns.",
+				"Skills document how to perform tasks — build processes, testing conventions, deployment steps, coding patterns. " +
+				"Prefer search_skills over this tool when looking for specific skills — " +
+				"do not list all skills just to find one.",
 			InputSchema: mcpSchema("object", nil, nil),
 		},
 		{
@@ -509,10 +518,15 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"a '## Instructions' section with the actual steps, " +
 				"and end with a 'Tags: keyword1, keyword2, ...' line for discoverability. " +
 				"The slug is derived from the title (spaces become underscores). " +
-				"Fails if the skill already exists.",
+				"Fails if the skill already exists. " +
+				"IMPORTANT: Before creating a skill, use the optional 'query' parameter to check if a similar skill already exists — " +
+				"do NOT use list_skills for this, trust the search instead. " +
+				"If the query finds existing skills, search results are returned and the skill is NOT created — review them and decide whether to use an existing skill. " +
+				"Call again without 'query' to force creation.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"title":   mcpPropString("Skill title, e.g. 'Go Testing Conventions'. This becomes the slug and display title."),
 				"content": mcpPropString("Markdown content for the skill. Start with '# Title' as the first line."),
+				"query":   mcpPropStringArray("Optional duplicate-check queries. If any query returns search results, the skill is NOT created and results are returned instead. Omit to skip the check and force creation."),
 			}, []string{"title", "content"}),
 		},
 		{
@@ -542,9 +556,10 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"Searches across skill titles, tags, and content with tag matches ranked highest. " +
 				"Use this before starting implementation tasks (writing code, tests, builds, deployments) " +
 				"to find relevant conventions and instructions. " +
-				"Example: search for 'go testing' before writing Go tests.",
+				"Example: search for 'go testing' before writing Go tests. " +
+				"Multiple queries can be provided to search for different topics at once.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"query": mcpPropString("Search query — split into terms, each prefix-matched. E.g. 'go testing' or 'deploy kubernetes'"),
+				"query": mcpPropStringArray("Search queries — each is split into terms, each prefix-matched. E.g. ['go testing', 'deploy kubernetes']. Multiple queries search for different topics in one call."),
 			}, []string{"query"}),
 		},
 	}
@@ -662,6 +677,13 @@ func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
 		return mcpError("missing required argument: content")
 	}
 
+	// Optional duplicate-check: if query is provided and finds results, return them instead of creating.
+	if queries, ok := mcpArgStringArray(args, "query"); ok {
+		if text, found := m.runMultiSearch(KindPage, queries); found {
+			return mcpText("Existing pages found — review these before creating a new page. Call create_page without 'query' to force creation.\n\n" + text)
+		}
+	}
+
 	if m.redactSecure && secureAesMacroRe.MatchString(content) {
 		return mcpError("content contains encrypted fields ({{secure_aes:...}}); creating pages with encrypted fields is not supported via this endpoint")
 	}
@@ -722,32 +744,16 @@ func (m *MCPHandler) toolDeletePage(args map[string]any) mcpCallToolResult {
 }
 
 func (m *MCPHandler) toolSearchPages(args map[string]any) mcpCallToolResult {
-	query, ok := mcpArgString(args, "query")
+	queries, ok := mcpArgStringArray(args, "query")
 	if !ok {
 		return mcpError("missing required argument: query")
 	}
 
-	results, err := m.store.Search(KindPage, query)
-	if err != nil {
-		return mcpError("search failed: " + err.Error())
+	text, found := m.runMultiSearch(KindPage, queries)
+	if !found {
+		return mcpText("No results found for: " + strings.Join(queries, ", "))
 	}
-	if len(results) == 0 {
-		return mcpText("No results found for: " + query)
-	}
-
-	var sb strings.Builder
-	for _, r := range results {
-		fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n", r.Title, r.Slug)
-		if len(r.Snippets) > 0 {
-			for _, snip := range r.Snippets {
-				fmt.Fprintf(&sb, "> %s\n", m.redactContent(snip))
-			}
-		} else if r.Excerpt != "" {
-			fmt.Fprintf(&sb, "> %s\n", m.redactContent(r.Excerpt))
-		}
-		sb.WriteString("\n")
-	}
-	return mcpText(sb.String())
+	return mcpText(text)
 }
 
 func (m *MCPHandler) toolListImages() mcpCallToolResult {
@@ -932,6 +938,35 @@ func (m *MCPHandler) toolLinkGraph() mcpCallToolResult {
 	return mcpJSON(graph)
 }
 
+// ── Multi-query search helper ──────────────────────────────────────────
+
+func (m *MCPHandler) runMultiSearch(kind DocKind, queries []string) (string, bool) {
+	var sb strings.Builder
+	found := false
+	for _, q := range queries {
+		results, err := m.store.Search(kind, q)
+		if err != nil || len(results) == 0 {
+			continue
+		}
+		found = true
+		if len(queries) > 1 {
+			fmt.Fprintf(&sb, "### Results for: %s\n\n", q)
+		}
+		for _, r := range results {
+			fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n", r.Title, r.Slug)
+			if len(r.Snippets) > 0 {
+				for _, snip := range r.Snippets {
+					fmt.Fprintf(&sb, "> %s\n", m.redactContent(snip))
+				}
+			} else if r.Excerpt != "" {
+				fmt.Fprintf(&sb, "> %s\n", m.redactContent(r.Excerpt))
+			}
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String(), found
+}
+
 // ── Skill tool implementations ─────────────────────────────────────────
 
 func (m *MCPHandler) toolListSkills() mcpCallToolResult {
@@ -965,6 +1000,13 @@ func (m *MCPHandler) toolCreateSkill(args map[string]any) mcpCallToolResult {
 	content, ok := mcpArgString(args, "content")
 	if !ok {
 		return mcpError("missing required argument: content")
+	}
+
+	// Optional duplicate-check: if query is provided and finds results, return them instead of creating.
+	if queries, ok := mcpArgStringArray(args, "query"); ok {
+		if text, found := m.runMultiSearch(KindSkill, queries); found {
+			return mcpText("Existing skills found — review these before creating a new skill. Call create_skill without 'query' to force creation.\n\n" + text)
+		}
 	}
 
 	slug := SlugFromTitle(title)
@@ -1018,32 +1060,16 @@ func (m *MCPHandler) toolDeleteSkill(args map[string]any) mcpCallToolResult {
 }
 
 func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
-	query, ok := mcpArgString(args, "query")
+	queries, ok := mcpArgStringArray(args, "query")
 	if !ok {
 		return mcpError("missing required argument: query")
 	}
 
-	results, err := m.store.Search(KindSkill, query)
-	if err != nil {
-		return mcpError("search failed: " + err.Error())
+	text, found := m.runMultiSearch(KindSkill, queries)
+	if !found {
+		return mcpText("No skills found for: " + strings.Join(queries, ", "))
 	}
-	if len(results) == 0 {
-		return mcpText("No skills found for: " + query)
-	}
-
-	var sb strings.Builder
-	for _, r := range results {
-		fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n", r.Title, r.Slug)
-		if len(r.Snippets) > 0 {
-			for _, snip := range r.Snippets {
-				fmt.Fprintf(&sb, "> %s\n", m.redactContent(snip))
-			}
-		} else if r.Excerpt != "" {
-			fmt.Fprintf(&sb, "> %s\n", m.redactContent(r.Excerpt))
-		}
-		sb.WriteString("\n")
-	}
-	return mcpText(sb.String())
+	return mcpText(text)
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -1102,4 +1128,37 @@ func mcpSchema(typ string, properties map[string]any, required []string) map[str
 
 func mcpPropString(desc string) map[string]any {
 	return map[string]any{"type": "string", "description": desc}
+}
+
+func mcpPropStringArray(desc string) map[string]any {
+	return map[string]any{
+		"type":        "array",
+		"items":       map[string]any{"type": "string"},
+		"description": desc,
+	}
+}
+
+func mcpArgStringArray(args map[string]any, key string) ([]string, bool) {
+	v, ok := args[key]
+	if !ok {
+		return nil, false
+	}
+	// Handle single string (backward compat)
+	if s, ok := v.(string); ok {
+		return []string{s}, true
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		return nil, false
+	}
+	strs := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			strs = append(strs, s)
+		}
+	}
+	if len(strs) == 0 {
+		return nil, false
+	}
+	return strs, true
 }

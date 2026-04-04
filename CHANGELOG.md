@@ -2,6 +2,15 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.34.0
+
+### Added
+- **MCP multi-query search** — `search_pages` and `search_skills` now accept an array of queries, returning results for multiple topics in a single call with per-query section headers.
+- **MCP duplicate-check on create** — `create_page` and `create_skill` now accept an optional `query` parameter. If the search finds existing pages/skills, results are returned instead of creating — call again without `query` to force creation.
+
+### Changed
+- **MCP tool descriptions** — `list_pages` and `list_skills` now recommend using `search_pages`/`search_skills` instead of listing all items to find a specific one. `create_page` and `create_skill` guide AI assistants to use the `query` parameter before creating.
+
 ## v0.33.1
 
 ### Fixed

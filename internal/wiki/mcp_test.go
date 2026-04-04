@@ -396,6 +396,47 @@ func TestMCPSearchPages(t *testing.T) {
 	}
 }
 
+func TestMCPSearchPagesArrayQuery(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Alpha", "contains keyword gypsum here")
+
+	// Single-element array should work like a plain string
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_pages",
+		"arguments": map[string]any{"query": []string{"gypsum"}},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Alpha")) {
+		t.Fatalf("expected Alpha in results: %s", text)
+	}
+	// Single query should NOT show per-query headers
+	if bytes.Contains([]byte(text), []byte("Results for:")) {
+		t.Fatalf("single query should not have per-query headers: %s", text)
+	}
+}
+
+func TestMCPSearchPagesMultiQuery(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Alpha", "contains keyword gypsum here")
+	_ = store.Save(KindPage, "Beta", "talks about golang programming")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_pages",
+		"arguments": map[string]any{"query": []string{"gypsum", "golang"}},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Alpha")) {
+		t.Fatalf("expected Alpha in results: %s", text)
+	}
+	if !bytes.Contains([]byte(text), []byte("Beta")) {
+		t.Fatalf("expected Beta in results: %s", text)
+	}
+	// Multiple queries should show per-query headers
+	if !bytes.Contains([]byte(text), []byte("Results for:")) {
+		t.Fatalf("expected per-query headers for multi-query: %s", text)
+	}
+}
+
 func TestMCPSearchPagesNoResults(t *testing.T) {
 	handler, _ := newTestMCP(t)
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
@@ -405,6 +446,18 @@ func TestMCPSearchPagesNoResults(t *testing.T) {
 	text := toolResultText(t, resp)
 	if text != "No results found for: nonexistent" {
 		t.Fatalf("unexpected: %s", text)
+	}
+}
+
+func TestMCPSearchPagesMultiQueryNoResults(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_pages",
+		"arguments": map[string]any{"query": []string{"zzz_nope", "yyy_nada"}},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("zzz_nope")) || !bytes.Contains([]byte(text), []byte("yyy_nada")) {
+		t.Fatalf("expected both queries in no-results message: %s", text)
 	}
 }
 
@@ -680,5 +733,192 @@ func TestMCPFullPageLifecycle(t *testing.T) {
 	text = toolResultText(t, resp)
 	if text != "[]" {
 		t.Fatalf("expected empty list after delete, got: %s", text)
+	}
+}
+
+// ── create_page with query tests ────────────────────────────────────────
+
+func TestMCPCreatePageQueryFindsMatch(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Existing_Topic", "# Existing Topic\n\nContent about deployment")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":   "Deployment Guide",
+			"content": "# Deployment Guide\n\nNew content",
+			"query":   []string{"deployment"},
+		},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Existing pages found")) {
+		t.Fatalf("expected duplicate-check message: %s", text)
+	}
+	if !bytes.Contains([]byte(text), []byte("Existing_Topic")) {
+		t.Fatalf("expected existing page in results: %s", text)
+	}
+	// Page should NOT have been created
+	if _, err := store.Load(KindPage, "Deployment_Guide"); err == nil {
+		t.Fatal("page should not have been created when query found matches")
+	}
+}
+
+func TestMCPCreatePageQueryNoMatch(t *testing.T) {
+	handler, store := newTestMCP(t)
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":   "Brand New Topic",
+			"content": "# Brand New Topic\n\nFresh content",
+			"query":   []string{"zzz_nonexistent_term"},
+		},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Created page")) {
+		t.Fatalf("expected page creation: %s", text)
+	}
+	if _, err := store.Load(KindPage, "Brand_New_Topic"); err != nil {
+		t.Fatalf("page should have been created: %v", err)
+	}
+}
+
+func TestMCPCreatePageWithoutQueryForceCreates(t *testing.T) {
+	handler, store := newTestMCP(t)
+	// Even with similar content already existing, no query = force create
+	_ = store.Save(KindPage, "Similar", "# Similar\n\nOverlapping content")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":   "New Page",
+			"content": "# New Page\n\nContent",
+		},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Created page")) {
+		t.Fatalf("expected page creation: %s", text)
+	}
+	if _, err := store.Load(KindPage, "New_Page"); err != nil {
+		t.Fatalf("page should have been created: %v", err)
+	}
+}
+
+func TestMCPCreatePageQueryMultipleQueries(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Networking", "# Networking\n\nAll about network config")
+
+	// First query misses, second query hits — should still block creation
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":   "Network Setup",
+			"content": "# Network Setup\n\nGuide",
+			"query":   []string{"zzz_nope", "network"},
+		},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Existing pages found")) {
+		t.Fatalf("expected duplicate-check message: %s", text)
+	}
+	if _, err := store.Load(KindPage, "Network_Setup"); err == nil {
+		t.Fatal("page should not have been created when one query matched")
+	}
+}
+
+// ── create_skill with query tests ───────────────────────────────────────
+
+func TestMCPCreateSkillQueryFindsMatch(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindSkill, "Go_Testing", "# Go Testing\n\nHow to test Go code\n\nTags: go, testing")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_skill",
+		"arguments": map[string]any{
+			"title":   "Golang Test Patterns",
+			"content": "# Golang Test Patterns\n\nNew testing guide",
+			"query":   []string{"go testing"},
+		},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Existing skills found")) {
+		t.Fatalf("expected duplicate-check message: %s", text)
+	}
+	if _, err := store.Load(KindSkill, "Golang_Test_Patterns"); err == nil {
+		t.Fatal("skill should not have been created when query found matches")
+	}
+}
+
+func TestMCPCreateSkillQueryNoMatch(t *testing.T) {
+	handler, store := newTestMCP(t)
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_skill",
+		"arguments": map[string]any{
+			"title":   "Unique Skill",
+			"content": "# Unique Skill\n\nContent",
+			"query":   []string{"zzz_nonexistent"},
+		},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Created skill")) {
+		t.Fatalf("expected skill creation: %s", text)
+	}
+	if _, err := store.Load(KindSkill, "Unique_Skill"); err != nil {
+		t.Fatalf("skill should have been created: %v", err)
+	}
+}
+
+func TestMCPCreateSkillWithoutQueryForceCreates(t *testing.T) {
+	handler, store := newTestMCP(t)
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_skill",
+		"arguments": map[string]any{
+			"title":   "Direct Skill",
+			"content": "# Direct Skill\n\nForce created",
+		},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Created skill")) {
+		t.Fatalf("expected skill creation: %s", text)
+	}
+	if _, err := store.Load(KindSkill, "Direct_Skill"); err != nil {
+		t.Fatalf("skill should have been created: %v", err)
+	}
+}
+
+// ── search_skills multi-query tests ─────────────────────────────────────
+
+func TestMCPSearchSkillsMultiQuery(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindSkill, "Go_Testing", "# Go Testing\n\nTags: go, testing")
+	_ = store.Save(KindSkill, "Deploy_K8s", "# Deploy K8s\n\nTags: deploy, kubernetes")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_skills",
+		"arguments": map[string]any{"query": []string{"go testing", "deploy"}},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Go_Testing")) {
+		t.Fatalf("expected Go_Testing in results: %s", text)
+	}
+	if !bytes.Contains([]byte(text), []byte("Deploy_K8s")) {
+		t.Fatalf("expected Deploy_K8s in results: %s", text)
+	}
+	if !bytes.Contains([]byte(text), []byte("Results for:")) {
+		t.Fatalf("expected per-query headers: %s", text)
+	}
+}
+
+func TestMCPSearchSkillsNoResults(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_skills",
+		"arguments": map[string]any{"query": "zzz_nope"},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("No skills found for:")) {
+		t.Fatalf("unexpected: %s", text)
 	}
 }
