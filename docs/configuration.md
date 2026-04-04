@@ -10,6 +10,22 @@
 | `GYPSUM_AUTH_GROUP_HEADER` | `Remote-Group` | Header containing comma-separated group names. Only used when `GYPSUM_AUTH_USER_HEADER` is set. |
 | `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | If set, the group header must contain this group or the request is rejected with 403. |
 | `GYPSUM_PROBE_PORT` | `:9091` | Listen address for the health-probe server (`/healthz`, `/readyz`). |
+| `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills` | Comma-separated list of MCP tool sections to enable. Omit a section to hide those tools from AI assistants. |
+
+### MCP sections
+
+| Section | Tools |
+|---|---|
+| `read` | list_pages, get_page, search_pages, list_images, get_recent_pages, get_favorites, page_history, get_page_revision, page_links, what_links_here, link_graph |
+| `edit` | create_page, edit_page, create_page_from_mediawiki, edit_page_from_mediawiki |
+| `delete` | delete_page, delete_image |
+| `skills` | list_skills, get_skill, create_skill, edit_skill, delete_skill, search_skills |
+
+Example — read-only wiki for AI assistants:
+
+```bash
+GYPSUM_MCP_SECTIONS=read
+```
 
 ## OAuth Variables
 

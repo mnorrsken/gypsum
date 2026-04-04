@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.33.0
+
+### Added
+- **MCP tool sections** — MCP tools are now categorized into `read`, `edit`, `delete`, and `skills` sections. Set `GYPSUM_MCP_SECTIONS` to a comma-separated list (e.g. `read,skills`) to control which tools are exposed to AI assistants. Defaults to all sections enabled.
+
 ## v0.32.0
 
 ### Added

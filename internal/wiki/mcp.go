@@ -66,10 +66,46 @@ type mcpServerInfo struct {
 	Version string `json:"version"`
 }
 
+// MCPSection identifies a group of MCP tools that can be enabled/disabled.
+type MCPSection string
+
+const (
+	MCPSectionRead   MCPSection = "read"
+	MCPSectionEdit   MCPSection = "edit"
+	MCPSectionDelete MCPSection = "delete"
+	MCPSectionSkills MCPSection = "skills"
+)
+
+// AllMCPSections is the default set when no restriction is configured.
+var AllMCPSections = map[MCPSection]bool{
+	MCPSectionRead:   true,
+	MCPSectionEdit:   true,
+	MCPSectionDelete: true,
+	MCPSectionSkills: true,
+}
+
+// ParseMCPSections parses a comma-separated list of section names (e.g.
+// "read,edit,skills") into a set. Returns AllMCPSections if input is empty.
+func ParseMCPSections(s string) map[MCPSection]bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return AllMCPSections
+	}
+	sections := make(map[MCPSection]bool)
+	for _, part := range strings.Split(s, ",") {
+		sec := MCPSection(strings.TrimSpace(part))
+		if sec != "" {
+			sections[sec] = true
+		}
+	}
+	return sections
+}
+
 type mcpTool struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	InputSchema any    `json:"inputSchema"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	InputSchema any        `json:"inputSchema"`
+	Section     MCPSection `json:"-"` // not exposed in JSON
 }
 
 type mcpToolsListResult struct {
@@ -99,27 +135,30 @@ type MCPHandler struct {
 	store         *PageStore
 	autoCommit    *GitAutoCommitter
 	sessions      sync.Map // sessionID → true
-	oauth         *OAuthServer // non-nil → Bearer token required
-	redactSecure  bool         // when true, {{secure_aes:...}} blocks are hidden in read results
+	oauth         *OAuthServer       // non-nil → Bearer token required
+	redactSecure  bool               // when true, {{secure_aes:...}} blocks are hidden in read results
+	sections      map[MCPSection]bool // enabled tool sections
 }
 
 // NewMCPHandler creates an internal (unauthenticated) MCP handler.
-func NewMCPHandler(store *PageStore, autoCommitter *GitAutoCommitter) *MCPHandler {
+func NewMCPHandler(store *PageStore, autoCommitter *GitAutoCommitter, sections map[MCPSection]bool) *MCPHandler {
 	return &MCPHandler{
 		store:      store,
 		autoCommit: autoCommitter,
+		sections:   sections,
 	}
 }
 
 // NewMCPHandlerExternal creates an OAuth-protected MCP handler that redacts
 // encrypted secure fields from all read results and blocks edits on pages that
 // contain them.
-func NewMCPHandlerExternal(store *PageStore, autoCommitter *GitAutoCommitter, oauth *OAuthServer) *MCPHandler {
+func NewMCPHandlerExternal(store *PageStore, autoCommitter *GitAutoCommitter, oauth *OAuthServer, sections map[MCPSection]bool) *MCPHandler {
 	return &MCPHandler{
 		store:        store,
 		autoCommit:   autoCommitter,
 		oauth:        oauth,
 		redactSecure: true,
+		sections:     sections,
 	}
 }
 
@@ -276,14 +315,17 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		formattingGuide = wikiFormattingGuideExternal
 	}
 
-	tools := []mcpTool{
+	allTools := []mcpTool{
+		// ── Read tools ───────────────────────────────────────────────
 		{
 			Name:        "list_pages",
+			Section:     MCPSectionRead,
 			Description: "List all wiki pages (alphabetically sorted). Returns page slugs and titles.",
 			InputSchema: mcpSchema("object", nil, nil),
 		},
 		{
-			Name: "get_page",
+			Name:    "get_page",
+			Section: MCPSectionRead,
 			Description: "Get the raw markdown content of a wiki page. " +
 				"The returned content is the full markdown source including any wiki-specific syntax.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -291,7 +333,80 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"slug"}),
 		},
 		{
-			Name: "create_page",
+			Name:        "search_pages",
+			Section:     MCPSectionRead,
+			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. The query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets showing where terms were found in the page content.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"query": mcpPropString("Search query — split into terms on whitespace/punctuation, each prefix-matched independently"),
+			}, []string{"query"}),
+		},
+		{
+			Name:        "list_images",
+			Section:     MCPSectionRead,
+			Description: "List all uploaded images with metadata (name, size, modification time, which pages use them).",
+			InputSchema: mcpSchema("object", nil, nil),
+		},
+		{
+			Name:        "get_recent_pages",
+			Section:     MCPSectionRead,
+			Description: "Get the most recently modified wiki pages.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"count": map[string]any{"type": "number", "description": "Number of pages to return (default 10)"},
+			}, nil),
+		},
+		{
+			Name:        "get_favorites",
+			Section:     MCPSectionRead,
+			Description: "Get the list of favorite/pinned pages from the wiki sidebar.",
+			InputSchema: mcpSchema("object", nil, nil),
+		},
+		{
+			Name:        "page_history",
+			Section:     MCPSectionRead,
+			Description: "Get the git revision history for a wiki page.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug":  mcpPropString("Page slug"),
+				"count": map[string]any{"type": "number", "description": "Max entries to return (default 20)"},
+			}, []string{"slug"}),
+		},
+		{
+			Name:        "get_page_revision",
+			Section:     MCPSectionRead,
+			Description: "Get the content of a wiki page at a specific git revision.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug": mcpPropString("Page slug"),
+				"hash": mcpPropString("Git commit hash"),
+			}, []string{"slug", "hash"}),
+		},
+		{
+			Name:        "page_links",
+			Section:     MCPSectionRead,
+			Description: "Get all outgoing wiki links from a page. Returns the slugs of pages that this page links to via [[Page Title]] syntax.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug": mcpPropString("Page slug to inspect"),
+			}, []string{"slug"}),
+		},
+		{
+			Name:    "what_links_here",
+			Section: MCPSectionRead,
+			Description: "Find all pages that link to a given page (backlinks/parent pages). " +
+				"Every page should be linked from at least one other page to be discoverable in the wiki.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug": mcpPropString("Target page slug to find backlinks for"),
+			}, []string{"slug"}),
+		},
+		{
+			Name:    "link_graph",
+			Section: MCPSectionRead,
+			Description: "Get the full wiki link graph. Returns a map of every page slug to the list of slugs it links to. " +
+				"Useful for understanding the overall wiki structure and finding orphaned pages.",
+			InputSchema: mcpSchema("object", nil, nil),
+		},
+
+		// ── Edit tools ───────────────────────────────────────────────
+		{
+			Name:    "create_page",
+			Section: MCPSectionEdit,
 			Description: "Create a new wiki page. Fails if the page already exists. " +
 				"The slug is derived from the title (spaces become underscores, e.g. 'My Page' → 'My_Page'). " +
 				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page (e.g. Home or a relevant category page) so it is discoverable. " +
@@ -302,7 +417,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"title", "content"}),
 		},
 		{
-			Name: "edit_page",
+			Name:    "edit_page",
+			Section: MCPSectionEdit,
 			Description: "Update the content of an existing wiki page. Replaces the entire page content. " +
 				"Always use get_page first to read the current content before editing. " +
 				"When adding [[wiki links]] to new pages, make sure those pages exist or will be created. " +
@@ -313,82 +429,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"slug", "content"}),
 		},
 		{
-			Name:        "delete_page",
-			Description: "Delete a wiki page permanently.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Page slug to delete"),
-			}, []string{"slug"}),
-		},
-		{
-			Name:        "search_pages",
-			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. The query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets showing where terms were found in the page content.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"query": mcpPropString("Search query — split into terms on whitespace/punctuation, each prefix-matched independently"),
-			}, []string{"query"}),
-		},
-		{
-			Name:        "list_images",
-			Description: "List all uploaded images with metadata (name, size, modification time, which pages use them).",
-			InputSchema: mcpSchema("object", nil, nil),
-		},
-		{
-			Name:        "delete_image",
-			Description: "Delete an uploaded image by filename.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"filename": mcpPropString("Image filename, e.g. 'photo-20250101-ab12cd34.png'"),
-			}, []string{"filename"}),
-		},
-		{
-			Name:        "get_recent_pages",
-			Description: "Get the most recently modified wiki pages.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"count": map[string]any{"type": "number", "description": "Number of pages to return (default 10)"},
-			}, nil),
-		},
-		{
-			Name:        "get_favorites",
-			Description: "Get the list of favorite/pinned pages from the wiki sidebar.",
-			InputSchema: mcpSchema("object", nil, nil),
-		},
-		{
-			Name:        "page_history",
-			Description: "Get the git revision history for a wiki page.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"slug":  mcpPropString("Page slug"),
-				"count": map[string]any{"type": "number", "description": "Max entries to return (default 20)"},
-			}, []string{"slug"}),
-		},
-		{
-			Name:        "get_page_revision",
-			Description: "Get the content of a wiki page at a specific git revision.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Page slug"),
-				"hash": mcpPropString("Git commit hash"),
-			}, []string{"slug", "hash"}),
-		},
-		{
-			Name:        "page_links",
-			Description: "Get all outgoing wiki links from a page. Returns the slugs of pages that this page links to via [[Page Title]] syntax.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Page slug to inspect"),
-			}, []string{"slug"}),
-		},
-		{
-			Name: "what_links_here",
-			Description: "Find all pages that link to a given page (backlinks/parent pages). " +
-				"Every page should be linked from at least one other page to be discoverable in the wiki.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Target page slug to find backlinks for"),
-			}, []string{"slug"}),
-		},
-		{
-			Name: "link_graph",
-			Description: "Get the full wiki link graph. Returns a map of every page slug to the list of slugs it links to. " +
-				"Useful for understanding the overall wiki structure and finding orphaned pages.",
-			InputSchema: mcpSchema("object", nil, nil),
-		},
-		{
-			Name: "create_page_from_mediawiki",
+			Name:    "create_page_from_mediawiki",
+			Section: MCPSectionEdit,
 			Description: "Create a new wiki page from MediaWiki wikitext. ONLY use this tool when importing content from a MediaWiki source — " +
 				"for normal page creation, use create_page with Markdown instead. " +
 				"The wikitext is automatically converted to Markdown. " +
@@ -403,7 +445,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"title", "wikitext"}),
 		},
 		{
-			Name: "edit_page_from_mediawiki",
+			Name:    "edit_page_from_mediawiki",
+			Section: MCPSectionEdit,
 			Description: "Update an existing wiki page from MediaWiki wikitext. ONLY use this tool when importing content from a MediaWiki source — " +
 				"for normal page editing, use edit_page with Markdown instead. " +
 				"The wikitext is automatically converted to Markdown and replaces the entire page content. " +
@@ -415,20 +458,37 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"wikitext": mcpPropString("MediaWiki wikitext source to convert and save as the new page content."),
 			}, []string{"slug", "wikitext"}),
 		},
-	}
 
-	// ── Skill tools ──────────────────────────────────────────────────
-
-	skillTools := []mcpTool{
+		// ── Delete tools ─────────────────────────────────────────────
 		{
-			Name: "list_skills",
+			Name:        "delete_page",
+			Section:     MCPSectionDelete,
+			Description: "Delete a wiki page permanently.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"slug": mcpPropString("Page slug to delete"),
+			}, []string{"slug"}),
+		},
+		{
+			Name:        "delete_image",
+			Section:     MCPSectionDelete,
+			Description: "Delete an uploaded image by filename.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"filename": mcpPropString("Image filename, e.g. 'photo-20250101-ab12cd34.png'"),
+			}, []string{"filename"}),
+		},
+
+		// ── Skill tools ──────────────────────────────────────────────
+		{
+			Name:    "list_skills",
+			Section: MCPSectionSkills,
 			Description: "List all skills (procedural knowledge pages for AI retrieval). " +
 				"Returns each skill's slug, title, and tags. " +
 				"Skills document how to perform tasks — build processes, testing conventions, deployment steps, coding patterns.",
 			InputSchema: mcpSchema("object", nil, nil),
 		},
 		{
-			Name: "get_skill",
+			Name:    "get_skill",
+			Section: MCPSectionSkills,
 			Description: "Get the raw markdown content of a skill. " +
 				"The returned content is the full markdown source.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -436,7 +496,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"slug"}),
 		},
 		{
-			Name: "create_skill",
+			Name:    "create_skill",
+			Section: MCPSectionSkills,
 			Description: "Create a new skill (procedural knowledge for AI retrieval). " +
 				"Skills document how to perform tasks — build processes, testing conventions, deployment steps, coding patterns. " +
 				"Recommended structure: start with '# Title', then a brief description of what this skill covers, " +
@@ -451,7 +512,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"title", "content"}),
 		},
 		{
-			Name: "edit_skill",
+			Name:    "edit_skill",
+			Section: MCPSectionSkills,
 			Description: "Update the content of an existing skill. Replaces the entire skill content. " +
 				"Always use get_skill first to read the current content before editing.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -461,13 +523,15 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "delete_skill",
+			Section:     MCPSectionSkills,
 			Description: "Delete a skill permanently.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"slug": mcpPropString("Skill slug to delete"),
 			}, []string{"slug"}),
 		},
 		{
-			Name: "search_skills",
+			Name:    "search_skills",
+			Section: MCPSectionSkills,
 			Description: "Search for procedural skills/instructions by keyword. " +
 				"Searches across skill titles, tags, and content with tag matches ranked highest. " +
 				"Use this before starting implementation tasks (writing code, tests, builds, deployments) " +
@@ -479,12 +543,35 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 	}
 
-	return append(tools, skillTools...)
+	var tools []mcpTool
+	for _, t := range allTools {
+		if m.sections[t.Section] {
+			tools = append(tools, t)
+		}
+	}
+	return tools
+}
+
+// toolSectionMap maps tool names to their section for dispatch-time checks.
+var toolSectionMap = map[string]MCPSection{
+	"list_pages": MCPSectionRead, "get_page": MCPSectionRead, "search_pages": MCPSectionRead,
+	"list_images": MCPSectionRead, "get_recent_pages": MCPSectionRead, "get_favorites": MCPSectionRead,
+	"page_history": MCPSectionRead, "get_page_revision": MCPSectionRead,
+	"page_links": MCPSectionRead, "what_links_here": MCPSectionRead, "link_graph": MCPSectionRead,
+	"create_page": MCPSectionEdit, "edit_page": MCPSectionEdit,
+	"create_page_from_mediawiki": MCPSectionEdit, "edit_page_from_mediawiki": MCPSectionEdit,
+	"delete_page": MCPSectionDelete, "delete_image": MCPSectionDelete,
+	"list_skills": MCPSectionSkills, "get_skill": MCPSectionSkills,
+	"create_skill": MCPSectionSkills, "edit_skill": MCPSectionSkills,
+	"delete_skill": MCPSectionSkills, "search_skills": MCPSectionSkills,
 }
 
 // ── Tool dispatch ───────────────────────────────────────────────────────
 
 func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
+	if sec, ok := toolSectionMap[params.Name]; ok && !m.sections[sec] {
+		return mcpError("tool not available: " + params.Name)
+	}
 	switch params.Name {
 	case "list_pages":
 		return m.toolListPages()

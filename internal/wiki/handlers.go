@@ -18,15 +18,16 @@ import (
 )
 
 type Handler struct {
-	store      *PageStore
-	crypto     *ServerCrypto
-	renderer   *MarkdownRenderer
-	templates  string
-	docsDir    string // path to docs/ directory; empty = no docs section
-	autoCommit *GitAutoCommitter
-	oauth      *OAuthServer // non-nil → register /mcp/external + OAuth discovery routes
-	db         *DB          // SQLite database for shares and token storage
-	tmplCache  map[string]*template.Template
+	store       *PageStore
+	crypto      *ServerCrypto
+	renderer    *MarkdownRenderer
+	templates   string
+	docsDir     string // path to docs/ directory; empty = no docs section
+	autoCommit  *GitAutoCommitter
+	oauth       *OAuthServer        // non-nil → register /mcp/external + OAuth discovery routes
+	db          *DB                 // SQLite database for shares and token storage
+	mcpSections map[MCPSection]bool // enabled MCP tool sections
+	tmplCache   map[string]*template.Template
 }
 
 type ImageInfo struct {
@@ -64,16 +65,17 @@ type TemplateData struct {
 	SkillTags    []string         // tags for the current skill being viewed
 }
 
-func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB) *Handler {
+func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
 	h := &Handler{
-		store:      store,
-		crypto:     crypto,
-		renderer:   renderer,
-		templates:  templatesDir,
-		autoCommit: autoCommitter,
-		oauth:      oauth,
-		db:         db,
-		tmplCache:  make(map[string]*template.Template),
+		store:       store,
+		crypto:      crypto,
+		renderer:    renderer,
+		templates:   templatesDir,
+		autoCommit:  autoCommitter,
+		oauth:       oauth,
+		db:          db,
+		mcpSections: mcpSections,
+		tmplCache:   make(map[string]*template.Template),
 	}
 	h.parseTemplates()
 	return h
@@ -157,7 +159,7 @@ func (h *Handler) Routes() http.Handler {
 
 	// Rate limiter for MCP and OAuth endpoints: 30 requests/sec per IP, burst of 60.
 	mcpRL := NewRateLimiter(30, 60, time.Second)
-	mux.Handle("/mcp", RateLimit(mcpRL, NewMCPHandler(h.store, h.autoCommit)))
+	mux.Handle("/mcp", RateLimit(mcpRL, NewMCPHandler(h.store, h.autoCommit, h.mcpSections)))
 
 	if h.oauth != nil {
 		// OAuth discovery endpoints (must be bypassed in Authelia / reverse proxy)
@@ -169,7 +171,7 @@ func (h *Handler) Routes() http.Handler {
 		mux.HandleFunc("POST /oauth/token", RateLimitFunc(oauthRL, h.oauth.HandleToken))
 		mux.HandleFunc("POST /oauth/register", RateLimitFunc(oauthRL, h.oauth.HandleRegister))
 		// External MCP endpoint — OAuth-protected, secure fields redacted
-		mux.Handle("/mcp/external", RateLimit(mcpRL, NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth)))
+		mux.Handle("/mcp/external", RateLimit(mcpRL, NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth, h.mcpSections)))
 	}
 
 	return mux

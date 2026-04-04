@@ -46,6 +46,7 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 | `GYPSUM_AUTH_GROUP_HEADER` | `Remote-Group` | Header with comma-separated groups |
 | `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | Require this group or reject with 403 |
 | `GYPSUM_PROBE_PORT` | `:9091` | Health probe listen address |
+| `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills` | Comma-separated MCP tool sections to enable |
 
 OAuth and Docker-specific variables are documented in [Configuration](docs/configuration.md).
 

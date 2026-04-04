@@ -103,7 +103,8 @@ func main() {
 		log.Printf("OAuth enabled: /mcp/external protected via OAuth (external URL: %s)", externalURL)
 	}
 
-	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter, oauthServer, db)
+	mcpSections := wiki.ParseMCPSections(os.Getenv("GYPSUM_MCP_SECTIONS"))
+	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter, oauthServer, db, mcpSections)
 	docsDir := filepath.Join(workspaceRoot, "docs")
 	if info, err := os.Stat(docsDir); err == nil && info.IsDir() {
 		handler.SetDocsDir(docsDir)

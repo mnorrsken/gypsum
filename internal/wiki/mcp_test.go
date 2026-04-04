@@ -87,7 +87,7 @@ func newTestMCP(t *testing.T) (*MCPHandler, *PageStore) {
 	pagesDir := filepath.Join(dir, "pages")
 	_ = os.MkdirAll(pagesDir, 0o755)
 	store := NewPageStore(pagesDir)
-	handler := NewMCPHandler(store, nil)
+	handler := NewMCPHandler(store, nil, AllMCPSections)
 	return handler, store
 }
 
@@ -174,6 +174,52 @@ func TestMCPToolsList(t *testing.T) {
 		if tool.InputSchema == nil {
 			t.Fatalf("tool %s has nil schema", tool.Name)
 		}
+	}
+}
+
+func TestMCPToolsSections(t *testing.T) {
+	dir := t.TempDir()
+	pagesDir := filepath.Join(dir, "pages")
+	_ = os.MkdirAll(pagesDir, 0o755)
+	store := NewPageStore(pagesDir)
+
+	// Enable only read section.
+	handler := NewMCPHandler(store, nil, map[MCPSection]bool{MCPSectionRead: true})
+	resp := mcpCall(t, handler, 1, "tools/list", nil)
+	raw, _ := json.Marshal(resp.Result)
+	var result mcpToolsListResult
+	_ = json.Unmarshal(raw, &result)
+
+	for _, tool := range result.Tools {
+		if sec, ok := toolSectionMap[tool.Name]; ok && sec != MCPSectionRead {
+			t.Fatalf("tool %s (section %s) should not be listed when only read is enabled", tool.Name, sec)
+		}
+	}
+
+	// Verify a disabled tool returns an error at call time.
+	callResp := mcpCall(t, handler, 2, "tools/call", map[string]any{
+		"name":      "create_page",
+		"arguments": map[string]any{"title": "X", "content": "Y"},
+	})
+	raw, _ = json.Marshal(callResp.Result)
+	var callResult mcpCallToolResult
+	_ = json.Unmarshal(raw, &callResult)
+	if !callResult.IsError {
+		t.Fatal("expected error calling disabled tool create_page")
+	}
+}
+
+func TestMCPParseSections(t *testing.T) {
+	s := ParseMCPSections("")
+	if len(s) != 4 {
+		t.Fatalf("empty input should return all 4 sections, got %d", len(s))
+	}
+	s = ParseMCPSections("read,skills")
+	if !s[MCPSectionRead] || !s[MCPSectionSkills] {
+		t.Fatal("expected read and skills enabled")
+	}
+	if s[MCPSectionEdit] || s[MCPSectionDelete] {
+		t.Fatal("expected edit and delete disabled")
 	}
 }
 

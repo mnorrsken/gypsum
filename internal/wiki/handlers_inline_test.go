@@ -19,6 +19,7 @@ func TestInlineSecureUnlock(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		AllMCPSections,
 	).Routes()
 
 	// Encrypt some content
@@ -56,6 +57,7 @@ func TestInlineSecureUnlockBadCiphertext(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		AllMCPSections,
 	).Routes()
 
 	unlockForm := url.Values{
