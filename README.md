@@ -1,31 +1,50 @@
 # Gypsum
 
-A lightweight, self-hosted personal wiki built with Go. Pages are stored as plain Markdown files with automatic git versioning.
+A self-hosted personal wiki built for LLM-driven knowledge management. Pages are Markdown files in a git repo, and a built-in MCP server gives AI assistants full read/write access — so your LLM can build and maintain the wiki, not just read it.
 
 ![image](screenshot.png)
 
-## Features
+## Why
 
-- Markdown pages with GFM tables, syntax highlighting, and wiki-style `[[links]]`
-- Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM
-- Image uploads (paste, drag-and-drop, or image picker) with optional size hints
-- Page history with revision diffs
-- Full-text search with FTS5 indexing, BM25 ranking, and highlighted context snippets
-- Auto git commits with optional remote sync
-- Visual table editor
+The most useful thing you can do with an LLM isn't generating text — it's building up a personal knowledge base over time. Point it at source material and it will produce a structured, interlinked wiki. Ask it questions and it will research across that wiki and write up the answers. File those answers back into the wiki and it gets smarter. Gypsum is the storage layer for that loop: plain Markdown files, full MCP tooling, and a skills system so the LLM knows your conventions without being told repeatedly.
+
+## LLM Integration
+
+### MCP Server
+
+Gypsum has a built-in [MCP](https://modelcontextprotocol.io/) endpoint (Streamable HTTP). AI assistants like Claude can create pages, edit them, search across the wiki, follow backlinks, and traverse the link graph — no separate binary or plugin needed.
+
+| Endpoint | Auth | Use case |
+|---|---|---|
+| `/mcp` | None (reverse proxy) | Local / trusted network |
+| `/mcp/external` | OAuth 2.0 (built-in, PKCE) | Internet-facing |
+
+Available tools: `list_pages`, `get_page`, `create_page`, `edit_page`, `delete_page`, `search_pages`, `page_links`, `what_links_here`, `link_graph`, `page_history`, `get_page_revision`, `list_images`, `upload_image`, `delete_image`, and more. See [MCP Server](docs/mcp.md) for setup.
+
+### Skills
+
+Skills are procedural knowledge pages that teach LLMs **how** to do things — build steps, testing conventions, deployment patterns, coding standards. They live in a dedicated `skills/` directory with their own tag-boosted search.
+
+The key idea: add a line to your project's `CLAUDE.md` (or any LLM's system prompt) telling it to search for relevant skills before starting a task. When you say "write tests for this Go package", the LLM calls `search_skills("go testing")`, finds your conventions, and follows them automatically. Corrections you make get saved as skills so the LLM doesn't repeat mistakes.
+
+Skills tools: `list_skills`, `search_skills`, `get_skill`, `create_skill`, `edit_skill`, `delete_skill`. See [Skills](docs/skills.md).
+
+### Prometheus Metrics
+
+MCP tool usage is tracked via Prometheus — call counts, errors, and characters sent/received per tool. Useful for understanding how your LLM interacts with the wiki. Default endpoint: `:9090/metrics`.
+
+## Wiki Features
+
+- Markdown with GFM tables, syntax highlighting, and `[[wiki links]]`
+- Full-text search with FTS5 indexing, BM25 ranking, and highlighted snippets
 - Interactive link graph
+- Page history with revision diffs
+- Image uploads (paste, drag-and-drop, or picker) with size hints
+- Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM
+- Visual table editor
 - MediaWiki import
-- Skills system for AI-retrievable procedural knowledge (build steps, testing conventions, etc.)
-- MCP server for AI assistants (local and OAuth-protected endpoints) with multi-query search
-- Prometheus metrics for MCP tool usage (call counts, errors, sent/received characters)
 - Public page sharing via secret links
-- Header authentication (Authelia, Authentik, etc.)
-- Built-in documentation section (serves `docs/` as read-only wiki pages)
-- Rekey CLI tool for rotating encryption keys
-- htmx + Alpine.js for live search, inline deletes, and declarative UI interactions
 - Dark/light theme, responsive layout, print-friendly pages
-- Docker and Helm chart support
-- Health probes for Kubernetes
 
 ## Quick Start
 
@@ -44,14 +63,12 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 |---|---|---|
 | `GYPSUM_SECRET_KEY` | `change-me-in-production` | AES-256-GCM encryption passphrase. **Set this in production.** |
 | `GYPSUM_GIT_PULL_INTERVAL` | `5m` | Pull interval when a git remote is configured |
-| `GYPSUM_AUTH_USER_HEADER` | _(empty)_ | Header name to enable reverse proxy auth (e.g. `Remote-User`) |
-| `GYPSUM_AUTH_GROUP_HEADER` | `Remote-Group` | Header with comma-separated groups |
-| `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | Require this group or reject with 403 |
+| `GYPSUM_AUTH_USER_HEADER` | _(empty)_ | Header for reverse proxy auth (e.g. `Remote-User`) |
 | `GYPSUM_METRICS_PORT` | `:9090` | Prometheus metrics server listen address |
 | `GYPSUM_PROBE_PORT` | `:9091` | Health probe listen address |
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills` | Comma-separated MCP tool sections to enable |
 
-OAuth and Docker-specific variables are documented in [Configuration](docs/configuration.md).
+OAuth, auth, and Docker-specific variables are documented in [Configuration](docs/configuration.md).
 
 ## Documentation
 
@@ -59,6 +76,7 @@ OAuth and Docker-specific variables are documented in [Configuration](docs/confi
 - [Configuration](docs/configuration.md) — all environment variables
 - [Authentication](docs/authentication.md) — header auth and Authelia setup
 - [MCP Server](docs/mcp.md) — connecting AI assistants to your wiki
+- [Skills](docs/skills.md) — procedural knowledge for LLMs
 - [Docker](docs/docker.md) — container build, run, and compose
 - [Helm Chart](docs/helm.md) — Kubernetes deployment
 
@@ -69,7 +87,7 @@ data/
 ├── gypsum.db           # SQLite database (shares, OAuth tokens, FTS search index)
 └── repo/               # git working directory
     ├── pages/           # markdown files
-    ├── skills/          # skill pages (procedural knowledge for AI)
+    ├── skills/          # procedural knowledge for LLMs
     └── images/          # uploaded images
 ```
 
