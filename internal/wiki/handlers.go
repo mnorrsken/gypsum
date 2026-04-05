@@ -344,6 +344,13 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 		}
 		content := strings.ReplaceAll(r.FormValue("content"), "\r\n", "\n")
 
+		// For new pages, derive the slug from the H1 title in the content.
+		if _, err := h.store.Load(KindPage, slug); errors.Is(err, ErrPageNotFound) {
+			if h1, _ := ExtractH1Title(content); h1 != "" {
+				slug = SlugFromTitle(h1)
+			}
+		}
+
 		// Validate custom tags before saving
 		if validationErr := ValidateContent(content); validationErr != "" {
 			title := TitleFromSlug(slug)
@@ -1122,6 +1129,14 @@ func (h *Handler) handleEditSkill(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		content := r.FormValue("content")
+
+		// For new skills, derive the slug from the H1 title in the content.
+		if _, err := h.store.Load(KindSkill, slug); err != nil {
+			if h1, _ := ExtractH1Title(content); h1 != "" {
+				slug = SlugFromTitle(h1)
+			}
+		}
+
 		if h.crypto != nil {
 			encrypted, err := h.crypto.EncryptForSave(content)
 			if err != nil {
