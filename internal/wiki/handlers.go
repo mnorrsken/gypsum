@@ -27,6 +27,7 @@ type Handler struct {
 	oauth       *OAuthServer        // non-nil → register /mcp/external + OAuth discovery routes
 	db          *DB                 // SQLite database for shares and token storage
 	mcpSections map[MCPSection]bool // enabled MCP tool sections
+	mcpMetrics  *MCPMetrics         // shared across all MCP handlers
 	tmplCache   map[string]*template.Template
 }
 
@@ -75,10 +76,16 @@ func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRender
 		oauth:       oauth,
 		db:          db,
 		mcpSections: mcpSections,
+		mcpMetrics:  NewMCPMetrics(),
 		tmplCache:   make(map[string]*template.Template),
 	}
 	h.parseTemplates()
 	return h
+}
+
+// MCPMetricsHandler returns an HTTP handler serving Prometheus metrics for MCP tools.
+func (h *Handler) MCPMetricsHandler() http.Handler {
+	return h.mcpMetrics.Handler()
 }
 
 // SetDocsDir enables the /docs/ section, serving markdown files from dir.
@@ -159,7 +166,9 @@ func (h *Handler) Routes() http.Handler {
 
 	// Rate limiter for MCP and OAuth endpoints: 30 requests/sec per IP, burst of 60.
 	mcpRL := NewRateLimiter(30, 60, time.Second)
-	mux.Handle("/mcp", RateLimit(mcpRL, NewMCPHandler(h.store, h.autoCommit, h.mcpSections)))
+	mcpHandler := NewMCPHandler(h.store, h.autoCommit, h.mcpSections)
+	mcpHandler.SetMetrics(h.mcpMetrics)
+	mux.Handle("/mcp", RateLimit(mcpRL, mcpHandler))
 
 	if h.oauth != nil {
 		// OAuth discovery endpoints (must be bypassed in Authelia / reverse proxy)
@@ -171,7 +180,9 @@ func (h *Handler) Routes() http.Handler {
 		mux.HandleFunc("POST /oauth/token", RateLimitFunc(oauthRL, h.oauth.HandleToken))
 		mux.HandleFunc("POST /oauth/register", RateLimitFunc(oauthRL, h.oauth.HandleRegister))
 		// External MCP endpoint — OAuth-protected, secure fields redacted
-		mux.Handle("/mcp/external", RateLimit(mcpRL, NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth, h.mcpSections)))
+		mcpExternal := NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth, h.mcpSections)
+		mcpExternal.SetMetrics(h.mcpMetrics)
+		mux.Handle("/mcp/external", RateLimit(mcpRL, mcpExternal))
 	}
 
 	return mux

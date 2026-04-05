@@ -113,6 +113,20 @@ oauth:
 # This server runs without auth middleware so Kubernetes probes always succeed.
 probePort: 9091
 
+# Prometheus metrics for MCP tool usage.
+metrics:
+  # Set to true to expose the metrics port and create a Service port for scraping.
+  enabled: false
+  # Container port for the metrics server.
+  port: 9090
+  # Create a Prometheus ServiceMonitor resource for automatic scrape discovery.
+  serviceMonitor:
+    enabled: false
+    # Scrape interval (e.g. "30s", "1m"). Omit to use the Prometheus default.
+    interval: ""
+    # Additional labels to add to the ServiceMonitor (e.g. release: kube-prometheus-stack).
+    labels: {}
+
 # Header-based authentication (for use behind a reverse proxy like Authelia).
 auth:
   # Set the user header name to enable header auth (e.g. "Remote-User").

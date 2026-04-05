@@ -69,6 +69,11 @@ spec:
             - name: probes
               containerPort: {{ .Values.probePort | default 9091 }}
               protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port | default 9090 }}
+              protocol: TCP
+            {{- end }}
           env:
             - name: GYPSUM_SECRET_KEY
               valueFrom:
@@ -149,6 +154,10 @@ spec:
             {{- if .Values.probePort }}
             - name: GYPSUM_PROBE_PORT
               value: ":{{ .Values.probePort }}"
+            {{- end }}
+            {{- if .Values.metrics.enabled }}
+            - name: GYPSUM_METRICS_PORT
+              value: ":{{ .Values.metrics.port | default 9090 }}"
             {{- end }}
           livenessProbe:
             httpGet:

@@ -138,6 +138,7 @@ type MCPHandler struct {
 	oauth         *OAuthServer       // non-nil → Bearer token required
 	redactSecure  bool               // when true, {{secure_aes:...}} blocks are hidden in read results
 	sections      map[MCPSection]bool // enabled tool sections
+	metrics       *MCPMetrics        // optional; nil = no metrics
 }
 
 // NewMCPHandler creates an internal (unauthenticated) MCP handler.
@@ -270,6 +271,14 @@ func (m *MCPHandler) HandleRPC(req jsonRPCRequest, headerFn func(key, value stri
 			}
 		}
 		result := m.callTool(params)
+		if m.metrics != nil {
+			sent := len(req.Params)
+			received := 0
+			for _, c := range result.Content {
+				received += len(c.Text)
+			}
+			m.metrics.Record(params.Name, sent, received, result.IsError)
+		}
 		return &jsonRPCResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
@@ -286,6 +295,11 @@ func (m *MCPHandler) HandleRPC(req jsonRPCRequest, headerFn func(key, value stri
 			Error:   &jsonRPCError{Code: -32601, Message: "method not found: " + req.Method},
 		}
 	}
+}
+
+// SetMetrics enables Prometheus metrics collection for MCP tool calls.
+func (m *MCPHandler) SetMetrics(metrics *MCPMetrics) {
+	m.metrics = metrics
 }
 
 func (m *MCPHandler) newSession() string {

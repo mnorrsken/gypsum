@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.35.0
+
+### Added
+- **Prometheus metrics server** — a dedicated metrics server (default `:9090`, configurable via `GYPSUM_METRICS_PORT`) exposes per-tool MCP usage metrics in Prometheus exposition format at `GET /metrics`: call counts, error counts, sent characters, and received characters.
+- **Helm metrics support** — new `metrics` section in `values.yaml` (disabled by default) to expose the metrics port and optionally create a Prometheus `ServiceMonitor` for automatic scrape discovery.
+
 ## v0.34.1
 
 ### Removed

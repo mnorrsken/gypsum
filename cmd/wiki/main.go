@@ -147,6 +147,18 @@ func main() {
 		}
 	}()
 
+	// Prometheus metrics server for MCP tool usage.
+	metricsAddr := envOrDefault("GYPSUM_METRICS_PORT", ":9090")
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("GET /metrics", handler.MCPMetricsHandler())
+	metricsSrv := &http.Server{Addr: metricsAddr, Handler: metricsMux}
+	go func() {
+		log.Printf("metrics server listening on %s", metricsAddr)
+		if err := metricsSrv.ListenAndServe(); err != http.ErrServerClosed {
+			log.Printf("metrics server failed: %v", err)
+		}
+	}()
+
 	// Graceful shutdown: listen for SIGINT/SIGTERM, then drain connections.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -157,6 +169,7 @@ func main() {
 		db.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		metricsSrv.Shutdown(ctx)
 		probeSrv.Shutdown(ctx)
 		if err := srv.Shutdown(ctx); err != nil {
 			log.Printf("shutdown error: %v", err)

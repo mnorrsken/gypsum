@@ -17,6 +17,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - MediaWiki import
 - Skills system for AI-retrievable procedural knowledge (build steps, testing conventions, etc.)
 - MCP server for AI assistants (local and OAuth-protected endpoints) with multi-query search
+- Prometheus metrics for MCP tool usage (call counts, errors, sent/received characters)
 - Public page sharing via secret links
 - Header authentication (Authelia, Authentik, etc.)
 - Built-in documentation section (serves `docs/` as read-only wiki pages)
@@ -45,6 +46,7 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 | `GYPSUM_AUTH_USER_HEADER` | _(empty)_ | Header name to enable reverse proxy auth (e.g. `Remote-User`) |
 | `GYPSUM_AUTH_GROUP_HEADER` | `Remote-Group` | Header with comma-separated groups |
 | `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | Require this group or reject with 403 |
+| `GYPSUM_METRICS_PORT` | `:9090` | Prometheus metrics server listen address |
 | `GYPSUM_PROBE_PORT` | `:9091` | Health probe listen address |
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills` | Comma-separated MCP tool sections to enable |
 
