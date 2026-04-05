@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.36.5
+
+### Changed
+- **Internal refactoring** — split large source files into focused modules: `handlers.go` (1334 lines) split into six handler files, `mcp.go` (1181 lines) split into protocol/tools/implementations, and `store.go` search logic extracted to `store_search.go`. No behaviour changes.
+
 ## v0.36.4
 
 ### Changed
