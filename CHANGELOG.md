@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.36.3
+
+### Changed
+- **`search_skills`** — when only one skill matches, returns the full skill content instead of a snippet summary.
+
 ## v0.36.2
 
 ### Fixed

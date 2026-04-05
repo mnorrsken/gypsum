@@ -971,8 +971,9 @@ func TestMCPFullSkillLifecycle(t *testing.T) {
 		"arguments": map[string]any{"query": "lifecycle"},
 	})
 	text = toolResultText(t, resp)
-	if !strings.Contains(text, "Lifecycle_Skill") {
-		t.Fatalf("expected Lifecycle_Skill in search: %s", text)
+	// Single match returns full content, not a summary.
+	if text != "v2" {
+		t.Fatalf("expected full skill content in single-match search: %s", text)
 	}
 
 	// Delete

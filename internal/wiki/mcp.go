@@ -1055,10 +1055,36 @@ func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
 		return mcpError("missing required argument: query")
 	}
 
-	text, found := m.runMultiSearch(KindSkill, queries)
-	if !found {
+	// Collect unique slugs across all queries.
+	seen := map[string]struct{}{}
+	var uniqueSlugs []string
+	for _, q := range queries {
+		results, err := m.store.Search(KindSkill, q)
+		if err != nil {
+			continue
+		}
+		for _, r := range results {
+			if _, dup := seen[r.Slug]; !dup {
+				seen[r.Slug] = struct{}{}
+				uniqueSlugs = append(uniqueSlugs, r.Slug)
+			}
+		}
+	}
+
+	if len(uniqueSlugs) == 0 {
 		return mcpText("No skills found for: " + strings.Join(queries, ", "))
 	}
+
+	// Single match — return the full skill content.
+	if len(uniqueSlugs) == 1 {
+		skill, err := m.store.Load(KindSkill, uniqueSlugs[0])
+		if err != nil {
+			return mcpError("failed to load skill: " + err.Error())
+		}
+		return mcpText(m.redactContent(skill.Content))
+	}
+
+	text, _ := m.runMultiSearch(KindSkill, queries)
 	return mcpText(text)
 }
 
