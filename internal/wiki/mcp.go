@@ -412,16 +412,11 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Description: "Create a new wiki page. Use this when the user says things like 'document on my wiki', 'add a note to my wiki', 'save this to the wiki', or 'create a wiki page'. " +
 				"Fails if the page already exists. " +
 				"The slug is derived from the title (spaces become underscores, e.g. 'My Page' → 'My_Page'). " +
-				"IMPORTANT: Before creating a page, use the optional 'query' parameter to check if a similar page already exists — " +
-				"do NOT use list_pages for this, trust the search instead. " +
-				"If the query finds existing pages, search results are returned and the page is NOT created — review them and decide whether to use an existing page. " +
-				"Call again without 'query' to force creation. " +
 				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page (e.g. Home or a relevant category page) so it is discoverable. " +
 				formattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
 				"title":   mcpPropString("Page title, e.g. 'My New Page'. This becomes the slug and the display title."),
 				"content": mcpPropString("Markdown content for the page. " + wikiContentGuide),
-				"query":   mcpPropStringArray("Optional duplicate-check queries. If any query returns search results, the page is NOT created and results are returned instead. Omit to skip the check and force creation."),
 			}, []string{"title", "content"}),
 		},
 		{
@@ -518,15 +513,10 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"a '## Instructions' section with the actual steps, " +
 				"and end with a 'Tags: keyword1, keyword2, ...' line for discoverability. " +
 				"The slug is derived from the title (spaces become underscores). " +
-				"Fails if the skill already exists. " +
-				"IMPORTANT: Before creating a skill, use the optional 'query' parameter to check if a similar skill already exists — " +
-				"do NOT use list_skills for this, trust the search instead. " +
-				"If the query finds existing skills, search results are returned and the skill is NOT created — review them and decide whether to use an existing skill. " +
-				"Call again without 'query' to force creation.",
+				"Fails if the skill already exists.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"title":   mcpPropString("Skill title, e.g. 'Go Testing Conventions'. This becomes the slug and display title."),
 				"content": mcpPropString("Markdown content for the skill. Start with '# Title' as the first line."),
-				"query":   mcpPropStringArray("Optional duplicate-check queries. If any query returns search results, the skill is NOT created and results are returned instead. Omit to skip the check and force creation."),
 			}, []string{"title", "content"}),
 		},
 		{
@@ -675,13 +665,6 @@ func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
 	content, ok := mcpArgString(args, "content")
 	if !ok {
 		return mcpError("missing required argument: content")
-	}
-
-	// Optional duplicate-check: if query is provided and finds results, return them instead of creating.
-	if queries, ok := mcpArgStringArray(args, "query"); ok {
-		if text, found := m.runMultiSearch(KindPage, queries); found {
-			return mcpText("Existing pages found — review these before creating a new page. Call create_page without 'query' to force creation.\n\n" + text)
-		}
 	}
 
 	if m.redactSecure && secureAesMacroRe.MatchString(content) {
@@ -1000,13 +983,6 @@ func (m *MCPHandler) toolCreateSkill(args map[string]any) mcpCallToolResult {
 	content, ok := mcpArgString(args, "content")
 	if !ok {
 		return mcpError("missing required argument: content")
-	}
-
-	// Optional duplicate-check: if query is provided and finds results, return them instead of creating.
-	if queries, ok := mcpArgStringArray(args, "query"); ok {
-		if text, found := m.runMultiSearch(KindSkill, queries); found {
-			return mcpText("Existing skills found — review these before creating a new skill. Call create_skill without 'query' to force creation.\n\n" + text)
-		}
 	}
 
 	slug := SlugFromTitle(title)

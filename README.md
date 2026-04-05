@@ -16,7 +16,7 @@ A lightweight, self-hosted personal wiki built with Go. Pages are stored as plai
 - Interactive link graph
 - MediaWiki import
 - Skills system for AI-retrievable procedural knowledge (build steps, testing conventions, etc.)
-- MCP server for AI assistants (local and OAuth-protected endpoints) with multi-query search and duplicate-check on create
+- MCP server for AI assistants (local and OAuth-protected endpoints) with multi-query search
 - Public page sharing via secret links
 - Header authentication (Authelia, Authentik, etc.)
 - Built-in documentation section (serves `docs/` as read-only wiki pages)

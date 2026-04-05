@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.34.1
+
+### Removed
+- **MCP duplicate-check on create** — removed the optional `query` parameter from `create_page` and `create_skill`. Multi-query search on `search_pages`/`search_skills` is unchanged.
+
 ## v0.34.0
 
 ### Added

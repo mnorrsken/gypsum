@@ -1,10 +1,3 @@
-# Building
-
-Always output binaries to `bin/`:
-```bash
-go build -o bin/ ./cmd/wiki/
-```
-
 ## Wiki Skills
 
 Before starting implementation tasks (writing code, tests, builds, deployments, refactoring),
