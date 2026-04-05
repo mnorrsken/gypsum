@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.37.1
+
+### Changed
+- **MCP tool descriptions** — `get_page`, `get_skill`, `edit_page`, and `edit_skill` now explicitly instruct models to use `search_pages`/`search_skills` first when the exact slug is not known, instead of guessing.
+
 ## v0.37.0
 
 ### Added

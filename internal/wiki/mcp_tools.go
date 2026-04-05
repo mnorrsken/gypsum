@@ -17,10 +17,12 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:    "get_page",
 			Section: MCPSectionRead,
-			Description: "Get the raw markdown content of a wiki page. " +
-				"The returned content is the full markdown source including any wiki-specific syntax.",
+			Description: "Get the raw markdown content of a wiki page by its exact slug. " +
+				"ONLY use this when you already know the exact slug. " +
+				"If you are not sure of the exact slug, use search_pages first to find it. " +
+				"Do NOT guess slugs — search instead.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Page slug, e.g. 'Home' or 'My_Page'. Slugs use underscores for spaces."),
+				"slug": mcpPropString("Exact page slug, e.g. 'Home' or 'My_Page'. Slugs use underscores for spaces. Must be exact — use search_pages if unsure."),
 			}, []string{"slug"}),
 		},
 		{
@@ -113,11 +115,12 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Section: MCPSectionEdit,
 			Description: "Update the content of an existing wiki page. Use this when the user says things like 'update my wiki', 'edit the wiki page', or 'add this to my wiki'. " +
 				"Replaces the entire page content. " +
+				"If you do not know the exact slug, use search_pages first — do NOT guess slugs. " +
 				"Always use get_page first to read the current content before editing. " +
 				"When adding [[wiki links]] to new pages, make sure those pages exist or will be created. " +
 				wikiFormattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
-				"slug":    mcpPropString("Page slug to edit, e.g. 'My_Page'"),
+				"slug":    mcpPropString("Exact page slug to edit, e.g. 'My_Page'. Use search_pages first if unsure."),
 				"content": mcpPropString("New markdown content (replaces entire page). " + wikiContentGuide),
 			}, []string{"slug", "content"}),
 		},
@@ -184,10 +187,12 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:    "get_skill",
 			Section: MCPSectionSkills,
-			Description: "Get the raw markdown content of a skill. " +
-				"The returned content is the full markdown source.",
+			Description: "Get the raw markdown content of a skill by its exact slug. " +
+				"ONLY use this when you already know the exact slug. " +
+				"If you are not sure of the exact slug, use search_skills first to find it. " +
+				"Do NOT guess slugs — search instead.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Skill slug, e.g. 'Go_Testing_Conventions'. Slugs use underscores for spaces."),
+				"slug": mcpPropString("Exact skill slug, e.g. 'Go_Testing_Conventions'. Slugs use underscores for spaces. Must be exact — use search_skills if unsure."),
 			}, []string{"slug"}),
 		},
 		{
@@ -214,9 +219,10 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Description: "Update the content of an existing skill. " +
 				"ONLY use this tool when the user explicitly mentions 'skill' (e.g. 'update the skill', 'edit this skill'). " +
 				"Do NOT use for general wiki page edits — use edit_page instead. " +
+				"If you do not know the exact slug, use search_skills first — do NOT guess slugs. " +
 				"Replaces the entire skill content. Always use get_skill first to read the current content before editing.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"slug":    mcpPropString("Skill slug to edit, e.g. 'Go_Testing_Conventions'"),
+				"slug":    mcpPropString("Exact skill slug to edit, e.g. 'Go_Testing_Conventions'. Use search_skills first if unsure."),
 				"content": mcpPropString("New markdown content (replaces entire skill)."),
 			}, []string{"slug", "content"}),
 		},
