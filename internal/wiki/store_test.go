@@ -394,6 +394,141 @@ func TestLinkGraph(t *testing.T) {
 	}
 }
 
+func TestPageStoreDeletePage(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+
+	_ = store.Save(KindPage, "ToDelete", "content")
+	if err := store.Delete(KindPage, "ToDelete"); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+	_, err := store.Load(KindPage, "ToDelete")
+	if !errors.Is(err, ErrPageNotFound) {
+		t.Fatalf("expected ErrPageNotFound after delete, got %v", err)
+	}
+}
+
+func TestPageStoreDeleteNonExistent(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+
+	err := store.Delete(KindPage, "Ghost")
+	if err == nil {
+		t.Fatal("expected error deleting non-existent page")
+	}
+}
+
+// ── Skill store tests ─────────────────────────────────────────────────────
+
+func TestPageStoreSkillCRUD(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+
+	// Save a skill
+	if err := store.Save(KindSkill, "Go_Testing", "# Go Testing\n\nTags: go, testing"); err != nil {
+		t.Fatalf("Save skill failed: %v", err)
+	}
+
+	// Load the skill
+	skill, err := store.Load(KindSkill, "Go_Testing")
+	if err != nil {
+		t.Fatalf("Load skill failed: %v", err)
+	}
+	if skill.Slug != "Go_Testing" {
+		t.Fatalf("unexpected slug: %s", skill.Slug)
+	}
+	if skill.Content != "# Go Testing\n\nTags: go, testing" {
+		t.Fatalf("unexpected content: %q", skill.Content)
+	}
+
+	// List skills
+	skills, err := store.List(KindSkill)
+	if err != nil {
+		t.Fatalf("List skills failed: %v", err)
+	}
+	if len(skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(skills))
+	}
+
+	// Delete the skill
+	if err := store.Delete(KindSkill, "Go_Testing"); err != nil {
+		t.Fatalf("Delete skill failed: %v", err)
+	}
+	_, err = store.Load(KindSkill, "Go_Testing")
+	if !errors.Is(err, ErrPageNotFound) {
+		t.Fatalf("expected ErrPageNotFound after delete, got %v", err)
+	}
+}
+
+func TestListSkillEntries(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+
+	_ = store.Save(KindSkill, "Go_Testing", "# Go Testing\n\nTags: go, testing")
+	_ = store.Save(KindSkill, "Deploy_K8s", "# Deploy K8s\n\nTags: deploy, kubernetes")
+	_ = store.Save(KindSkill, "No_Tags", "# No Tags\n\nA skill without tags.")
+
+	entries, err := store.ListSkillEntries()
+	if err != nil {
+		t.Fatalf("ListSkillEntries failed: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+
+	// Should be sorted alphabetically
+	if entries[0].Slug != "Deploy_K8s" {
+		t.Fatalf("expected Deploy_K8s first, got %s", entries[0].Slug)
+	}
+	if entries[1].Slug != "Go_Testing" {
+		t.Fatalf("expected Go_Testing second, got %s", entries[1].Slug)
+	}
+
+	// Check tags
+	if len(entries[0].Tags) != 2 || entries[0].Tags[0] != "deploy" {
+		t.Fatalf("unexpected tags for Deploy_K8s: %v", entries[0].Tags)
+	}
+	if len(entries[1].Tags) != 2 || entries[1].Tags[0] != "go" {
+		t.Fatalf("unexpected tags for Go_Testing: %v", entries[1].Tags)
+	}
+	// No tags should return empty slice, not nil
+	if len(entries[2].Tags) != 0 {
+		t.Fatalf("expected empty tags for No_Tags, got %v", entries[2].Tags)
+	}
+}
+
+func TestListSkillEntriesEmpty(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+
+	entries, err := store.ListSkillEntries()
+	if err != nil {
+		t.Fatalf("ListSkillEntries failed: %v", err)
+	}
+	if entries != nil && len(entries) != 0 {
+		t.Fatalf("expected nil or empty, got %v", entries)
+	}
+}
+
+func TestListSkillEntriesSkipsSpecial(t *testing.T) {
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+
+	_ = store.Save(KindSkill, "Normal_Skill", "# Normal\n\nTags: test")
+	_ = store.Save(KindSkill, "_hidden", "should be skipped")
+
+	entries, err := store.ListSkillEntries()
+	if err != nil {
+		t.Fatalf("ListSkillEntries failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry (skipping _hidden), got %d", len(entries))
+	}
+	if entries[0].Slug != "Normal_Skill" {
+		t.Fatalf("unexpected slug: %s", entries[0].Slug)
+	}
+}
+
 func TestBackLinks(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)

@@ -157,6 +157,78 @@ func TestEncryptForSavePreservingUnchanged(t *testing.T) {
 	}
 }
 
+func TestValidateContent(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		wantErr string
+	}{
+		{
+			name:    "valid content no macros",
+			content: "Hello world\nNo macros here.",
+			wantErr: "",
+		},
+		{
+			name:    "valid single-line secure",
+			content: "Hello {{secure:password123}} world",
+			wantErr: "",
+		},
+		{
+			name:    "valid multiline secure",
+			content: "before\n{{secure:\nline1\nline2\n}}\nafter",
+			wantErr: "",
+		},
+		{
+			name:    "valid secure_aes",
+			content: "Hello {{secure_aes:abc123def456}} world",
+			wantErr: "",
+		},
+		{
+			name:    "unknown tag",
+			content: "Hello {{custom:value}} world",
+			wantErr: "Line 1: unknown tag {{custom:...}}",
+		},
+		{
+			name:    "unclosed multiline secure block",
+			content: "before\n{{secure:\nline1\nline2",
+			wantErr: "Line 2: unclosed {{secure: block",
+		},
+		{
+			name:    "multiline secure with text on same line",
+			content: "before\n{{secure: some text here\nline2\n}}\nafter",
+			wantErr: "Line 2: multiline {{secure: must be on its own line",
+		},
+		{
+			name:    "closing braces not on own line",
+			content: "before\n{{secure:\nline1\nline2 }}\nafter",
+			wantErr: "Line 4: closing }} of a multiline secure block must be on its own line",
+		},
+		{
+			name:    "double braces in code block style is ok",
+			content: "some text {{ not a tag",
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ValidateContent(tt.content)
+			if tt.wantErr == "" {
+				if got != "" {
+					t.Fatalf("expected no error, got: %q", got)
+				}
+			} else {
+				if got == "" {
+					t.Fatalf("expected error containing %q, got empty", tt.wantErr)
+				}
+				if !strings.Contains(got, tt.wantErr) {
+					t.Fatalf("expected error containing %q, got: %q", tt.wantErr, got)
+				}
+			}
+		})
+	}
+}
+
 func TestEncryptForSavePreservingChanged(t *testing.T) {
 	sc := NewServerCrypto("preserve-key")
 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -756,6 +757,237 @@ func TestMCPSearchSkillsMultiQuery(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(text), []byte("Results for:")) {
 		t.Fatalf("expected per-query headers: %s", text)
+	}
+}
+
+// ── Skill CRUD tool tests ──────────────────────────────────────────────
+
+func TestMCPListSkillsEmpty(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "list_skills", "arguments": map[string]any{},
+	})
+	text := toolResultText(t, resp)
+	if text != "No skills created yet." {
+		t.Fatalf("expected no skills message, got: %s", text)
+	}
+}
+
+func TestMCPCreateAndGetSkill(t *testing.T) {
+	handler, _ := newTestMCP(t)
+
+	// Create
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_skill",
+		"arguments": map[string]any{
+			"title":   "Go Testing",
+			"content": "# Go Testing\n\nTags: go, testing",
+		},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Created skill") {
+		t.Fatalf("unexpected create result: %s", text)
+	}
+
+	// Get
+	resp = mcpCall(t, handler, 2, "tools/call", map[string]any{
+		"name":      "get_skill",
+		"arguments": map[string]any{"slug": "Go_Testing"},
+	})
+	text = toolResultText(t, resp)
+	if !strings.Contains(text, "Go Testing") {
+		t.Fatalf("unexpected content: %s", text)
+	}
+}
+
+func TestMCPCreateSkillDuplicate(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindSkill, "Existing", "content")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_skill",
+		"arguments": map[string]any{
+			"title":   "Existing",
+			"content": "new content",
+		},
+	})
+	errText := toolResultIsError(t, resp)
+	if !strings.Contains(errText, "already exists") {
+		t.Fatalf("unexpected error: %s", errText)
+	}
+}
+
+func TestMCPEditSkill(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindSkill, "MySkill", "old content")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_skill",
+		"arguments": map[string]any{
+			"slug":    "MySkill",
+			"content": "new content",
+		},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Updated skill") {
+		t.Fatalf("unexpected: %s", text)
+	}
+
+	skill, _ := store.Load(KindSkill, "MySkill")
+	if skill.Content != "new content" {
+		t.Fatalf("content not updated: %q", skill.Content)
+	}
+}
+
+func TestMCPEditSkillNotFound(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_skill",
+		"arguments": map[string]any{
+			"slug":    "NoSuchSkill",
+			"content": "x",
+		},
+	})
+	errText := toolResultIsError(t, resp)
+	if !strings.Contains(errText, "not found") {
+		t.Fatalf("unexpected error: %s", errText)
+	}
+}
+
+func TestMCPDeleteSkill(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindSkill, "ToDelete", "bye")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "delete_skill",
+		"arguments": map[string]any{"slug": "ToDelete"},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Deleted skill") {
+		t.Fatalf("unexpected: %s", text)
+	}
+
+	_, err := store.Load(KindSkill, "ToDelete")
+	if err != ErrPageNotFound {
+		t.Fatalf("expected ErrPageNotFound, got %v", err)
+	}
+}
+
+func TestMCPDeleteSkillNotFound(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "delete_skill",
+		"arguments": map[string]any{"slug": "Ghost"},
+	})
+	toolResultIsError(t, resp)
+}
+
+func TestMCPGetSkillNotFound(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "get_skill",
+		"arguments": map[string]any{"slug": "NoSuchSkill"},
+	})
+	toolResultIsError(t, resp)
+}
+
+func TestMCPListSkillsWithEntries(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindSkill, "Alpha_Skill", "# Alpha\n\nTags: alpha")
+	_ = store.Save(KindSkill, "Beta_Skill", "# Beta\n\nTags: beta")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "list_skills", "arguments": map[string]any{},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Alpha_Skill") || !strings.Contains(text, "Beta_Skill") {
+		t.Fatalf("expected both skills in list: %s", text)
+	}
+}
+
+func TestMCPSkillMissingRequiredArgs(t *testing.T) {
+	handler, _ := newTestMCP(t)
+
+	tests := []struct {
+		tool string
+		args map[string]any
+	}{
+		{"get_skill", map[string]any{}},
+		{"create_skill", map[string]any{"content": "x"}},
+		{"create_skill", map[string]any{"title": "x"}},
+		{"edit_skill", map[string]any{"slug": "x"}},
+		{"edit_skill", map[string]any{"content": "x"}},
+		{"delete_skill", map[string]any{}},
+		{"search_skills", map[string]any{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.tool, func(t *testing.T) {
+			resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+				"name":      tt.tool,
+				"arguments": tt.args,
+			})
+			toolResultIsError(t, resp)
+		})
+	}
+}
+
+func TestMCPFullSkillLifecycle(t *testing.T) {
+	handler, _ := newTestMCP(t)
+
+	// Create
+	mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "create_skill",
+		"arguments": map[string]any{"title": "Lifecycle Skill", "content": "# Lifecycle\n\nTags: test\n\nv1"},
+	})
+
+	// List — should appear
+	resp := mcpCall(t, handler, 2, "tools/call", map[string]any{
+		"name": "list_skills", "arguments": map[string]any{},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Lifecycle_Skill") {
+		t.Fatalf("expected Lifecycle_Skill in list: %s", text)
+	}
+
+	// Edit
+	mcpCall(t, handler, 3, "tools/call", map[string]any{
+		"name":      "edit_skill",
+		"arguments": map[string]any{"slug": "Lifecycle_Skill", "content": "v2"},
+	})
+
+	// Read — should be v2
+	resp = mcpCall(t, handler, 4, "tools/call", map[string]any{
+		"name":      "get_skill",
+		"arguments": map[string]any{"slug": "Lifecycle_Skill"},
+	})
+	if toolResultText(t, resp) != "v2" {
+		t.Fatal("expected v2")
+	}
+
+	// Search — should find it
+	resp = mcpCall(t, handler, 5, "tools/call", map[string]any{
+		"name":      "search_skills",
+		"arguments": map[string]any{"query": "lifecycle"},
+	})
+	text = toolResultText(t, resp)
+	if !strings.Contains(text, "Lifecycle_Skill") {
+		t.Fatalf("expected Lifecycle_Skill in search: %s", text)
+	}
+
+	// Delete
+	mcpCall(t, handler, 6, "tools/call", map[string]any{
+		"name":      "delete_skill",
+		"arguments": map[string]any{"slug": "Lifecycle_Skill"},
+	})
+
+	// List — should be empty
+	resp = mcpCall(t, handler, 7, "tools/call", map[string]any{
+		"name": "list_skills", "arguments": map[string]any{},
+	})
+	text = toolResultText(t, resp)
+	if text != "No skills created yet." {
+		t.Fatalf("expected empty list after delete, got: %s", text)
 	}
 }
 

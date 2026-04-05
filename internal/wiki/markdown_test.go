@@ -69,6 +69,117 @@ func TestExtractH1Title(t *testing.T) {
 	}
 }
 
+func TestRenderPublic(t *testing.T) {
+	r := NewMarkdownRenderer()
+
+	t.Run("wiki links become plain text", func(t *testing.T) {
+		out, err := r.RenderPublic("See [[My Page]] for details.")
+		if err != nil {
+			t.Fatalf("RenderPublic failed: %v", err)
+		}
+		html := string(out)
+		if strings.Contains(html, "<a ") {
+			t.Errorf("public render should not contain links for wiki links, got: %s", html)
+		}
+		if !strings.Contains(html, "My Page") {
+			t.Errorf("expected plain text 'My Page', got: %s", html)
+		}
+	})
+
+	t.Run("secure macros are stripped", func(t *testing.T) {
+		out, err := r.RenderPublic("Hello {{secure_aes:abc123def}} world")
+		if err != nil {
+			t.Fatalf("RenderPublic failed: %v", err)
+		}
+		html := string(out)
+		if strings.Contains(html, "secure_aes") {
+			t.Errorf("public render should strip secure macros, got: %s", html)
+		}
+		if strings.Contains(html, "abc123def") {
+			t.Errorf("public render should not contain ciphertext, got: %s", html)
+		}
+		if !strings.Contains(html, "Hello") || !strings.Contains(html, "world") {
+			t.Errorf("surrounding text should be preserved, got: %s", html)
+		}
+	})
+
+	t.Run("basic markdown renders", func(t *testing.T) {
+		out, err := r.RenderPublic("**bold** and *italic*")
+		if err != nil {
+			t.Fatalf("RenderPublic failed: %v", err)
+		}
+		html := string(out)
+		if !strings.Contains(html, "<strong>bold</strong>") {
+			t.Errorf("expected bold HTML, got: %s", html)
+		}
+		if !strings.Contains(html, "<em>italic</em>") {
+			t.Errorf("expected italic HTML, got: %s", html)
+		}
+	})
+}
+
+func TestExpandImageSizeMacros(t *testing.T) {
+	r := NewMarkdownRenderer()
+
+	tests := []struct {
+		name     string
+		input    string
+		contains string
+	}{
+		{
+			name:     "pixel width",
+			input:    "![photo|500](/images/test.png)",
+			contains: `max-width:500px`,
+		},
+		{
+			name:     "percentage width",
+			input:    "![photo|50%](/images/test.png)",
+			contains: `max-width:50%`,
+		},
+		{
+			name:     "explicit dimensions",
+			input:    "![photo|800x600](/images/test.png)",
+			contains: `width:800px;height:600px`,
+		},
+		{
+			name:     "alt text preserved",
+			input:    "![my alt text|300](/images/test.png)",
+			contains: `alt="my alt text"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := r.Render(tt.input)
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			html := string(out)
+			if !strings.Contains(html, tt.contains) {
+				t.Errorf("expected %q in output, got: %s", tt.contains, html)
+			}
+			if !strings.Contains(html, "<img ") {
+				t.Errorf("expected <img> tag, got: %s", html)
+			}
+		})
+	}
+}
+
+func TestRenderSecurePlaceholders(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("Hello {{secure_aes:dGVzdA==}} world")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if !strings.Contains(html, "secure-inline") {
+		t.Errorf("expected secure-inline span, got: %s", html)
+	}
+	if !strings.Contains(html, "secure-copy-btn") {
+		t.Errorf("expected secure-copy-btn button, got: %s", html)
+	}
+}
+
 func TestWikiLinkIncludesTitleParam(t *testing.T) {
 	r := NewMarkdownRenderer()
 	out, err := r.Render("[[ Tokens & Lösenord ]]")
