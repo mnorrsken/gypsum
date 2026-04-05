@@ -2,6 +2,13 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.36.2
+
+### Fixed
+- **New skill slug** — creating a new skill now derives the slug from the H1 heading in the content instead of always using "New_Skill".
+- **New page slug** — creating a new page now derives the slug from the H1 heading in the content instead of keeping the placeholder slug.
+- **New page dialog removed** — the title dialog before editing a new page is skipped; go directly to the editor and set the title via the H1 heading.
+
 ## v0.36.1
 
 ### Added
