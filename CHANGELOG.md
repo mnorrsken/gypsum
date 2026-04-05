@@ -2,6 +2,15 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.36.1
+
+### Added
+- **Skills documentation page** — dedicated `docs/skills.md` covering skill structure, MCP tools, automatic lookup with Claude Code, and tips.
+
+### Changed
+- **Sidebar** — skills section now shows only "All Skills" and "+ New Skill" instead of listing every individual skill.
+- **MCP docs** — moved skills documentation out of `docs/mcp.md` into the new dedicated page to avoid duplication.
+
 ## v0.36.0
 
 ### Added

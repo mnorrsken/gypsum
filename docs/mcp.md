@@ -88,43 +88,4 @@ Build it with `make build`, then configure Claude Desktop:
 | `delete_skill` | Delete a skill |
 | `search_skills` | Tag-boosted search across skills |
 
-## Skills
-
-Skills are procedural knowledge pages optimized for AI retrieval — build instructions, testing conventions, deployment steps, coding patterns. They live in a separate `skills/` directory and have their own MCP tools with tag-boosted FTS5 search.
-
-### Recommended skill structure
-
-```markdown
-# Go Testing Conventions
-
-Use table-driven tests with testify/assert for all Go projects.
-
-## When to Use
-
-When creating or modifying tests in any Go project using modules.
-
-## Instructions
-
-- Use `testify/assert` for assertions
-- Always use table-driven tests with `for _, tc := range tests`
-- Name test functions `TestXxx_descriptiveName`
-- Put test files alongside source as `xxx_test.go`
-
-Tags: go, golang, testing, tests, testify, table-driven
-```
-
-The `Tags:` line at the bottom is used for search ranking — tag matches are weighted much higher than content matches.
-
-### Automatic skill lookup with Claude Code
-
-To have Claude Code automatically check the wiki for relevant skills before starting tasks, add this to your global `~/.claude/CLAUDE.md`:
-
-```markdown
-## Wiki Skills
-
-Before starting implementation tasks (writing code, tests, builds, deployments, refactoring),
-search the Gypsum wiki for relevant skills using `search_skills` with keywords matching
-the language/framework and task type. Follow any matching skill instructions.
-```
-
-This way, when you say "create tests" in a Go project, Claude will automatically call `search_skills("go testing")`, find your conventions, and follow them.
+Skills tools (`list_skills`, `search_skills`, etc.) are included in the table above. See [Skills](skills.md) for how to create and use skills with LLMs.
