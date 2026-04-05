@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.36.4
+
+### Changed
+- **`search_skills` MCP description** — updated to document that full skill content is returned when exactly one match is found.
+
 ## v0.36.3
 
 ### Changed

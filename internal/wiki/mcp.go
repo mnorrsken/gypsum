@@ -561,7 +561,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"Use this before starting implementation tasks (writing code, tests, builds, deployments) " +
 				"to find relevant conventions and instructions. " +
 				"Example: search for 'go testing' before writing Go tests. " +
-				"Multiple queries can be provided to search for different topics at once.",
+				"Multiple queries can be provided to search for different topics at once. " +
+					"Returns the full skill content when exactly one match is found.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"query": mcpPropStringArray("Search queries — each is split into terms, each prefix-matched. E.g. ['go testing', 'deploy kubernetes']. Multiple queries search for different topics in one call."),
 			}, []string{"query"}),
