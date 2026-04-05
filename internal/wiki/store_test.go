@@ -14,11 +14,11 @@ func TestPageStoreSaveLoadAndMissing(t *testing.T) {
 
 	const slug = "Home"
 	const content = "# Welcome\nHello"
-	if err := store.Save(KindPage,slug, content); err != nil {
+	if err := store.Save(KindPage, slug, content); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
 
-	page, err := store.Load(KindPage,slug)
+	page, err := store.Load(KindPage, slug)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestPageStoreSaveLoadAndMissing(t *testing.T) {
 		t.Fatalf("loaded page mismatch: %#v", page)
 	}
 
-	_, err = store.Load(KindPage,"Does_Not_Exist")
+	_, err = store.Load(KindPage, "Does_Not_Exist")
 	if !errors.Is(err, ErrPageNotFound) {
 		t.Fatalf("expected ErrPageNotFound, got %v", err)
 	}
@@ -36,10 +36,10 @@ func TestPageStoreListAndSearch(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 
-	if err := store.Save(KindPage,"Zoo", "Animals"); err != nil {
+	if err := store.Save(KindPage, "Zoo", "Animals"); err != nil {
 		t.Fatalf("Save Zoo failed: %v", err)
 	}
-	if err := store.Save(KindPage,"Alpha", "Contains keyword: gypsum"); err != nil {
+	if err := store.Save(KindPage, "Alpha", "Contains keyword: gypsum"); err != nil {
 		t.Fatalf("Save Alpha failed: %v", err)
 	}
 
@@ -54,7 +54,7 @@ func TestPageStoreListAndSearch(t *testing.T) {
 		t.Fatalf("links not sorted as expected: %#v", links)
 	}
 
-	results, err := store.Search(KindPage,"GyPsuM")
+	results, err := store.Search(KindPage, "GyPsuM")
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -73,8 +73,8 @@ func TestPageStoreListSkipsSpecialFiles(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 
-	_ = store.Save(KindPage,"Normal", "content")
-	_ = store.Save(KindPage,"_favorites", "[[Normal]]")
+	_ = store.Save(KindPage, "Normal", "content")
+	_ = store.Save(KindPage, "_favorites", "[[Normal]]")
 
 	links, err := store.List(KindPage)
 	if err != nil {
@@ -92,9 +92,9 @@ func TestPageStoreRecentPages(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 
-	_ = store.Save(KindPage,"First", "first page")
-	_ = store.Save(KindPage,"Second", "second page")
-	_ = store.Save(KindPage,"Third", "third page")
+	_ = store.Save(KindPage, "First", "first page")
+	_ = store.Save(KindPage, "Second", "second page")
+	_ = store.Save(KindPage, "Third", "third page")
 
 	recent, err := store.RecentPages(2)
 	if err != nil {
@@ -110,8 +110,8 @@ func TestPageStoreRecentPagesSkipsSpecial(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 
-	_ = store.Save(KindPage,"Page", "content")
-	_ = store.Save(KindPage,"_favorites", "[[Page]]")
+	_ = store.Save(KindPage, "Page", "content")
+	_ = store.Save(KindPage, "_favorites", "[[Page]]")
 
 	recent, err := store.RecentPages(10)
 	if err != nil {
@@ -126,7 +126,7 @@ func TestPageStoreLoadFavorites(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 
-	_ = store.Save(KindPage,"_favorites", "[[Home]]\n- [[Notes]]\n[[Scratch Pad]]")
+	_ = store.Save(KindPage, "_favorites", "[[Home]]\n- [[Notes]]\n[[Scratch Pad]]")
 
 	favs, err := store.LoadFavorites()
 	if err != nil {
@@ -163,9 +163,9 @@ func TestPageStoreSearchEmptyQuery(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 
-	_ = store.Save(KindPage,"Page", "content")
+	_ = store.Save(KindPage, "Page", "content")
 
-	results, err := store.Search(KindPage,"")
+	results, err := store.Search(KindPage, "")
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -178,9 +178,9 @@ func TestPageStoreSearchMatchesTitle(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 
-	_ = store.Save(KindPage,"Kubernetes_Guide", "some content about pods")
+	_ = store.Save(KindPage, "Kubernetes_Guide", "some content about pods")
 
-	results, err := store.Search(KindPage,"kubernetes")
+	results, err := store.Search(KindPage, "kubernetes")
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -194,11 +194,11 @@ func TestPageStoreSearchPrefixAndRelaxed(t *testing.T) {
 	store := NewPageStore(dir)
 
 	// Slug with double underscore (& stripped during creation), simulates "Tokens & Lösenord"
-	_ = store.Save(KindPage,"Tokens__Lösenord", "page about tokens and passwords")
-	_ = store.Save(KindPage,"Other_Page", "unrelated content")
+	_ = store.Save(KindPage, "Tokens__Lösenord", "page about tokens and passwords")
+	_ = store.Save(KindPage, "Other_Page", "unrelated content")
 
 	// "tokens & lösen" should match: & is stripped, "lösen" prefix-matches "lösenord"
-	results, err := store.Search(KindPage,"tokens & lösen")
+	results, err := store.Search(KindPage, "tokens & lösen")
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -214,10 +214,10 @@ func TestPageStoreSearchRelevanceOrder(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 
-	_ = store.Save(KindPage,"Go_Programming", "a guide to go programming")
-	_ = store.Save(KindPage,"Notes", "contains the word go somewhere in content")
+	_ = store.Save(KindPage, "Go_Programming", "a guide to go programming")
+	_ = store.Save(KindPage, "Notes", "contains the word go somewhere in content")
 
-	results, err := store.Search(KindPage,"go programming")
+	results, err := store.Search(KindPage, "go programming")
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -234,10 +234,10 @@ func TestPageStoreSearchPartialTerm(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 
-	_ = store.Save(KindPage,"Kubernetes_Guide", "deploying containers")
+	_ = store.Save(KindPage, "Kubernetes_Guide", "deploying containers")
 
 	// "kube" should prefix-match "kubernetes"
-	results, err := store.Search(KindPage,"kube")
+	results, err := store.Search(KindPage, "kube")
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestPageStoreListImagesTracksUsage(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(imagesDir, "unused.png"), []byte("img"), 0o644)
 
 	// Create a page that references one image
-	_ = store.Save(KindPage,"MyPage", "Some text ![alt](/images/used.png) more text")
+	_ = store.Save(KindPage, "MyPage", "Some text ![alt](/images/used.png) more text")
 
 	images, err := store.ListImages()
 	if err != nil {
@@ -375,9 +375,9 @@ func TestExtractWikiLinksEmpty(t *testing.T) {
 func TestLinkGraph(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
-	_ = store.Save(KindPage,"Home", "Welcome! See [[About]] and [[Contact]]")
-	_ = store.Save(KindPage,"About", "About us. Back to [[Home]]")
-	_ = store.Save(KindPage,"Contact", "Contact page.")
+	_ = store.Save(KindPage, "Home", "Welcome! See [[About]] and [[Contact]]")
+	_ = store.Save(KindPage, "About", "About us. Back to [[Home]]")
+	_ = store.Save(KindPage, "Contact", "Contact page.")
 
 	graph, err := store.LinkGraph()
 	if err != nil {
@@ -505,7 +505,7 @@ func TestListSkillEntriesEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSkillEntries failed: %v", err)
 	}
-	if entries != nil && len(entries) != 0 {
+	if len(entries) != 0 {
 		t.Fatalf("expected nil or empty, got %v", entries)
 	}
 }
@@ -532,9 +532,9 @@ func TestListSkillEntriesSkipsSpecial(t *testing.T) {
 func TestBackLinks(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
-	_ = store.Save(KindPage,"Home", "See [[About]] and [[Contact]]")
-	_ = store.Save(KindPage,"About", "Back to [[Home]]")
-	_ = store.Save(KindPage,"Contact", "Back to [[Home]]")
+	_ = store.Save(KindPage, "Home", "See [[About]] and [[Contact]]")
+	_ = store.Save(KindPage, "About", "Back to [[Home]]")
+	_ = store.Save(KindPage, "Contact", "Back to [[Home]]")
 
 	backlinks, err := store.BackLinks("Home")
 	if err != nil {
