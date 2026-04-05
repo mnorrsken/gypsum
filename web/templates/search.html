@@ -1,6 +1,7 @@
 {{define "content"}}
 <article>
   <h1>Search</h1>
+  <div id="search-results">
   {{if .Query}}
     <p>Results for <strong>{{.Query}}</strong></p>
   {{else}}
@@ -25,5 +26,6 @@
   {{else if .Query}}
     <p>No results found.</p>
   {{end}}
+  </div>
 </article>
 {{end}}

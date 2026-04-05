@@ -15,7 +15,7 @@
 
 <script>
 (() => {
-  // Helper: decrypt ciphertext via the server endpoint.
+  // Helper: decrypt ciphertext via the server endpoint (used by copy button).
   async function decryptSecret(ciphertext) {
     const response = await fetch("/secure-inline/unlock", {
       method: "POST",
@@ -29,7 +29,7 @@
     return payload.content || "";
   }
 
-  // Copy buttons (always visible) — decrypt and copy without revealing.
+  // Copy buttons — decrypt and copy without revealing.
   document.querySelectorAll(".secure-copy-btn").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -38,44 +38,24 @@
       try {
         const text = await decryptSecret(ciphertext);
         await navigator.clipboard.writeText(text);
-        btn.textContent = "✓";
-        setTimeout(() => { btn.textContent = "📋"; }, 1500);
+        btn.textContent = "\u2713";
+        setTimeout(() => { btn.textContent = "\ud83d\udccb"; }, 1500);
       } catch (error) {
         console.error("secure copy failed:", error);
       }
     });
   });
 
-  // Click-to-reveal on the lock span itself.
-  document.querySelectorAll(".secure-inline").forEach((el) => {
-    el.addEventListener("click", async () => {
-      if (el.classList.contains("unlocked")) return;
-
-      const ciphertext = el.dataset.ciphertext || "";
-      if (!ciphertext) return;
-
-      try {
-        const text = await decryptSecret(ciphertext);
-
-        el.textContent = "";
-        if (text.includes("\n")) {
-          text.split("\n").forEach((part, i, arr) => {
-            el.appendChild(document.createTextNode(part));
-            if (i < arr.length - 1) el.appendChild(document.createElement("br"));
-          });
-        } else {
-          el.textContent = text;
-        }
-        el.classList.add("unlocked");
-
-        setTimeout(() => {
-          el.textContent = "🔒****";
-          el.classList.remove("unlocked");
-        }, 60000);
-      } catch (error) {
-        console.error("secure unlock failed:", error);
-      }
-    });
+  // Auto-relock revealed secrets after 60 seconds.
+  document.body.addEventListener("htmx:afterSwap", (e) => {
+    const el = e.detail.elt;
+    if (el.classList && el.classList.contains("secure-inline")) {
+      el.classList.add("unlocked");
+      setTimeout(() => {
+        el.innerHTML = "\ud83d\udd12****";
+        el.classList.remove("unlocked");
+      }, 60000);
+    }
   });
 })();
 </script>

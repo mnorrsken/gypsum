@@ -2,6 +2,21 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.36.0
+
+### Added
+- **htmx + Alpine.js frontend** — vendored htmx 2.0.4 and Alpine.js 3.14.9 for declarative server interactions and client-side reactivity, replacing hand-rolled vanilla JS.
+- **Live search** — search input now fetches results as you type (300ms debounce) via htmx partial responses.
+- **Inline image delete** — deleting an image on the images page removes the table row without a full page reload.
+- **`go vet` Makefile target** — `make vet` runs Go static analysis.
+- **`make vendor-js`** — downloads pinned versions of htmx and Alpine.js into `web/static/`.
+
+### Changed
+- **Sidebar and theme toggle** — migrated from vanilla JS event listeners to Alpine.js directives.
+- **Image picker modal** — open/close state managed by Alpine.js, image grid loaded via htmx HTML fragment instead of JSON fetch + DOM construction.
+- **Encrypted field reveal** — click-to-reveal on secure fields now uses htmx (`hx-post`/`hx-swap`) instead of fetch + manual DOM manipulation; auto-relocks after 60 seconds.
+- **Delete confirmations** — page, skill, and image delete buttons use `hx-confirm` and `hx-post` instead of hidden forms with `confirm()` + JS `submit()`.
+
 ## v0.35.0
 
 ### Added

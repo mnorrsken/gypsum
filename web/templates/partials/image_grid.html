@@ -1,0 +1,12 @@
+{{define "image_grid"}}
+{{if .Images}}
+{{range .Images}}
+<div class="image-picker-item" data-url="{{.URL}}" data-name="{{.Name}}">
+  <img class="image-picker-thumb" src="{{.URL}}" alt="{{.Name}}" loading="lazy" />
+  <span class="image-picker-name">{{.Name}}</span>
+</div>
+{{end}}
+{{else}}
+<p class="image-picker-empty">No images uploaded yet.</p>
+{{end}}
+{{end}}

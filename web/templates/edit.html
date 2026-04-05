@@ -18,17 +18,16 @@
       <div class="page-actions">
         <button type="submit">Save</button>
         <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
-        <button type="button" class="button secondary" id="images-toggle">Images</button>
+        <button type="button" class="button secondary" @click="$dispatch('image-picker-open')">Images</button>
         <button type="button" class="button secondary" id="table-editor-toggle">Insert Table</button>
         <button type="button" class="button secondary" id="mediawiki-import-toggle">Import MediaWiki</button>
         <button type="button" class="button secondary" id="help-toggle">Help</button>
         <label class="diff-checkbox"><input type="checkbox" id="showdiff-toggle" /> Show diff</label>
-        {{if not .IsNew}}<button type="button" class="button danger" id="delete-page-btn">Delete</button>{{end}}
+        {{if not .IsNew}}<button type="button" class="button danger"
+                hx-post="/delete/{{.Page.Slug}}"
+                hx-confirm="Are you sure you want to delete this page? This cannot be undone.">Delete</button>{{end}}
       </div>
     </form>
-    {{if not .IsNew}}
-    <form id="delete-page-form" method="post" action="/delete/{{.Page.Slug}}" style="display:none"></form>
-    {{end}}
     <aside class="editor-help" id="editor-help">
       <h3>Markdown Reference</h3>
       <table class="help-table">
@@ -75,11 +74,16 @@ password: s3cret
 </article>
 
 <!-- Image picker modal (outside form) -->
-<div id="image-picker" class="image-picker-overlay" hidden>
+<div id="image-picker" class="image-picker-overlay"
+     x-data="{ open: false }" x-show="open" x-cloak
+     @image-picker-open.window="open = true"
+     @image-picker-close.window="open = false"
+     @keydown.escape.window="open = false"
+     @click.self="open = false">
   <div class="image-picker-dialog">
     <div class="image-picker-header">
       <h3>Insert Image</h3>
-      <button type="button" id="image-picker-close" class="image-picker-close" aria-label="Close">&times;</button>
+      <button type="button" class="image-picker-close" @click="open = false" aria-label="Close">&times;</button>
     </div>
     <div class="image-picker-toolbar">
       <label class="button secondary">
@@ -88,7 +92,9 @@ password: s3cret
       </label>
       <span id="image-picker-status" class="image-picker-status"></span>
     </div>
-    <div id="image-picker-grid" class="image-picker-grid">
+    <div id="image-picker-grid" class="image-picker-grid"
+         hx-get="/images/list" hx-trigger="image-picker-open from:window"
+         hx-swap="innerHTML">
       <p class="image-picker-loading">Loading&hellip;</p>
     </div>
   </div>
@@ -253,69 +259,25 @@ password: s3cret
   });
 
   // --- Image picker ---
-  const pickerOverlay = document.getElementById("image-picker");
   const pickerGrid = document.getElementById("image-picker-grid");
   const pickerStatus = document.getElementById("image-picker-status");
   const pickerFile = document.getElementById("image-picker-file");
-  const imagesBtn = document.getElementById("images-toggle");
-
-  imagesBtn.addEventListener("click", openPicker);
-  document.getElementById("image-picker-close").addEventListener("click", closePicker);
-  pickerOverlay.addEventListener("click", (e) => {
-    if (e.target === pickerOverlay) closePicker();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !pickerOverlay.hidden) closePicker();
-  });
-
-  function openPicker() {
-    pickerOverlay.hidden = false;
-    loadImages();
-  }
 
   function closePicker() {
-    pickerOverlay.hidden = true;
-    pickerStatus.textContent = "";
+    window.dispatchEvent(new CustomEvent("image-picker-close"));
   }
 
-  async function loadImages() {
-    pickerGrid.innerHTML = '<p class="image-picker-loading">Loading&hellip;</p>';
-    try {
-      const resp = await fetch("/images/list");
-      const data = await resp.json();
-      if (!data.ok) throw new Error(data.error);
-      renderGrid(data.images);
-    } catch (err) {
-      pickerGrid.innerHTML = '<p class="image-picker-loading">Failed to load images.</p>';
+  // Event delegation: click on grid items to insert image markdown.
+  pickerGrid.addEventListener("click", (e) => {
+    const item = e.target.closest(".image-picker-item");
+    if (!item) return;
+    const url = item.dataset.url;
+    const name = item.dataset.name;
+    if (url) {
+      insertAtCursor(`![${deriveAlt(name)}](${url})`);
+      closePicker();
     }
-  }
-
-  function renderGrid(images) {
-    if (!images || images.length === 0) {
-      pickerGrid.innerHTML = '<p class="image-picker-empty">No images uploaded yet.</p>';
-      return;
-    }
-    pickerGrid.innerHTML = "";
-    for (const img of images) {
-      const item = document.createElement("div");
-      item.className = "image-picker-item";
-      const thumb = document.createElement("img");
-      thumb.src = img.url;
-      thumb.alt = img.name;
-      thumb.className = "image-picker-thumb";
-      thumb.loading = "lazy";
-      const label = document.createElement("span");
-      label.className = "image-picker-name";
-      label.textContent = img.name;
-      item.appendChild(thumb);
-      item.appendChild(label);
-      item.addEventListener("click", () => {
-        insertAtCursor(`![${deriveAlt(img.name)}](${img.url})`);
-        closePicker();
-      });
-      pickerGrid.appendChild(item);
-    }
-  }
+  });
 
   pickerFile.addEventListener("change", async (e) => {
     const files = Array.from(e.target.files).filter((f) => f.type.startsWith("image/"));
@@ -679,16 +641,6 @@ password: s3cret
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !mwOverlay.hidden) closeMwImport();
   });
-
-  // --- Delete page ---
-  const deleteBtn = document.getElementById("delete-page-btn");
-  if (deleteBtn) {
-    deleteBtn.addEventListener("click", () => {
-      if (confirm("Are you sure you want to delete this page? This cannot be undone.")) {
-        document.getElementById("delete-page-form").submit();
-      }
-    });
-  }
 
 })();
 </script>

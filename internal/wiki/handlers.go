@@ -129,6 +129,17 @@ func (h *Handler) parseTemplates() {
 	if tmpl, err := template.New("").Funcs(templateFuncs).ParseFiles(publicPath); err == nil {
 		h.tmplCache["public"] = tmpl
 	}
+
+	// Partial templates (standalone fragments for htmx responses).
+	partials := []string{"image_grid"}
+	for _, name := range partials {
+		partialPath := filepath.Join(h.templates, "partials", name+".html")
+		tmpl, err := template.New("").Funcs(templateFuncs).ParseFiles(partialPath)
+		if err != nil {
+			continue
+		}
+		h.tmplCache["partial_"+name] = tmpl
+	}
 }
 
 func (h *Handler) Routes() http.Handler {
@@ -417,6 +428,11 @@ func (h *Handler) handleInlineSecureUnlock(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if isHTMX(r) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, template.HTMLEscapeString(plain))
+		return
+	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "content": plain})
 }
 
@@ -438,11 +454,16 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, "search", TemplateData{
+	data := TemplateData{
 		Title:   "Search",
 		Query:   query,
 		Results: results,
-	})
+	}
+	if isHTMX(r) {
+		h.renderFragment(w, "search", data)
+		return
+	}
+	h.render(w, "search", data)
 }
 
 func (h *Handler) handlePages(w http.ResponseWriter, r *http.Request) {
@@ -731,6 +752,18 @@ func (h *Handler) handleImageList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isHTMX(r) {
+		tmpl := h.tmplCache["partial_image_grid"]
+		if tmpl == nil {
+			http.Error(w, "template not found", http.StatusInternalServerError)
+			return
+		}
+		if err := tmpl.ExecuteTemplate(w, "image_grid", TemplateData{Images: images}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
 	type imgItem struct {
 		Name string `json:"name"`
 		URL  string `json:"url"`
@@ -766,6 +799,10 @@ func (h *Handler) handleImageDelete(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.autoCommit.CommitImageDelete(filename, UsernameFromRequest(r))
 
+	if isHTMX(r) {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	http.Redirect(w, r, "/images", http.StatusFound)
 }
 
@@ -798,6 +835,11 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 	// Clean up any share link for this page.
 	if h.db != nil {
 		_ = h.db.DeleteShare(slug)
+	}
+	if isHTMX(r) {
+		w.Header().Set("HX-Redirect", "/pages")
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 	http.Redirect(w, r, "/pages", http.StatusFound)
 }
@@ -1116,6 +1158,11 @@ func (h *Handler) handleDeleteSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.autoCommit.CommitDelete(KindSkill, slug, "")
+	if isHTMX(r) {
+		w.Header().Set("HX-Redirect", "/skills")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	http.Redirect(w, r, "/skills", http.StatusFound)
 }
 
@@ -1170,6 +1217,24 @@ func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) 
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// isHTMX returns true when the request was made by htmx.
+func isHTMX(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true"
+}
+
+// renderFragment renders only the "content" block without the base layout,
+// suitable for htmx partial responses.
+func (h *Handler) renderFragment(w http.ResponseWriter, name string, data TemplateData) {
+	tmpl := h.tmplCache[name]
+	if tmpl == nil {
+		http.Error(w, "template not found: "+name, http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.ExecuteTemplate(w, "content", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

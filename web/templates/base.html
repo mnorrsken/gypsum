@@ -13,20 +13,24 @@
       if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/alpine.min.js" defer></script>
 </head>
-<body>
+<body x-data="{ sidebarOpen: false, dark: document.documentElement.getAttribute('data-theme') === 'dark' }">
   <header class="topbar">
     <div class="topbar-inner">
       <div class="topbar-left">
-        <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Menu">&#9776;</button>
+        <button class="sidebar-toggle" @click="sidebarOpen = !sidebarOpen" aria-label="Menu">&#9776;</button>
         <div class="brand"><a href="/wiki/Home">Gypsum</a></div>
       </div>
       <div class="topbar-right">
         <form class="search" action="/search" method="get">
-          <input type="search" name="q" value="{{.Query}}" placeholder="Search..." />
+          <input type="search" name="q" value="{{.Query}}" placeholder="Search..."
+                 hx-get="/search" hx-trigger="input changed delay:300ms, search"
+                 hx-target="#search-results" hx-push-url="true" />
           <button type="submit">Search</button>
         </form>
-        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <button class="theme-toggle" @click="dark = !dark; document.documentElement.setAttribute('data-theme', dark ? 'dark' : ''); localStorage.setItem('theme', dark ? 'dark' : 'light')" aria-label="Toggle dark mode" title="Toggle dark mode">
           <span class="icon-sun">&#9728;&#65039;</span>
           <span class="icon-moon">&#127769;</span>
         </button>
@@ -38,8 +42,8 @@
   </header>
 
   <div class="layout">
-    <div class="sidebar-overlay" id="sidebar-overlay"></div>
-    <aside class="sidebar" id="sidebar">
+    <div class="sidebar-overlay" :class="{ 'open': sidebarOpen }" @click="sidebarOpen = false"></div>
+    <aside class="sidebar" :class="{ 'open': sidebarOpen }">
       <h3>Navigation</h3>
       <a href="/wiki/Home">Home</a>
       <a href="/pages">All Pages</a>
@@ -92,36 +96,6 @@
     </main>
   </div>
 
-  <script>
-  (() => {
-    // Sidebar toggle
-    const toggle = document.getElementById("sidebar-toggle");
-    const sidebar = document.getElementById("sidebar");
-    const overlay = document.getElementById("sidebar-overlay");
-    function closeSidebar() {
-      sidebar.classList.remove("open");
-      overlay.classList.remove("open");
-    }
-    toggle.addEventListener("click", () => {
-      sidebar.classList.toggle("open");
-      overlay.classList.toggle("open");
-    });
-    overlay.addEventListener("click", closeSidebar);
-
-    // Theme toggle
-    const themeBtn = document.getElementById("theme-toggle");
-    themeBtn.addEventListener("click", () => {
-      const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-      if (isDark) {
-        document.documentElement.removeAttribute("data-theme");
-        localStorage.setItem("theme", "light");
-      } else {
-        document.documentElement.setAttribute("data-theme", "dark");
-        localStorage.setItem("theme", "dark");
-      }
-    });
-  })();
-  </script>
 </body>
 </html>
 {{end}}

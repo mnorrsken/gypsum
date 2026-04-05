@@ -1,3 +1,5 @@
+[x-cloak] { display: none !important; }
+
 /* --- Theme variables (light = default) --- */
 
 :root {
@@ -148,22 +150,25 @@ a:hover {
 
 .topbar-right {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 8px;
 }
 
 .search {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 6px;
 }
 
-.search input {
+.search input[type="search"] {
   min-width: 240px;
   padding: 5px 10px;
+  margin: 0;
+  height: 30px;
 }
 
 .search button[type="submit"] {
+  height: 30px;
   padding-top: 0;
   padding-bottom: 0;
 }
@@ -1211,6 +1216,7 @@ textarea {
   cursor: pointer;
   font-size: 16px;
   padding: 0 8px;
+  height: 30px;
   line-height: 1;
   color: var(--color-text-secondary);
   transition: background 0.1s;

@@ -112,9 +112,11 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 	for i, ciphertext := range securePlaceholders {
 		placeholder := fmt.Sprintf("SECURE_PLACEHOLDER_%d", i)
 		replacement := fmt.Sprintf(
-			`<span class="secure-inline" data-ciphertext="%s" title="Click to reveal">🔒****</span>`+
+			`<span class="secure-inline" data-ciphertext="%s" title="Click to reveal"`+
+				` hx-post="/secure-inline/unlock" hx-vals='{"ciphertext":"%s"}'`+
+				` hx-swap="innerHTML" hx-trigger="click once">🔒****</span>`+
 				`<button class="secure-copy-btn" data-ciphertext="%s" title="Copy to clipboard">📋</button>`,
-			ciphertext, ciphertext,
+			ciphertext, ciphertext, ciphertext,
 		)
 		result = strings.Replace(result, placeholder, replacement, 1)
 	}

@@ -29,10 +29,10 @@
           {{end}}
         </td>
         <td>
-          <form method="post" action="/images/delete" onsubmit="return confirm('Delete this image?');">
-            <input type="hidden" name="filename" value="{{.Name}}" />
-            <button type="submit" class="btn-delete" title="Delete image">✕</button>
-          </form>
+          <button class="btn-delete" title="Delete image"
+                  hx-post="/images/delete" hx-vals='{"filename":"{{.Name}}"}'
+                  hx-confirm="Delete this image?" hx-target="closest tr"
+                  hx-swap="outerHTML swap:0.3s">✕</button>
         </td>
       </tr>
       {{end}}
