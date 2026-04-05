@@ -98,7 +98,7 @@ func (m *MCPHandler) toolGetPage(args map[string]any) mcpCallToolResult {
 	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
-	return mcpText(m.redactContent(page.Content))
+	return mcpText(page.Content)
 }
 
 func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
@@ -109,10 +109,6 @@ func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
 	content, ok := mcpArgString(args, "content")
 	if !ok {
 		return mcpError("missing required argument: content")
-	}
-
-	if m.redactSecure && secureAesMacroRe.MatchString(content) {
-		return mcpError("content contains encrypted fields ({{secure_aes:...}}); creating pages with encrypted fields is not supported via this endpoint")
 	}
 
 	slug := SlugFromTitle(title)
@@ -137,13 +133,8 @@ func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
 		return mcpError("missing required argument: content")
 	}
 
-	existing, err := m.store.Load(KindPage, slug)
-	if err != nil {
+	if _, err := m.store.Load(KindPage, slug); err != nil {
 		return mcpError("page not found: " + slug)
-	}
-
-	if m.redactSecure && secureAesMacroRe.MatchString(existing.Content) {
-		return mcpError("page '" + slug + "' contains encrypted fields; editing pages with encrypted fields is not supported via this endpoint — use the local wiki UI or internal MCP endpoint")
 	}
 
 	if err := m.store.Save(KindPage, slug, content); err != nil {
@@ -268,7 +259,7 @@ func (m *MCPHandler) toolGetPageRevision(args map[string]any) mcpCallToolResult 
 	if err != nil {
 		return mcpError("failed to get revision: " + err.Error())
 	}
-	return mcpText(m.redactContent(content))
+	return mcpText(content)
 }
 
 func (m *MCPHandler) toolPageLinks(args map[string]any) mcpCallToolResult {
@@ -318,9 +309,6 @@ func (m *MCPHandler) toolCreatePageFromMediaWiki(args map[string]any) mcpCallToo
 	}
 
 	content := ConvertMediaWikiToMarkdown(wikitext)
-	if m.redactSecure && secureAesMacroRe.MatchString(content) {
-		return mcpError("converted content contains encrypted fields; creating pages with encrypted fields is not supported via this endpoint")
-	}
 	if err := m.store.Save(KindPage, slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
@@ -338,13 +326,8 @@ func (m *MCPHandler) toolEditPageFromMediaWiki(args map[string]any) mcpCallToolR
 		return mcpError("missing required argument: wikitext")
 	}
 
-	existing, err := m.store.Load(KindPage, slug)
-	if err != nil {
+	if _, err := m.store.Load(KindPage, slug); err != nil {
 		return mcpError("page not found: " + slug)
-	}
-
-	if m.redactSecure && secureAesMacroRe.MatchString(existing.Content) {
-		return mcpError("page '" + slug + "' contains encrypted fields; editing pages with encrypted fields is not supported via this endpoint — use the local wiki UI or internal MCP endpoint")
 	}
 
 	content := ConvertMediaWikiToMarkdown(wikitext)
@@ -381,10 +364,10 @@ func (m *MCPHandler) runMultiSearch(kind DocKind, queries []string) (string, boo
 			fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n", r.Title, r.Slug)
 			if len(r.Snippets) > 0 {
 				for _, snip := range r.Snippets {
-					fmt.Fprintf(&sb, "> %s\n", m.redactContent(snip))
+					fmt.Fprintf(&sb, "> %s\n", snip)
 				}
 			} else if r.Excerpt != "" {
-				fmt.Fprintf(&sb, "> %s\n", m.redactContent(r.Excerpt))
+				fmt.Fprintf(&sb, "> %s\n", r.Excerpt)
 			}
 			sb.WriteString("\n")
 		}
@@ -414,7 +397,7 @@ func (m *MCPHandler) toolGetSkill(args map[string]any) mcpCallToolResult {
 	if err != nil {
 		return mcpError("skill not found: " + slug)
 	}
-	return mcpText(m.redactContent(skill.Content))
+	return mcpText(skill.Content)
 }
 
 func (m *MCPHandler) toolCreateSkill(args map[string]any) mcpCallToolResult {
@@ -509,7 +492,7 @@ func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
 		if err != nil {
 			return mcpError("failed to load skill: " + err.Error())
 		}
-		return mcpText(m.redactContent(skill.Content))
+		return mcpText(skill.Content)
 	}
 
 	text, _ := m.runMultiSearch(KindSkill, queries)

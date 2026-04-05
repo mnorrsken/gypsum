@@ -14,10 +14,7 @@ The most useful thing you can do with an LLM isn't generating text — it's buil
 
 Gypsum has a built-in [MCP](https://modelcontextprotocol.io/) endpoint (Streamable HTTP). AI assistants like Claude can create pages, edit them, search across the wiki, follow backlinks, and traverse the link graph — no separate binary or plugin needed.
 
-| Endpoint | Auth | Use case |
-|---|---|---|
-| `/mcp` | None (reverse proxy) | Local / trusted network |
-| `/mcp/external` | OAuth 2.0 (built-in, PKCE) | Internet-facing |
+Both `/mcp` and `/mcp/external` require OAuth 2.0 (PKCE) when OAuth is configured — if OAuth is not configured, the endpoints are not exposed. For Claude Desktop or CI use, the `mcp-proxy` binary bridges stdio to the HTTP endpoint; run `mcp-proxy auth <url>` to obtain a token non-interactively.
 
 Available tools: `list_pages`, `get_page`, `create_page`, `edit_page`, `delete_page`, `search_pages`, `page_links`, `what_links_here`, `link_graph`, `page_history`, `get_page_revision`, `list_images`, `upload_image`, `delete_image`, and more. See [MCP Server](docs/mcp.md) for setup.
 

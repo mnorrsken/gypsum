@@ -4,11 +4,6 @@ package wiki
 // enabled sections. Schema helpers (mcpSchema, mcpPropString, etc.) are in
 // mcp_tool_impls.go.
 func (m *MCPHandler) toolDefinitions() []mcpTool {
-	formattingGuide := wikiFormattingGuide
-	if m.redactSecure {
-		formattingGuide = wikiFormattingGuideExternal
-	}
-
 	allTools := []mcpTool{
 		// ── Read tools ───────────────────────────────────────────────
 		{
@@ -107,7 +102,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"Fails if the page already exists. " +
 				"The slug is derived from the title (spaces become underscores, e.g. 'My Page' → 'My_Page'). " +
 				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page (e.g. Home or a relevant category page) so it is discoverable. " +
-				formattingGuide,
+				wikiFormattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
 				"title":   mcpPropString("Page title, e.g. 'My New Page'. This becomes the slug and the display title."),
 				"content": mcpPropString("Markdown content for the page. " + wikiContentGuide),
@@ -120,7 +115,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"Replaces the entire page content. " +
 				"Always use get_page first to read the current content before editing. " +
 				"When adding [[wiki links]] to new pages, make sure those pages exist or will be created. " +
-				formattingGuide,
+				wikiFormattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
 				"slug":    mcpPropString("Page slug to edit, e.g. 'My_Page'"),
 				"content": mcpPropString("New markdown content (replaces entire page). " + wikiContentGuide),

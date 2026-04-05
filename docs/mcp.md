@@ -4,22 +4,16 @@ Gypsum has a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Pro
 
 ## Endpoints
 
-| Endpoint | Auth | Secure fields | Use case |
-|---|---|---|---|
-| `/mcp` | None (rely on reverse proxy) | Visible as ciphertext | Local / trusted network |
-| `/mcp/external` | OAuth 2.0 (built-in, PKCE) | Redacted as `[encrypted field]` | Internet-facing |
+| Endpoint | Auth | Notes |
+|---|---|---|
+| `/mcp` | OAuth 2.0 (PKCE) | Main endpoint |
+| `/mcp/external` | OAuth 2.0 (PKCE) | Backwards-compatible alias for `/mcp` |
 
-## Connecting from Claude (Internal)
+Both endpoints are identical. `{{secure_aes:...}}` ciphertext is passed through unchanged in both directions, so AI assistants can read and edit pages that contain encrypted fields without corrupting them.
 
-Add a **remote MCP server** in Claude's settings:
+MCP is only exposed when OAuth is configured — if `GYPSUM_OAUTH_ENABLED` is not set, the `/mcp` endpoint is not registered.
 
-```
-URL: https://your-wiki.example.com/mcp
-```
-
-Protect this endpoint with your reverse proxy (e.g. Authelia) so it is not world-accessible.
-
-## Connecting from Claude (OAuth)
+## Setup
 
 Enable OAuth by setting the required environment variables (see [Configuration](configuration.md)):
 
@@ -29,23 +23,33 @@ GYPSUM_OAUTH_PASSWORD=your-password
 GYPSUM_EXTERNAL_URL=https://your-wiki.example.com
 ```
 
-Then add a remote MCP connector in Claude pointing at:
-
-```
-URL: https://your-wiki.example.com/mcp/external
-```
-
-Claude will detect the 401 response, follow the OAuth discovery documents, redirect you to the login page, and exchange the code for a Bearer token automatically. Tokens are valid for 24 hours by default.
-
 If you're using Authelia, add bypass rules for the OAuth and MCP paths — see [Authentication](authentication.md).
+
+## Connecting from Claude
+
+Add a **remote MCP server** in Claude's settings:
+
+```
+URL: https://your-wiki.example.com/mcp
+```
+
+Claude will detect the 401 response, follow the OAuth discovery documents, and exchange credentials for a Bearer token automatically. Tokens are valid for 24 hours by default.
 
 ## Claude Desktop (stdio proxy)
 
 For local use or when the wiki isn't publicly accessible, use the `mcp-proxy` binary. It bridges stdio to the remote HTTP endpoint.
 
-Build it with `make build`, then configure Claude Desktop:
+Build it with `make build`, then obtain a token:
 
-**macOS/Linux:** `~/.config/claude/claude_desktop_config.json`
+```bash
+mcp-proxy auth https://wiki.example.com --password=your-password
+```
+
+You can also use the `GYPSUM_PASSWORD` environment variable instead of `--password`, or omit both to be prompted interactively.
+
+Store the token and add it to your Claude Desktop config:
+
+**macOS/Linux:** `~/.config/claude/claude_desktop_config.json`  
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
@@ -53,11 +57,16 @@ Build it with `make build`, then configure Claude Desktop:
   "mcpServers": {
     "gypsum": {
       "command": "/path/to/mcp-proxy",
-      "args": ["https://wiki.example.com/mcp"]
+      "args": ["https://wiki.example.com/mcp"],
+      "env": {
+        "GYPSUM_TOKEN": "paste-token-here"
+      }
     }
   }
 }
 ```
+
+Tokens expire after 24 hours. Re-run `mcp-proxy auth` to get a fresh token and update the config.
 
 ## Available Tools
 

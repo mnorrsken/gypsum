@@ -170,9 +170,6 @@ func (h *Handler) Routes() http.Handler {
 
 	// Rate limiter for MCP and OAuth endpoints: 30 requests/sec per IP, burst of 60.
 	mcpRL := NewRateLimiter(30, 60, time.Second)
-	mcpHandler := NewMCPHandler(h.store, h.autoCommit, h.mcpSections)
-	mcpHandler.SetMetrics(h.mcpMetrics)
-	mux.Handle("/mcp", RateLimit(mcpRL, mcpHandler))
 
 	if h.oauth != nil {
 		// OAuth discovery endpoints (must be bypassed in Authelia / reverse proxy)
@@ -183,10 +180,12 @@ func (h *Handler) Routes() http.Handler {
 		mux.HandleFunc("/oauth/authorize", RateLimitFunc(oauthRL, h.oauth.HandleAuthorize))
 		mux.HandleFunc("POST /oauth/token", RateLimitFunc(oauthRL, h.oauth.HandleToken))
 		mux.HandleFunc("POST /oauth/register", RateLimitFunc(oauthRL, h.oauth.HandleRegister))
-		// External MCP endpoint — OAuth-protected, secure fields redacted
-		mcpExternal := NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth, h.mcpSections)
-		mcpExternal.SetMetrics(h.mcpMetrics)
-		mux.Handle("/mcp/external", RateLimit(mcpRL, mcpExternal))
+		// Both /mcp and /mcp/external require OAuth when OAuth is configured.
+		// /mcp/external is kept as a backwards-compatible alias.
+		mcpOAuth := NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth, h.mcpSections)
+		mcpOAuth.SetMetrics(h.mcpMetrics)
+		mux.Handle("/mcp", RateLimit(mcpRL, mcpOAuth))
+		mux.Handle("/mcp/external", RateLimit(mcpRL, mcpOAuth))
 	}
 
 	return mux

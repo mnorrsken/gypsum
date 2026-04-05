@@ -2,6 +2,16 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.37.0
+
+### Added
+- **`mcp-proxy auth` subcommand** — performs the PKCE OAuth flow non-interactively (no browser) and prints the access token to stdout. Use with `GYPSUM_TOKEN` in Claude Desktop's MCP JSON config or shell scripts: `mcp-proxy auth https://wiki.example.com --password=pass`.
+
+### Changed
+- **MCP requires OAuth** — `/mcp` and `/mcp/external` now both require OAuth authentication when OAuth is configured. If OAuth is not configured, the MCP endpoints are not registered at all.
+- **Secure field pass-through** — `{{secure_aes:...}}` ciphertext is no longer redacted by the MCP layer. AI assistants receive the raw ciphertext and can round-trip pages with encrypted fields without corrupting them.
+- **`/mcp/external` is an alias** — identical behaviour to `/mcp`; kept for backwards compatibility only.
+
 ## v0.36.5
 
 ### Changed

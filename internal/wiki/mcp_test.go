@@ -1003,3 +1003,228 @@ func TestMCPSearchSkillsNoResults(t *testing.T) {
 		t.Fatalf("unexpected: %s", text)
 	}
 }
+
+// ── Secure field tests ──────────────────────────────────────────────────
+//
+// The MCP layer must never decrypt or expose plaintext from {{secure_aes:...}}
+// blocks. It passes ciphertext through as-is so that:
+//   - Secrets are never exposed unencrypted over the wire.
+//   - Pages with encrypted fields can be read and rewritten (round-tripped)
+//     without corrupting the ciphertext.
+
+// newTestMCPWithCrypto creates a handler wired to a store that has a crypto
+// instance so we can pre-populate pages with real encrypted content.
+func newTestMCPWithCrypto(t *testing.T) (*MCPHandler, *PageStore, *ServerCrypto) {
+	t.Helper()
+	dir := t.TempDir()
+	pagesDir := filepath.Join(dir, "pages")
+	_ = os.MkdirAll(pagesDir, 0o755)
+	store := NewPageStore(pagesDir)
+	crypto := NewServerCrypto("test-passphrase")
+	handler := NewMCPHandler(store, nil, AllMCPSections)
+	return handler, store, crypto
+}
+
+// encryptedPage returns markdown where the given plaintext secret has been
+// encrypted using crypto and embedded as a {{secure_aes:...}} macro.
+func encryptedPage(t *testing.T, crypto *ServerCrypto, plaintext string) string {
+	t.Helper()
+	enc, err := crypto.Encrypt(plaintext)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	return "# Secret Page\n\nSome text. {{secure_aes:" + enc + "}} more text."
+}
+
+// TestMCPGetPageSecureFieldNotDecrypted verifies that get_page returns the raw
+// {{secure_aes:...}} ciphertext and never the decrypted plaintext.
+func TestMCPGetPageSecureFieldNotDecrypted(t *testing.T) {
+	handler, store, crypto := newTestMCPWithCrypto(t)
+	secret := "my-super-secret-password"
+	content := encryptedPage(t, crypto, secret)
+	_ = store.Save(KindPage, "Secret_Page", content)
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "get_page",
+		"arguments": map[string]any{"slug": "Secret_Page"},
+	})
+	text := toolResultText(t, resp)
+
+	if strings.Contains(text, secret) {
+		t.Fatalf("get_page returned decrypted plaintext — secret must never be exposed: %q", text)
+	}
+	if !strings.Contains(text, "{{secure_aes:") {
+		t.Fatalf("get_page should return raw ciphertext macro, got: %q", text)
+	}
+}
+
+// TestMCPEditPageWithSecureFieldRoundTrips verifies that a page with encrypted
+// fields can be read via MCP, then written back unchanged (round-trip), and
+// that the ciphertext is preserved correctly on disk.
+func TestMCPEditPageWithSecureFieldRoundTrips(t *testing.T) {
+	handler, store, crypto := newTestMCPWithCrypto(t)
+	secret := "round-trip-secret"
+	original := encryptedPage(t, crypto, secret)
+	_ = store.Save(KindPage, "RT_Page", original)
+
+	// Read back via MCP
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "get_page",
+		"arguments": map[string]any{"slug": "RT_Page"},
+	})
+	retrieved := toolResultText(t, resp)
+
+	// Write it back as-is (simulates an LLM reading and rewriting the page)
+	resp = mcpCall(t, handler, 2, "tools/call", map[string]any{
+		"name":      "edit_page",
+		"arguments": map[string]any{"slug": "RT_Page", "content": retrieved},
+	})
+	toolResultText(t, resp) // must not error
+
+	// Verify the on-disk content still decrypts correctly
+	saved, err := store.Load(KindPage, "RT_Page")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	decrypted := crypto.DecryptForEdit(saved.Content)
+	if !strings.Contains(decrypted, secret) {
+		t.Fatalf("secret lost after round-trip: decrypted=%q", decrypted)
+	}
+	if strings.Contains(saved.Content, secret) {
+		t.Fatalf("plaintext found in stored content — must remain encrypted: %q", saved.Content)
+	}
+}
+
+// TestMCPSearchPagesSecureFieldNotDecrypted verifies that search snippets never
+// contain decrypted plaintext from encrypted fields.
+func TestMCPSearchPagesSecureFieldNotDecrypted(t *testing.T) {
+	handler, store, crypto := newTestMCPWithCrypto(t)
+	secret := "searchable-secret-xyz"
+	content := encryptedPage(t, crypto, secret)
+	_ = store.Save(KindPage, "Secret_Page", content)
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_pages",
+		"arguments": map[string]any{"query": "Secret Page"},
+	})
+	text := toolResultText(t, resp)
+
+	if strings.Contains(text, secret) {
+		t.Fatalf("search result contains decrypted plaintext: %q", text)
+	}
+}
+
+// TestMCPGetPageRevisionSecureFieldNotDecrypted verifies that get_page_revision
+// also never exposes decrypted plaintext.
+func TestMCPGetPageRevisionSecureFieldNotDecrypted(t *testing.T) {
+	handler, store, crypto := newTestMCPWithCrypto(t)
+	secret := "revision-secret"
+	content := encryptedPage(t, crypto, secret)
+	_ = store.Save(KindPage, "Rev_Page", content)
+
+	// No git in test env, so the call errors — that's fine. The important thing
+	// is that if content were returned it would not be decrypted. We verify the
+	// store holds ciphertext, not plaintext.
+	stored, _ := store.Load(KindPage, "Rev_Page")
+	if strings.Contains(stored.Content, secret) {
+		t.Fatalf("store contains plaintext — must be encrypted at rest")
+	}
+	if !strings.Contains(stored.Content, "{{secure_aes:") {
+		t.Fatalf("store does not contain encrypted macro")
+	}
+
+	// The get_page_revision call will fail (no git), but must not return plaintext.
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "get_page_revision",
+		"arguments": map[string]any{"slug": "Rev_Page", "hash": "abc123"},
+	})
+	raw, _ := strings.CutPrefix(toolResultIsError(t, resp), "")
+	if strings.Contains(raw, secret) {
+		t.Fatalf("error message contains plaintext secret: %q", raw)
+	}
+}
+
+// TestMCPCreatePageWithSecureAesMacroStoresAsCiphertext verifies that if an LLM
+// writes {{secure_aes:...}} content (e.g. a round-trip), it is stored verbatim
+// and can still be decrypted by the server.
+func TestMCPCreatePageWithSecureAesMacroStoresAsCiphertext(t *testing.T) {
+	handler, store, crypto := newTestMCPWithCrypto(t)
+	secret := "create-with-aes"
+	enc, _ := crypto.Encrypt(secret)
+	content := "# Encrypted\n\nValue: {{secure_aes:" + enc + "}}"
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "create_page",
+		"arguments": map[string]any{"title": "Encrypted", "content": content},
+	})
+	toolResultText(t, resp) // must succeed
+
+	saved, _ := store.Load(KindPage, "Encrypted")
+	if strings.Contains(saved.Content, secret) {
+		t.Fatalf("plaintext stored — must remain as ciphertext")
+	}
+	decrypted := crypto.DecryptForEdit(saved.Content)
+	if !strings.Contains(decrypted, secret) {
+		t.Fatalf("ciphertext cannot be decrypted after create: %q", decrypted)
+	}
+}
+
+// TestMCPExternalHandlerBehavesLikeInternal verifies that the external
+// (OAuth-protected) handler exposes the same ciphertext behaviour as the
+// internal handler — no redaction, no extra restrictions.
+func TestMCPExternalHandlerBehavesLikeInternal(t *testing.T) {
+	dir := t.TempDir()
+	pagesDir := filepath.Join(dir, "pages")
+	_ = os.MkdirAll(pagesDir, 0o755)
+	store := NewPageStore(pagesDir)
+	crypto := NewServerCrypto("test-passphrase")
+
+	secret := "external-handler-secret"
+	enc, _ := crypto.Encrypt(secret)
+	content := "# Page\n\nSecret: {{secure_aes:" + enc + "}}"
+	_ = store.Save(KindPage, "Page", content)
+
+	// External handler (no oauth in test — we bypass auth by calling HandleRPC directly)
+	external := NewMCPHandlerExternal(store, nil, nil, AllMCPSections)
+
+	resp := mcpCall(t, external, 1, "tools/call", map[string]any{
+		"name":      "get_page",
+		"arguments": map[string]any{"slug": "Page"},
+	})
+	text := toolResultText(t, resp)
+
+	// Must not decrypt — ciphertext passes through
+	if strings.Contains(text, secret) {
+		t.Fatalf("external handler decrypted secret — must not: %q", text)
+	}
+	if !strings.Contains(text, "{{secure_aes:") {
+		t.Fatalf("external handler should return ciphertext macro, got: %q", text)
+	}
+
+	// Must be able to edit a page with encrypted fields (no longer blocked)
+	resp = mcpCall(t, external, 2, "tools/call", map[string]any{
+		"name":      "edit_page",
+		"arguments": map[string]any{"slug": "Page", "content": text},
+	})
+	toolResultText(t, resp) // must succeed, not error
+}
+
+// TestMCPSecureMacroPlaintextNotLeakedInSnippets checks that FTS/filesystem
+// search snippets do not expose the raw ciphertext payload in a readable form
+// (the base64 blob is opaque, but plaintext must never appear).
+func TestMCPSecureMacroPlaintextNotLeakedInSnippets(t *testing.T) {
+	handler, store, crypto := newTestMCPWithCrypto(t)
+	secret := "snippet-secret-value"
+	enc, _ := crypto.Encrypt(secret)
+	// Store a page where the secret appears only inside the encrypted macro
+	_ = store.Save(KindPage, "Snippet_Page", "# Snippet Page\n\nToken: {{secure_aes:"+enc+"}}\n\nOther content about snippet testing.")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_pages",
+		"arguments": map[string]any{"query": "snippet testing"},
+	})
+	text := toolResultText(t, resp)
+	if strings.Contains(text, secret) {
+		t.Fatalf("search snippet contains decrypted secret: %q", text)
+	}
+}

@@ -1,6 +1,7 @@
 package wiki
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestHandler creates a Handler with a temp directory and no templates (JSON/redirect-only tests).
@@ -540,6 +542,111 @@ func TestHandleNewPageWrongMethod(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+// ── MCP route auth enforcement ────────────────────────────────────────────
+
+// newTestHandlerWithOAuth creates a Handler that has OAuth configured.
+// Returns the Handler, the DB (for minting tokens), and the Routes handler.
+func newTestHandlerWithOAuth(t *testing.T) (*Handler, *DB, http.Handler) {
+	t.Helper()
+	dir := t.TempDir()
+	store := NewPageStore(dir)
+	crypto := NewServerCrypto("test-key")
+	renderer := NewMarkdownRenderer()
+	db := openTestDB(t)
+	oauth := NewOAuthServer("test-pass", "https://wiki.example.com", time.Hour, db)
+	h := NewHandler(store, crypto, renderer, t.TempDir(), nil, oauth, db, AllMCPSections)
+	return h, db, h.Routes()
+}
+
+// pingBody is a minimal JSON-RPC request suitable for testing /mcp.
+var pingBody = []byte(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)
+
+func TestMCPRouteNotRegisteredWithoutOAuth(t *testing.T) {
+	_, handler := newTestHandler(t) // no OAuth configured
+
+	for _, path := range []string{"/mcp", "/mcp/external"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(pingBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 for %s without OAuth, got %d", path, rec.Code)
+		}
+	}
+}
+
+func TestMCPRouteRequiresTokenWhenOAuthConfigured(t *testing.T) {
+	_, _, handler := newTestHandlerWithOAuth(t)
+
+	for _, path := range []string{"/mcp", "/mcp/external"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(pingBody))
+		req.Header.Set("Content-Type", "application/json")
+		// No Authorization header.
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 for %s without token, got %d", path, rec.Code)
+		}
+		if rec.Header().Get("WWW-Authenticate") == "" {
+			t.Errorf("expected WWW-Authenticate header on 401 for %s", path)
+		}
+	}
+}
+
+func TestMCPRouteRejectsInvalidToken(t *testing.T) {
+	_, _, handler := newTestHandlerWithOAuth(t)
+
+	for _, path := range []string{"/mcp", "/mcp/external"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(pingBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer not-a-real-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 for %s with invalid token, got %d", path, rec.Code)
+		}
+	}
+}
+
+func TestMCPRouteAcceptsValidToken(t *testing.T) {
+	_, db, handler := newTestHandlerWithOAuth(t)
+
+	db.SaveOAuthToken("valid-token", time.Now().Add(time.Hour))
+
+	for _, path := range []string{"/mcp", "/mcp/external"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(pingBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer valid-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 for %s with valid token, got %d; body: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestMCPRouteRejectsExpiredToken(t *testing.T) {
+	_, db, handler := newTestHandlerWithOAuth(t)
+
+	db.SaveOAuthToken("expired-token", time.Now().Add(-time.Hour))
+
+	for _, path := range []string{"/mcp", "/mcp/external"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(pingBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer expired-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 for %s with expired token, got %d", path, rec.Code)
+		}
 	}
 }
 
