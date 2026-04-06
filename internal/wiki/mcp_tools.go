@@ -275,6 +275,9 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 	var tools []mcpTool
 	for _, t := range allTools {
 		if m.sections[t.Section] {
+			if t.Annotations == nil {
+				t.Annotations = sectionAnnotations(t.Section, t.Name)
+			}
 			tools = append(tools, t)
 		}
 	}

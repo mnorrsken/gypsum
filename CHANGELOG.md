@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.38.2
+
+### Fixed
+- **MCP tool annotations** — tools now include `readOnlyHint`/`destructiveHint` annotations so the Claude connector UI categorizes them correctly instead of showing everything under "Other Tools".
+
 ## v0.38.1
 
 ### Fixed

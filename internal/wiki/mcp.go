@@ -92,11 +92,42 @@ func ParseMCPSections(s string) map[MCPSection]bool {
 	return sections
 }
 
+type mcpToolAnnotations struct {
+	ReadOnlyHint    *bool `json:"readOnlyHint,omitempty"`
+	DestructiveHint *bool `json:"destructiveHint,omitempty"`
+}
+
 type mcpTool struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	InputSchema any        `json:"inputSchema"`
-	Section     MCPSection `json:"-"` // not exposed in JSON
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	InputSchema any                  `json:"inputSchema"`
+	Annotations *mcpToolAnnotations  `json:"annotations,omitempty"`
+	Section     MCPSection           `json:"-"` // not exposed in JSON
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+// sectionAnnotations returns MCP annotations for a tool based on its section
+// and name, so the Claude connector UI can categorize tools correctly.
+func sectionAnnotations(section MCPSection, name string) *mcpToolAnnotations {
+	switch section {
+	case MCPSectionRead:
+		return &mcpToolAnnotations{ReadOnlyHint: boolPtr(true)}
+	case MCPSectionDelete:
+		return &mcpToolAnnotations{DestructiveHint: boolPtr(true)}
+	case MCPSectionEdit:
+		return &mcpToolAnnotations{DestructiveHint: boolPtr(false)}
+	case MCPSectionSkills:
+		switch {
+		case strings.HasPrefix(name, "list_"), strings.HasPrefix(name, "get_"), strings.HasPrefix(name, "search_"):
+			return &mcpToolAnnotations{ReadOnlyHint: boolPtr(true)}
+		case strings.HasPrefix(name, "delete_"):
+			return &mcpToolAnnotations{DestructiveHint: boolPtr(true)}
+		default:
+			return &mcpToolAnnotations{DestructiveHint: boolPtr(false)}
+		}
+	}
+	return nil
 }
 
 type mcpToolsListResult struct {
