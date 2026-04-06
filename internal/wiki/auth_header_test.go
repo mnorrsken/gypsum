@@ -111,7 +111,7 @@ func TestHeaderAuthSkipsOAuthPaths(t *testing.T) {
 		"/oauth/authorize",
 		"/oauth/token",
 		"/oauth/register",
-		"/mcp/external",
+		"/mcp",
 	}
 
 	for _, path := range paths {

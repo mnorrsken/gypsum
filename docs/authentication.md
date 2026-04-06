@@ -25,7 +25,7 @@ access_control:
     # or must be publicly accessible
     - domain: wiki.example.com
       resources:
-        - "^/mcp/external.*$"
+        - "^/mcp.*$"
         - "^/.well-known/oauth.*$"
         - "^/oauth/.*$"
         - "^/public/.*$"
@@ -43,7 +43,7 @@ access_control:
 
 | Path | Reason |
 |---|---|
-| `/mcp/external` | OAuth-protected MCP endpoint (has its own auth) |
+| `/mcp` | OAuth-protected MCP endpoint (has its own auth) |
 | `/.well-known/oauth*` | OAuth discovery documents |
 | `/oauth/*` | OAuth authorization and token endpoints |
 | `/public/*` | Publicly shared pages (secret-link access) |
