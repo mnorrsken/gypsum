@@ -98,7 +98,7 @@ func (m *MCPHandler) toolGetPage(args map[string]any) mcpCallToolResult {
 	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
-	return mcpText(page.Content)
+	return getDocResult(page.Content, args)
 }
 
 func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
@@ -128,16 +128,15 @@ func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
 	if !ok {
 		return mcpError("missing required argument: slug")
 	}
-	content, ok := mcpArgString(args, "content")
-	if !ok {
-		return mcpError("missing required argument: content")
-	}
-
-	if _, err := m.store.Load(KindPage, slug); err != nil {
+	page, err := m.store.Load(KindPage, slug)
+	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
-
-	if err := m.store.Save(KindPage, slug, content); err != nil {
+	finalContent, res := applyEditMode(page.Content, args)
+	if res != nil {
+		return *res
+	}
+	if err := m.store.Save(KindPage, slug, finalContent); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
 	_ = m.autoCommit.CommitSave(KindPage, slug, "")
@@ -397,7 +396,7 @@ func (m *MCPHandler) toolGetSkill(args map[string]any) mcpCallToolResult {
 	if err != nil {
 		return mcpError("skill not found: " + slug)
 	}
-	return mcpText(skill.Content)
+	return getDocResult(skill.Content, args)
 }
 
 func (m *MCPHandler) toolCreateSkill(args map[string]any) mcpCallToolResult {
@@ -427,16 +426,15 @@ func (m *MCPHandler) toolEditSkill(args map[string]any) mcpCallToolResult {
 	if !ok {
 		return mcpError("missing required argument: slug")
 	}
-	content, ok := mcpArgString(args, "content")
-	if !ok {
-		return mcpError("missing required argument: content")
-	}
-
-	if _, err := m.store.Load(KindSkill, slug); err != nil {
+	skill, err := m.store.Load(KindSkill, slug)
+	if err != nil {
 		return mcpError("skill not found: " + slug)
 	}
-
-	if err := m.store.Save(KindSkill, slug, content); err != nil {
+	finalContent, res := applyEditMode(skill.Content, args)
+	if res != nil {
+		return *res
+	}
+	if err := m.store.Save(KindSkill, slug, finalContent); err != nil {
 		return mcpError("failed to save skill: " + err.Error())
 	}
 	_ = m.autoCommit.CommitSave(KindSkill, slug, "")
@@ -500,6 +498,105 @@ func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
+
+// applyEditMode resolves the edit mode from args and returns the new content.
+// If the returned *mcpCallToolResult is non-nil, it is an error to return.
+func applyEditMode(current string, args map[string]any) (string, *mcpCallToolResult) {
+	oldText, hasOldText := mcpArgString(args, "old_text")
+	newText, hasNewText := mcpArgString(args, "new_text")
+	sectionName, hasSection := mcpArgString(args, "section")
+	appendMode, _ := mcpArgBool(args, "append")
+	content, hasContent := mcpArgString(args, "content")
+
+	switch {
+	case hasOldText || hasNewText:
+		// Search-and-replace mode.
+		if !hasOldText || !hasNewText {
+			e := mcpError("both 'old_text' and 'new_text' must be provided together")
+			return "", &e
+		}
+		if oldText == "" {
+			e := mcpError("'old_text' must not be empty")
+			return "", &e
+		}
+		count := strings.Count(current, oldText)
+		if count == 0 {
+			e := mcpError("old_text not found in page content")
+			return "", &e
+		}
+		if count > 1 {
+			e := mcpError(fmt.Sprintf("old_text matches %d locations — must be unique. Include more surrounding context to disambiguate.", count))
+			return "", &e
+		}
+		return strings.Replace(current, oldText, newText, 1), nil
+
+	case hasSection:
+		if !hasContent {
+			e := mcpError("'content' is required when using 'section'")
+			return "", &e
+		}
+		result, err := ReplaceSection(current, sectionName, content)
+		if err != nil {
+			e := mcpError(err.Error())
+			return "", &e
+		}
+		return result, nil
+
+	case appendMode:
+		if !hasContent {
+			e := mcpError("'content' is required when using 'append'")
+			return "", &e
+		}
+		sep := "\n\n"
+		if strings.HasSuffix(current, "\n") {
+			sep = "\n"
+		}
+		return current + sep + content, nil
+
+	default:
+		// Full replace (backward compatible).
+		if !hasContent {
+			e := mcpError("missing required argument: content (or use old_text/new_text, section, or append mode)")
+			return "", &e
+		}
+		return content, nil
+	}
+}
+
+// getDocResult handles the optional section/sections_only parameters for
+// get_page and get_skill, returning the appropriate subset of content.
+func getDocResult(content string, args map[string]any) mcpCallToolResult {
+	sectionsOnly, _ := mcpArgBool(args, "sections_only")
+	sectionName, hasSection := mcpArgString(args, "section")
+
+	if sectionsOnly && hasSection {
+		return mcpError("cannot use both 'section' and 'sections_only'")
+	}
+	if sectionsOnly {
+		headings := ListSectionHeadings(content)
+		if len(headings) == 0 {
+			return mcpText("Page has no sections (no # headings found).")
+		}
+		return mcpJSON(headings)
+	}
+	if hasSection {
+		body, err := GetSection(content, sectionName)
+		if err != nil {
+			return mcpError(err.Error())
+		}
+		return mcpText(body)
+	}
+	return mcpText(content)
+}
+
+func mcpArgBool(args map[string]any, key string) (bool, bool) {
+	v, ok := args[key]
+	if !ok {
+		return false, false
+	}
+	b, ok := v.(bool)
+	return b, ok
+}
 
 func mcpArgString(args map[string]any, key string) (string, bool) {
 	v, ok := args[key]

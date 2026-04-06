@@ -1228,3 +1228,255 @@ func TestMCPSecureMacroPlaintextNotLeakedInSnippets(t *testing.T) {
 		t.Fatalf("search snippet contains decrypted secret: %q", text)
 	}
 }
+
+// ── Edit mode tests ────────────────────────────────────────────────────
+
+func TestMCPEditPageSearchReplace(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "SR", "Hello world, this is a test.")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":     "SR",
+			"old_text": "this is a test",
+			"new_text": "this works",
+		},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Updated") {
+		t.Fatalf("unexpected result: %s", text)
+	}
+
+	page, _ := store.Load(KindPage, "SR")
+	if page.Content != "Hello world, this works." {
+		t.Fatalf("unexpected content: %q", page.Content)
+	}
+}
+
+func TestMCPEditPageSearchReplaceNotFound(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "SR2", "Hello world.")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":     "SR2",
+			"old_text": "does not exist",
+			"new_text": "replacement",
+		},
+	})
+	errText := toolResultIsError(t, resp)
+	if !strings.Contains(errText, "not found") {
+		t.Fatalf("expected not found error, got: %s", errText)
+	}
+}
+
+func TestMCPEditPageSearchReplaceAmbiguous(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "SR3", "foo bar foo baz")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":     "SR3",
+			"old_text": "foo",
+			"new_text": "qux",
+		},
+	})
+	errText := toolResultIsError(t, resp)
+	if !strings.Contains(errText, "2 locations") {
+		t.Fatalf("expected ambiguous error, got: %s", errText)
+	}
+}
+
+func TestMCPEditPageSearchReplaceDelete(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "SR4", "keep this remove this keep that")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":     "SR4",
+			"old_text": " remove this",
+			"new_text": "",
+		},
+	})
+	toolResultText(t, resp) // assert no error
+
+	page, _ := store.Load(KindPage, "SR4")
+	if page.Content != "keep this keep that" {
+		t.Fatalf("unexpected content: %q", page.Content)
+	}
+}
+
+func TestMCPEditPageAppend(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "AP", "Line 1\n")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":    "AP",
+			"content": "Line 2",
+			"append":  true,
+		},
+	})
+	toolResultText(t, resp)
+
+	page, _ := store.Load(KindPage, "AP")
+	if page.Content != "Line 1\n\nLine 2" {
+		t.Fatalf("unexpected content: %q", page.Content)
+	}
+}
+
+func TestMCPEditPageSection(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "SEC", "# Title\nIntro\n# History\nOld history\n# Notes\nOld notes\n")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":    "SEC",
+			"section": "History",
+			"content": "New history content",
+		},
+	})
+	toolResultText(t, resp)
+
+	page, _ := store.Load(KindPage, "SEC")
+	want := "# Title\nIntro\n# History\nNew history content\n# Notes\nOld notes\n"
+	if page.Content != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", page.Content, want)
+	}
+}
+
+func TestMCPEditPageSectionNotFound(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "SEC2", "# Alpha\nBody\n")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":    "SEC2",
+			"section": "Beta",
+			"content": "new",
+		},
+	})
+	errText := toolResultIsError(t, resp)
+	if !strings.Contains(errText, "section not found") {
+		t.Fatalf("expected section not found error, got: %s", errText)
+	}
+}
+
+func TestMCPEditPageFullReplace(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "FR", "old content")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":    "FR",
+			"content": "new content",
+		},
+	})
+	toolResultText(t, resp)
+
+	page, _ := store.Load(KindPage, "FR")
+	if page.Content != "new content" {
+		t.Fatalf("unexpected content: %q", page.Content)
+	}
+}
+
+// ── Get section tests ──────────────────────────────────────────────────
+
+func TestMCPGetPageSection(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "GS", "# Title\nIntro\n# History\nSome history\n# Notes\nSome notes\n")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "get_page",
+		"arguments": map[string]any{
+			"slug":    "GS",
+			"section": "History",
+		},
+	})
+	text := toolResultText(t, resp)
+	if text != "# History\nSome history\n" {
+		t.Fatalf("unexpected section content: %q", text)
+	}
+}
+
+func TestMCPGetPageSectionsOnly(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "SO", "# Title\nIntro\n# History\nBody\n# Notes\nBody\n")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "get_page",
+		"arguments": map[string]any{
+			"slug":          "SO",
+			"sections_only": true,
+		},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Title") || !strings.Contains(text, "History") || !strings.Contains(text, "Notes") {
+		t.Fatalf("expected all headings in output: %s", text)
+	}
+}
+
+func TestMCPGetPageSectionAndSectionsOnlyConflict(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "CF", "# A\nBody\n")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "get_page",
+		"arguments": map[string]any{
+			"slug":          "CF",
+			"section":       "A",
+			"sections_only": true,
+		},
+	})
+	errText := toolResultIsError(t, resp)
+	if !strings.Contains(errText, "cannot use both") {
+		t.Fatalf("expected conflict error, got: %s", errText)
+	}
+}
+
+// ── Skill edit mode tests ──────────────────────────────────────────────
+
+func TestMCPEditSkillSearchReplace(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindSkill, "SK", "# Skill\nOld instruction\n")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_skill",
+		"arguments": map[string]any{
+			"slug":     "SK",
+			"old_text": "Old instruction",
+			"new_text": "New instruction",
+		},
+	})
+	toolResultText(t, resp)
+
+	skill, _ := store.Load(KindSkill, "SK")
+	if !strings.Contains(skill.Content, "New instruction") {
+		t.Fatalf("unexpected content: %q", skill.Content)
+	}
+}
+
+func TestMCPGetSkillSection(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindSkill, "SK2", "# Skill\nIntro\n# When to Use\nUse when X\n")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "get_skill",
+		"arguments": map[string]any{
+			"slug":    "SK2",
+			"section": "When to Use",
+		},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Use when X") {
+		t.Fatalf("unexpected section content: %q", text)
+	}
+}

@@ -20,9 +20,13 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Description: "Get the raw markdown content of a wiki page by its exact slug. " +
 				"ONLY use this when you already know the exact slug. " +
 				"If you are not sure of the exact slug, use search_pages first to find it. " +
-				"Do NOT guess slugs — search instead.",
+				"Do NOT guess slugs — search instead. " +
+				"Optional: pass 'section' to get only a specific section (matched by # heading), " +
+				"or 'sections_only: true' to list just the section headings.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Exact page slug, e.g. 'Home' or 'My_Page'. Slugs use underscores for spaces. Must be exact — use search_pages if unsure."),
+				"slug":          mcpPropString("Exact page slug, e.g. 'Home' or 'My_Page'. Slugs use underscores for spaces. Must be exact — use search_pages if unsure."),
+				"section":       mcpPropString("Return only the named section (matched by # heading name, case-insensitive). Omit to get full page."),
+				"sections_only": map[string]any{"type": "boolean", "description": "If true, return only the list of # section headings (not content). Useful for discovering page structure before a section edit."},
 			}, []string{"slug"}),
 		},
 		{
@@ -113,16 +117,22 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:    "edit_page",
 			Section: MCPSectionEdit,
-			Description: "Update the content of an existing wiki page. Use this when the user says things like 'update my wiki', 'edit the wiki page', or 'add this to my wiki'. " +
-				"Replaces the entire page content. " +
+			Description: "Update the content of an existing wiki page. Supports several modes:\n" +
+				"(1) SEARCH-AND-REPLACE (preferred for small edits): pass 'old_text' and 'new_text' to find and replace text. old_text must match exactly one location.\n" +
+				"(2) SECTION EDIT: pass 'section' (a # heading name) and 'content' to replace just that section's body. Use get_page with sections_only=true to discover section names.\n" +
+				"(3) APPEND: pass 'append: true' and 'content' to add text to the end of the page.\n" +
+				"(4) FULL REPLACE: pass only 'content' to replace the entire page (use get_page first).\n" +
 				"If you do not know the exact slug, use search_pages first — do NOT guess slugs. " +
-				"Always use get_page first to read the current content before editing. " +
 				"When adding [[wiki links]] to new pages, make sure those pages exist or will be created. " +
 				wikiFormattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
-				"slug":    mcpPropString("Exact page slug to edit, e.g. 'My_Page'. Use search_pages first if unsure."),
-				"content": mcpPropString("New markdown content (replaces entire page). " + wikiContentGuide),
-			}, []string{"slug", "content"}),
+				"slug":     mcpPropString("Exact page slug to edit, e.g. 'My_Page'. Use search_pages first if unsure."),
+				"content":  mcpPropString("New content. For full replace: entire page. For section edit: section body (# heading line is preserved). For append: text to add at end. " + wikiContentGuide),
+				"old_text": mcpPropString("Text to find in the page (search-and-replace mode). Must match exactly one location. Provide with new_text."),
+				"new_text": mcpPropString("Replacement text (search-and-replace mode). Provide with old_text. Can be empty to delete matched text."),
+				"section":  mcpPropString("# heading name of the section to replace (case-insensitive). Use with 'content'. The heading line is preserved."),
+				"append":   map[string]any{"type": "boolean", "description": "If true, append 'content' to the end of the page instead of replacing."},
+			}, []string{"slug"}),
 		},
 		{
 			Name:    "create_page_from_mediawiki",
@@ -190,9 +200,13 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Description: "Get the raw markdown content of a skill by its exact slug. " +
 				"ONLY use this when you already know the exact slug. " +
 				"If you are not sure of the exact slug, use search_skills first to find it. " +
-				"Do NOT guess slugs — search instead.",
+				"Do NOT guess slugs — search instead. " +
+				"Optional: pass 'section' to get only a specific section (matched by # heading), " +
+				"or 'sections_only: true' to list just the section headings.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Exact skill slug, e.g. 'Go_Testing_Conventions'. Slugs use underscores for spaces. Must be exact — use search_skills if unsure."),
+				"slug":          mcpPropString("Exact skill slug, e.g. 'Go_Testing_Conventions'. Slugs use underscores for spaces. Must be exact — use search_skills if unsure."),
+				"section":       mcpPropString("Return only the named section (matched by # heading name, case-insensitive). Omit to get full content."),
+				"sections_only": map[string]any{"type": "boolean", "description": "If true, return only the list of # section headings (not content)."},
 			}, []string{"slug"}),
 		},
 		{
@@ -217,14 +231,22 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Name:    "edit_skill",
 			Section: MCPSectionSkills,
 			Description: "Update the content of an existing skill. " +
-				"ONLY use this tool when the user explicitly mentions 'skill' (e.g. 'update the skill', 'edit this skill'). " +
+				"ONLY use this tool when the user explicitly mentions 'skill'. " +
 				"Do NOT use for general wiki page edits — use edit_page instead. " +
 				"If you do not know the exact slug, use search_skills first — do NOT guess slugs. " +
-				"Replaces the entire skill content. Always use get_skill first to read the current content before editing.",
+				"Supports the same edit modes as edit_page:\n" +
+				"(1) SEARCH-AND-REPLACE: pass 'old_text' and 'new_text'.\n" +
+				"(2) SECTION EDIT: pass 'section' and 'content'.\n" +
+				"(3) APPEND: pass 'append: true' and 'content'.\n" +
+				"(4) FULL REPLACE: pass only 'content'.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"slug":    mcpPropString("Exact skill slug to edit, e.g. 'Go_Testing_Conventions'. Use search_skills first if unsure."),
-				"content": mcpPropString("New markdown content (replaces entire skill)."),
-			}, []string{"slug", "content"}),
+				"slug":     mcpPropString("Exact skill slug to edit, e.g. 'Go_Testing_Conventions'. Use search_skills first if unsure."),
+				"content":  mcpPropString("New markdown content. For full replace: entire skill. For section edit: section body. For append: text to add."),
+				"old_text": mcpPropString("Text to find (search-and-replace mode). Must match exactly one location. Provide with new_text."),
+				"new_text": mcpPropString("Replacement text (search-and-replace mode). Provide with old_text."),
+				"section":  mcpPropString("# heading name of the section to replace (case-insensitive). Use with 'content'."),
+				"append":   map[string]any{"type": "boolean", "description": "If true, append 'content' to end of skill."},
+			}, []string{"slug"}),
 		},
 		{
 			Name:        "delete_skill",

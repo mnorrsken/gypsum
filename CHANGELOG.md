@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.38.0
+
+### Added
+- **Token-efficient MCP editing** — `edit_page` and `edit_skill` now support search-and-replace (`old_text`/`new_text`), section editing (`section`), and append mode (`append`) in addition to full page replacement. Small edits no longer require sending the entire page content.
+- **Section-scoped reads** — `get_page` and `get_skill` accept an optional `section` parameter to return only a named `# heading` section, or `sections_only: true` to list section headings without content.
+
 ## v0.37.1
 
 ### Changed
