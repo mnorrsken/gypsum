@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.38.1
+
+### Fixed
+- **Header auth bypass for `/mcp`** — the header auth middleware now correctly excludes `/mcp` and all `/mcp/*` subpaths from enforcement (previously only `/mcp/external` was excluded). Updated Authelia example config accordingly.
+
 ## v0.38.0
 
 ### Added
