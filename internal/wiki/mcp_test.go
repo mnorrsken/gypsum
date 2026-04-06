@@ -1332,7 +1332,8 @@ func TestMCPEditPageAppend(t *testing.T) {
 
 func TestMCPEditPageSection(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage, "SEC", "# Title\nIntro\n# History\nOld history\n# Notes\nOld notes\n")
+	// Realistic page: H1 title, H2 sections.
+	_ = store.Save(KindPage, "SEC", "# Title\nIntro\n## History\nOld history\n## Notes\nOld notes\n")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name": "edit_page",
@@ -1345,7 +1346,29 @@ func TestMCPEditPageSection(t *testing.T) {
 	toolResultText(t, resp)
 
 	page, _ := store.Load(KindPage, "SEC")
-	want := "# Title\nIntro\n# History\nNew history content\n# Notes\nOld notes\n"
+	want := "# Title\nIntro\n## History\nNew history content\n## Notes\nOld notes\n"
+	if page.Content != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", page.Content, want)
+	}
+}
+
+func TestMCPEditPageSectionWithHashPrefix(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "SECHASH", "# Title\nIntro\n## History\nOld history\n## Notes\nOld notes\n")
+
+	// Caller passes "## History" — the ## prefix should be stripped before matching.
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":    "SECHASH",
+			"section": "## History",
+			"content": "New history content",
+		},
+	})
+	toolResultText(t, resp)
+
+	page, _ := store.Load(KindPage, "SECHASH")
+	want := "# Title\nIntro\n## History\nNew history content\n## Notes\nOld notes\n"
 	if page.Content != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", page.Content, want)
 	}
@@ -1392,7 +1415,8 @@ func TestMCPEditPageFullReplace(t *testing.T) {
 
 func TestMCPGetPageSection(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage, "GS", "# Title\nIntro\n# History\nSome history\n# Notes\nSome notes\n")
+	// Realistic page: H1 title, H2 sections.
+	_ = store.Save(KindPage, "GS", "# Title\nIntro\n## History\nSome history\n## Notes\nSome notes\n")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name": "get_page",
@@ -1402,14 +1426,34 @@ func TestMCPGetPageSection(t *testing.T) {
 		},
 	})
 	text := toolResultText(t, resp)
-	if text != "# History\nSome history\n" {
+	// Returned body preserves the original ## heading.
+	if text != "## History\nSome history\n" {
+		t.Fatalf("unexpected section content: %q", text)
+	}
+}
+
+func TestMCPGetPageSectionWithHashPrefix(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "GSHASH", "# Title\nIntro\n## History\nSome history\n## Notes\nSome notes\n")
+
+	// Caller passes "## History" — leading ## should be stripped before matching.
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "get_page",
+		"arguments": map[string]any{
+			"slug":    "GSHASH",
+			"section": "## History",
+		},
+	})
+	text := toolResultText(t, resp)
+	if text != "## History\nSome history\n" {
 		t.Fatalf("unexpected section content: %q", text)
 	}
 }
 
 func TestMCPGetPageSectionsOnly(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage, "SO", "# Title\nIntro\n# History\nBody\n# Notes\nBody\n")
+	// Mix of H1 and H2 to verify level prefixes are returned.
+	_ = store.Save(KindPage, "SO", "# Title\nIntro\n## History\nBody\n## Notes\nBody\n")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name": "get_page",
@@ -1419,8 +1463,9 @@ func TestMCPGetPageSectionsOnly(t *testing.T) {
 		},
 	})
 	text := toolResultText(t, resp)
-	if !strings.Contains(text, "Title") || !strings.Contains(text, "History") || !strings.Contains(text, "Notes") {
-		t.Fatalf("expected all headings in output: %s", text)
+	// Headings are returned with their # prefix to show level.
+	if !strings.Contains(text, "# Title") || !strings.Contains(text, "## History") || !strings.Contains(text, "## Notes") {
+		t.Fatalf("expected headings with level prefixes in output: %s", text)
 	}
 }
 
@@ -1466,7 +1511,8 @@ func TestMCPEditSkillSearchReplace(t *testing.T) {
 
 func TestMCPGetSkillSection(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindSkill, "SK2", "# Skill\nIntro\n# When to Use\nUse when X\n")
+	// Realistic skill: H1 title, H2 sections.
+	_ = store.Save(KindSkill, "SK2", "# Skill\nIntro\n## When to Use\nUse when X\n## Instructions\nDo Y\n")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name": "get_skill",
@@ -1476,7 +1522,24 @@ func TestMCPGetSkillSection(t *testing.T) {
 		},
 	})
 	text := toolResultText(t, resp)
-	if !strings.Contains(text, "Use when X") {
+	if text != "## When to Use\nUse when X\n" {
 		t.Fatalf("unexpected section content: %q", text)
+	}
+}
+
+func TestMCPGetSkillSectionsOnly(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindSkill, "SK3", "# Skill Title\nIntro\n## When to Use\nUse it\n## Instructions\nDo this\n")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "get_skill",
+		"arguments": map[string]any{
+			"slug":          "SK3",
+			"sections_only": true,
+		},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "# Skill Title") || !strings.Contains(text, "## When to Use") || !strings.Contains(text, "## Instructions") {
+		t.Fatalf("expected headings with level prefixes: %s", text)
 	}
 }

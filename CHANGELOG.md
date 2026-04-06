@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.39.0
+
+### Added
+- **Multi-level section support** — `get_page`, `get_skill`, `edit_page`, and `edit_skill` now recognise `##`, `###`, and deeper headings as section boundaries, not just `# `. Heading level is preserved on write. `sections_only` returns headings with their `#` prefix so the caller can see the structure.
+
+### Fixed
+- **Ambiguous section names** — if a section heading appears more than once in a page (e.g. two `## Budget` sections under different `#` headings), section-edit and section-get now return a clear error instead of silently affecting all matching sections. Use search-and-replace mode (`old_text`/`new_text`) to target a specific occurrence.
+
 ## v0.38.2
 
 ### Fixed

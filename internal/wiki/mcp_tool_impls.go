@@ -575,7 +575,7 @@ func getDocResult(content string, args map[string]any) mcpCallToolResult {
 	if sectionsOnly {
 		headings := ListSectionHeadings(content)
 		if len(headings) == 0 {
-			return mcpText("Page has no sections (no # headings found).")
+			return mcpText("Page has no sections (no headings found).")
 		}
 		return mcpJSON(headings)
 	}

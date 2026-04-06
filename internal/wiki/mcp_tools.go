@@ -21,8 +21,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"ONLY use this when you already know the exact slug. " +
 				"If you are not sure of the exact slug, use search_pages first to find it. " +
 				"Do NOT guess slugs — search instead. " +
-				"Optional: pass 'section' to get only a specific section (matched by # heading), " +
-				"or 'sections_only: true' to list just the section headings.",
+				"Optional: pass 'section' to get only a specific section (matched by heading name, any level), " +
+				"or 'sections_only: true' to list just the section headings (shown with # prefix to indicate level).",
 			InputSchema: mcpSchema("object", map[string]any{
 				"slug":          mcpPropString("Exact page slug, e.g. 'Home' or 'My_Page'. Slugs use underscores for spaces. Must be exact — use search_pages if unsure."),
 				"section":       mcpPropString("Return only the named section (matched by # heading name, case-insensitive). Omit to get full page."),
@@ -130,7 +130,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"content":  mcpPropString("New content. For full replace: entire page. For section edit: section body (# heading line is preserved). For append: text to add at end. " + wikiContentGuide),
 				"old_text": mcpPropString("Text to find in the page (search-and-replace mode). Must match exactly one location. Provide with new_text."),
 				"new_text": mcpPropString("Replacement text (search-and-replace mode). Provide with old_text. Can be empty to delete matched text."),
-				"section":  mcpPropString("# heading name of the section to replace (case-insensitive). Use with 'content'. The heading line is preserved."),
+				"section":  mcpPropString("Heading name of the section to replace (case-insensitive, any level — ## works too). Use with 'content'. The heading line is preserved."),
 				"append":   map[string]any{"type": "boolean", "description": "If true, append 'content' to the end of the page instead of replacing."},
 			}, []string{"slug"}),
 		},
@@ -201,8 +201,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"ONLY use this when you already know the exact slug. " +
 				"If you are not sure of the exact slug, use search_skills first to find it. " +
 				"Do NOT guess slugs — search instead. " +
-				"Optional: pass 'section' to get only a specific section (matched by # heading), " +
-				"or 'sections_only: true' to list just the section headings.",
+				"Optional: pass 'section' to get only a specific section (matched by heading name, any level), " +
+				"or 'sections_only: true' to list just the section headings (shown with # prefix to indicate level).",
 			InputSchema: mcpSchema("object", map[string]any{
 				"slug":          mcpPropString("Exact skill slug, e.g. 'Go_Testing_Conventions'. Slugs use underscores for spaces. Must be exact — use search_skills if unsure."),
 				"section":       mcpPropString("Return only the named section (matched by # heading name, case-insensitive). Omit to get full content."),
@@ -244,7 +244,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"content":  mcpPropString("New markdown content. For full replace: entire skill. For section edit: section body. For append: text to add."),
 				"old_text": mcpPropString("Text to find (search-and-replace mode). Must match exactly one location. Provide with new_text."),
 				"new_text": mcpPropString("Replacement text (search-and-replace mode). Provide with old_text."),
-				"section":  mcpPropString("# heading name of the section to replace (case-insensitive). Use with 'content'."),
+				"section":  mcpPropString("Heading name of the section to replace (case-insensitive, any level — ## works too). Use with 'content'."),
 				"append":   map[string]any{"type": "boolean", "description": "If true, append 'content' to end of skill."},
 			}, []string{"slug"}),
 		},
