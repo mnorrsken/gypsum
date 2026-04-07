@@ -32,7 +32,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 
 ## Wiki Features
 
-- Markdown with GFM tables, syntax highlighting, and `[[wiki links]]`
+- Markdown with GFM tables, syntax highlighting, `[[wiki links]]`, and interactive task-list checkboxes
 - Full-text search with FTS5 indexing, BM25 ranking, and highlighted snippets
 - Interactive link graph
 - Page history with revision diffs

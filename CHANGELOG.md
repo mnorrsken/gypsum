@@ -2,6 +2,15 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.41.0
+
+### Added
+- **Interactive task-list checkboxes** — clicking a checkbox on any wiki page toggles it immediately, writing the change back to the page source without a full page edit.
+
+### Fixed
+- **Backslash escape inside code spans** — `\[[Page]]`, `\{{secure_aes:…}}`, and `\{{secure:…}}` inside backtick code spans and fenced blocks now render without the leading backslash, consistent with the escape behaviour outside code.
+- **`\{{secure:…}}` escape was not preserved across saves** — the backslash was previously stripped from storage on first save, causing the content to be encrypted on the next save. It is now kept in storage so re-saving the page is idempotent.
+
 ## v0.40.0
 
 ### Added

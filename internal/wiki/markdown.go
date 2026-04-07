@@ -36,6 +36,11 @@ var codeSegmentRe = regexp.MustCompile(
 		"|`+[^`\\n]+`+",
 )
 
+// customEscapeInCodeRe matches backslash-escaped custom macros inside code
+// regions so the leading backslash can be stripped (leaving literal text)
+// without expanding the macro itself.
+var customEscapeInCodeRe = regexp.MustCompile(`\\(\[\[[^\]]+\]\]|\{\{secure_aes:[\w+/=]+\}\}|\{\{secure:[^}]*\}\})`)
+
 // applyOutsideCode applies fn to portions of source that are not inside
 // inline code spans or fenced code blocks, leaving code regions unchanged.
 func applyOutsideCode(source string, fn func(string) string) string {
@@ -56,6 +61,27 @@ func applyOutsideCode(source string, fn func(string) string) string {
 	if pos < len(source) {
 		b.WriteString(fn(source[pos:]))
 	}
+	return b.String()
+}
+
+// stripCustomEscapesInCode strips backslash escapes for custom macro patterns
+// (wiki links and secure_aes) that appear inside code spans and fenced blocks.
+// This allows `\[[Page]]` and `\{{secure_aes:...}}` in code to render without
+// the leading backslash, consistent with the escape behaviour outside code.
+func stripCustomEscapesInCode(source string) string {
+	indices := codeSegmentRe.FindAllStringIndex(source, -1)
+	if len(indices) == 0 {
+		return source
+	}
+	var b strings.Builder
+	b.Grow(len(source))
+	pos := 0
+	for _, loc := range indices {
+		b.WriteString(source[pos:loc[0]])
+		b.WriteString(customEscapeInCodeRe.ReplaceAllString(source[loc[0]:loc[1]], "$1"))
+		pos = loc[1]
+	}
+	b.WriteString(source[pos:])
 	return b.String()
 }
 
@@ -131,6 +157,18 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 
 	withLinks = applyOutsideCode(withLinks, r.expandImageSizeMacros)
 
+	// Strip backslash from \{{secure:...}} kept in storage as an escape. The
+	// content becomes literal {{secure:...}} text; it is not encrypted on render.
+	withLinks = applyOutsideCode(withLinks, func(s string) string {
+		return secureMacroRe.ReplaceAllStringFunc(s, func(match string) string {
+			captures := secureMacroRe.FindStringSubmatch(match)
+			if len(captures) < 3 || captures[1] != `\` {
+				return match
+			}
+			return "{{secure:" + captures[2] + "}}"
+		})
+	})
+
 	// Replace secure_aes macros with placeholder tokens before goldmark so they
 	// don't get wrapped in their own <p> blocks. The tokens survive HTML
 	// rendering and are swapped for real HTML afterwards.
@@ -149,6 +187,10 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 			return fmt.Sprintf("SECURE_PLACEHOLDER_%d", idx)
 		})
 	})
+
+	// Strip backslash escapes for custom macros inside code spans/blocks so
+	// `\[[Page]]` and `\{{secure_aes:...}}` render without the leading backslash.
+	withPlaceholders = stripCustomEscapesInCode(withPlaceholders)
 
 	var rendered bytes.Buffer
 	if err := r.engine.Convert([]byte(withPlaceholders), &rendered); err != nil {
@@ -191,6 +233,17 @@ func (r *MarkdownRenderer) RenderPublic(source string) (template.HTML, error) {
 
 	withLinks = applyOutsideCode(withLinks, r.expandImageSizeMacros)
 
+	// Strip backslash from \{{secure:...}} kept in storage as an escape.
+	withLinks = applyOutsideCode(withLinks, func(s string) string {
+		return secureMacroRe.ReplaceAllStringFunc(s, func(match string) string {
+			captures := secureMacroRe.FindStringSubmatch(match)
+			if len(captures) < 3 || captures[1] != `\` {
+				return match
+			}
+			return "{{secure:" + captures[2] + "}}"
+		})
+	})
+
 	// Strip secure macros entirely — they must not render on public pages.
 	// A leading backslash (\{{secure_aes:...}}) escapes the macro: rendered literally.
 	withLinks = applyOutsideCode(withLinks, func(s string) string {
@@ -202,6 +255,8 @@ func (r *MarkdownRenderer) RenderPublic(source string) (template.HTML, error) {
 			return ""
 		})
 	})
+
+	withLinks = stripCustomEscapesInCode(withLinks)
 
 	var rendered bytes.Buffer
 	if err := r.engine.Convert([]byte(withLinks), &rendered); err != nil {

@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -420,6 +421,85 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/pages", http.StatusFound)
+}
+
+// taskListItemRe matches a GFM task list item checkbox: `- [ ]` or `- [x]` etc.
+var taskListItemRe = regexp.MustCompile(`(?m)^[ \t]*[-*+][ \t]+\[[ xX]\]`)
+
+// toggleCheckbox toggles the index-th task-list checkbox (0-based) in content.
+// Returns the updated content and true, or the original content and false if
+// the index is out of range.
+func toggleCheckbox(content string, index int) (string, bool) {
+	count := 0
+	found := false
+	result := taskListItemRe.ReplaceAllStringFunc(content, func(match string) string {
+		if count == index {
+			found = true
+			count++
+			// Last 3 chars are `[ ]`, `[x]`, or `[X]`
+			prefix := match[:len(match)-3]
+			if match[len(match)-2] == ' ' {
+				return prefix + "[x]"
+			}
+			return prefix + "[ ]"
+		}
+		count++
+		return match
+	})
+	return result, found
+}
+
+func (h *Handler) handleToggleCheckbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	slug := strings.TrimPrefix(r.URL.Path, "/toggle-checkbox/")
+	if slug == "" {
+		http.Error(w, "missing page slug", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	index, err := strconv.Atoi(r.FormValue("index"))
+	if err != nil || index < 0 {
+		http.Error(w, "invalid index", http.StatusBadRequest)
+		return
+	}
+
+	page, err := h.store.Load(KindPage, slug)
+	if err != nil {
+		if errors.Is(err, ErrPageNotFound) {
+			http.Error(w, "page not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	decrypted := h.crypto.DecryptForEdit(page.Content)
+	updated, ok := toggleCheckbox(decrypted, index)
+	if !ok {
+		http.Error(w, "checkbox index out of range", http.StatusBadRequest)
+		return
+	}
+
+	encrypted, err := h.crypto.EncryptForSave(updated)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := h.store.Save(KindPage, slug, encrypted); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := h.autoCommit.CommitSave(KindPage, slug, UsernameFromRequest(r)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) handleConvertMediaWiki(w http.ResponseWriter, r *http.Request) {

@@ -152,6 +152,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/images/list", h.handleImageList)
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
 	mux.HandleFunc("/delete/", h.handleDeletePage)
+	mux.HandleFunc("/toggle-checkbox/", h.handleToggleCheckbox)
 	mux.HandleFunc("/share/", h.handleShare)
 	mux.HandleFunc("/public/", h.handlePublic)
 	mux.HandleFunc("/graph", h.handleGraph)

@@ -466,6 +466,71 @@ func TestBackslashEscapesStandardMarkdown(t *testing.T) {
 	}
 }
 
+// TestBackslashEscapeInCodeSpan verifies that \[[Page]] and \{{secure_aes:...}}
+// inside backtick code spans render without the leading backslash.
+func TestBackslashEscapeInCodeSpan(t *testing.T) {
+	r := NewMarkdownRenderer()
+
+	t.Run("wiki link escape in code span", func(t *testing.T) {
+		out, err := r.Render("`\\[[Page]]`")
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		html := string(out)
+		if strings.Contains(html, `\[[`) {
+			t.Errorf("backslash should be stripped inside code span, got: %s", html)
+		}
+		if !strings.Contains(html, "[[Page]]") {
+			t.Errorf("expected [[Page]] without backslash, got: %s", html)
+		}
+	})
+
+	t.Run("secure macro escape in code span", func(t *testing.T) {
+		out, err := r.Render("`\\{{secure_aes:dGVzdA==}}`")
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		html := string(out)
+		if strings.Contains(html, `\{{`) {
+			t.Errorf("backslash should be stripped inside code span, got: %s", html)
+		}
+		if !strings.Contains(html, "{{secure_aes:dGVzdA==}}") {
+			t.Errorf("expected literal macro text without backslash, got: %s", html)
+		}
+		if strings.Contains(html, "secure-inline") {
+			t.Errorf("macro must not be expanded inside code span, got: %s", html)
+		}
+	})
+
+	t.Run("wiki link escape in fenced block", func(t *testing.T) {
+		out, err := r.Render("```\n\\[[Page]]\n```\n")
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		html := string(out)
+		if strings.Contains(html, `\[[`) {
+			t.Errorf("backslash should be stripped inside fenced block, got: %s", html)
+		}
+		if !strings.Contains(html, "[[Page]]") {
+			t.Errorf("expected [[Page]] without backslash, got: %s", html)
+		}
+	})
+
+	t.Run("secure macro escape in fenced block", func(t *testing.T) {
+		out, err := r.Render("```\n\\{{secure_aes:dGVzdA==}}\n```\n")
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		html := string(out)
+		if strings.Contains(html, `\{{`) {
+			t.Errorf("backslash should be stripped inside fenced block, got: %s", html)
+		}
+		if strings.Contains(html, "secure-inline") {
+			t.Errorf("macro must not be expanded inside fenced block, got: %s", html)
+		}
+	})
+}
+
 func TestWikiLinkIncludesTitleParam(t *testing.T) {
 	r := NewMarkdownRenderer()
 	out, err := r.Render("[[ Tokens & Lösenord ]]")

@@ -46,6 +46,23 @@
     });
   });
 
+  // Interactive task-list checkboxes — clicking toggles the checkbox in the page source.
+  document.querySelectorAll(".wiki-content input[type='checkbox']").forEach((cb, i) => {
+    cb.removeAttribute("disabled");
+    cb.addEventListener("change", async (e) => {
+      cb.disabled = true;
+      try {
+        await fetch("/toggle-checkbox/{{.Page.Slug}}", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ index: String(i) }).toString(),
+        });
+      } finally {
+        cb.disabled = false;
+      }
+    });
+  });
+
   // Auto-relock revealed secrets after 60 seconds.
   document.body.addEventListener("htmx:afterSwap", (e) => {
     const el = e.detail.elt;

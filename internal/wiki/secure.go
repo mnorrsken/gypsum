@@ -134,8 +134,9 @@ func (sc *ServerCrypto) encryptForSave(markdown string, preserve map[string]stri
 			return match
 		}
 		if captures[1] == `\` {
-			// Escaped: \{{secure:...}} — preserve literally without the backslash.
-			return "{{secure:" + captures[2] + "}}"
+			// Escaped: \{{secure:...}} — preserve the original text including the
+			// backslash so subsequent saves don't encrypt it.
+			return match
 		}
 		content := captures[2]
 		// For multiline blocks, strip the leading and trailing linebreaks

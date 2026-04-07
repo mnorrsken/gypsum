@@ -340,8 +340,28 @@ func TestBackslashEscapedSecureMacroNotEncrypted(t *testing.T) {
 	if strings.Contains(result, "{{secure_aes:") {
 		t.Errorf("escaped secure macro should not be encrypted, got: %s", result)
 	}
-	if !strings.Contains(result, "{{secure:plaintext}}") {
-		t.Errorf("escaped macro content should be preserved as literal, got: %s", result)
+	if !strings.Contains(result, `\{{secure:plaintext}}`) {
+		t.Errorf("backslash must be preserved in saved content so re-saves don't encrypt it, got: %s", result)
+	}
+}
+
+// TestBackslashEscapedSecureMacroIdempotent verifies that saving a page with
+// \{{secure:...}} multiple times never encrypts the content. This was a bug
+// where the backslash was stripped on first save, causing encryption on save 2.
+func TestBackslashEscapedSecureMacroIdempotent(t *testing.T) {
+	sc := NewServerCrypto("escape-key")
+
+	stored := `API key: \{{secure:my-api-key}}`
+
+	for i := range 3 {
+		result, err := sc.EncryptForSave(stored)
+		if err != nil {
+			t.Fatalf("save %d: EncryptForSave failed: %v", i+1, err)
+		}
+		if strings.Contains(result, "{{secure_aes:") {
+			t.Fatalf("save %d: escaped macro was encrypted, got: %s", i+1, result)
+		}
+		stored = result // simulate re-loading and re-saving
 	}
 }
 
