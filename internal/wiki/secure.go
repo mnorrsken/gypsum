@@ -16,7 +16,8 @@ import (
 var secureAesMacroRe = regexp.MustCompile(`\{\{secure_aes:([\w+/=]+)\}\}`)
 
 // secureMacroRe matches {{secure:CONTENT}} used in the editor for decrypted blocks.
-var secureMacroRe = regexp.MustCompile(`(?s)\{\{secure:(.*?)\}\}`)
+// An optional leading backslash is captured so \{{secure:...}} can be skipped.
+var secureMacroRe = regexp.MustCompile(`(?s)(\\?)\{\{secure:(.*?)\}\}`)
 
 // ServerCrypto provides AES-256-GCM encryption using a single server key.
 type ServerCrypto struct {
@@ -129,10 +130,14 @@ func (sc *ServerCrypto) encryptForSave(markdown string, preserve map[string]stri
 	var encryptErr error
 	result := secureMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
 		captures := secureMacroRe.FindStringSubmatch(match)
-		if len(captures) < 2 {
+		if len(captures) < 3 {
 			return match
 		}
-		content := captures[1]
+		if captures[1] == `\` {
+			// Escaped: \{{secure:...}} — preserve literally without the backslash.
+			return "{{secure:" + captures[2] + "}}"
+		}
+		content := captures[2]
 		// For multiline blocks, strip the leading and trailing linebreaks
 		// so {{secure:\nxxx\nyyy\n}} stores only "xxx\nyyy".
 		if strings.HasPrefix(content, "\n") && strings.HasSuffix(content, "\n") {

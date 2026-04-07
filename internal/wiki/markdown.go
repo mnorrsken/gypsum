@@ -16,13 +16,48 @@ import (
 	"github.com/yuin/goldmark/renderer/html"
 )
 
-var wikiLinkPattern = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
+// wikiLinkPattern matches [[title]] with an optional preceding backslash escape.
+var wikiLinkPattern = regexp.MustCompile(`(\\?)\[\[([^\]]+)\]\]`)
 
 // imageSizePattern matches ![alt|SIZE](url) where SIZE is one of:
 //   - 500      → max-width: 500px
 //   - 50%      → max-width: 50%
 //   - 500x300  → width: 500px; height: 300px
 var imageSizePattern = regexp.MustCompile(`!\[([^\]]*)\|(\d+(?:%|x\d+)?)\]\(([^)]*)\)`)
+
+// secureAesMacroRenderRe is like secureAesMacroRe but captures an optional
+// leading backslash so \{{secure_aes:...}} can be rendered as literal text.
+var secureAesMacroRenderRe = regexp.MustCompile(`(\\?)\{\{secure_aes:([\w+/=]+)\}\}`)
+
+// codeSegmentRe matches fenced code blocks (3+ backticks or tildes) and inline
+// code spans. Used to protect code regions from Gypsum-specific substitutions.
+var codeSegmentRe = regexp.MustCompile(
+	"(?m)^(?:`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?\\n^(?:`{3,}|~{3,})[ \\t]*$" +
+		"|`+[^`\\n]+`+",
+)
+
+// applyOutsideCode applies fn to portions of source that are not inside
+// inline code spans or fenced code blocks, leaving code regions unchanged.
+func applyOutsideCode(source string, fn func(string) string) string {
+	indices := codeSegmentRe.FindAllStringIndex(source, -1)
+	if len(indices) == 0 {
+		return fn(source)
+	}
+	var b strings.Builder
+	b.Grow(len(source))
+	pos := 0
+	for _, loc := range indices {
+		if loc[0] > pos {
+			b.WriteString(fn(source[pos:loc[0]]))
+		}
+		b.WriteString(source[loc[0]:loc[1]])
+		pos = loc[1]
+	}
+	if pos < len(source) {
+		b.WriteString(fn(source[pos:]))
+	}
+	return b.String()
+}
 
 type MarkdownRenderer struct {
 	engine goldmark.Markdown
@@ -76,31 +111,43 @@ func ExtractH1Title(source string) (title, rest string) {
 }
 
 func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
-	withLinks := wikiLinkPattern.ReplaceAllStringFunc(source, func(match string) string {
-		captures := wikiLinkPattern.FindStringSubmatch(match)
-		if len(captures) < 2 {
-			return match
-		}
-		title := strings.TrimSpace(captures[1])
-		slug := SlugFromTitle(title)
-		// Encode the original title so new-page creation can recover it.
-		return fmt.Sprintf("[%s](/wiki/%s?title=%s)", title, slug, url.QueryEscape(title))
+	// Apply wiki link substitution outside code spans and fenced code blocks.
+	// A leading backslash (\[[Page]]) escapes the link and renders it literally.
+	withLinks := applyOutsideCode(source, func(s string) string {
+		return wikiLinkPattern.ReplaceAllStringFunc(s, func(match string) string {
+			captures := wikiLinkPattern.FindStringSubmatch(match)
+			if len(captures) < 3 {
+				return match
+			}
+			if captures[1] == `\` {
+				return "[[" + captures[2] + "]]"
+			}
+			title := strings.TrimSpace(captures[2])
+			slug := SlugFromTitle(title)
+			// Encode the original title so new-page creation can recover it.
+			return fmt.Sprintf("[%s](/wiki/%s?title=%s)", title, slug, url.QueryEscape(title))
+		})
 	})
 
-	withLinks = r.expandImageSizeMacros(withLinks)
+	withLinks = applyOutsideCode(withLinks, r.expandImageSizeMacros)
 
 	// Replace secure_aes macros with placeholder tokens before goldmark so they
 	// don't get wrapped in their own <p> blocks. The tokens survive HTML
 	// rendering and are swapped for real HTML afterwards.
 	var securePlaceholders []string
-	withPlaceholders := secureAesMacroRe.ReplaceAllStringFunc(withLinks, func(match string) string {
-		captures := secureAesMacroRe.FindStringSubmatch(match)
-		if len(captures) < 2 {
-			return match
-		}
-		idx := len(securePlaceholders)
-		securePlaceholders = append(securePlaceholders, captures[1])
-		return fmt.Sprintf("SECURE_PLACEHOLDER_%d", idx)
+	withPlaceholders := applyOutsideCode(withLinks, func(s string) string {
+		return secureAesMacroRenderRe.ReplaceAllStringFunc(s, func(match string) string {
+			captures := secureAesMacroRenderRe.FindStringSubmatch(match)
+			if len(captures) < 3 {
+				return match
+			}
+			if captures[1] == `\` {
+				return "{{secure_aes:" + captures[2] + "}}"
+			}
+			idx := len(securePlaceholders)
+			securePlaceholders = append(securePlaceholders, captures[2])
+			return fmt.Sprintf("SECURE_PLACEHOLDER_%d", idx)
+		})
 	})
 
 	var rendered bytes.Buffer
@@ -128,19 +175,33 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 // - Wiki links [[Page]] become plain text (not clickable)
 // - Secure macros {{secure_aes:...}} are stripped entirely
 func (r *MarkdownRenderer) RenderPublic(source string) (template.HTML, error) {
-	// Convert wiki links to plain text (no links)
-	withLinks := wikiLinkPattern.ReplaceAllStringFunc(source, func(match string) string {
-		captures := wikiLinkPattern.FindStringSubmatch(match)
-		if len(captures) < 2 {
-			return match
-		}
-		return strings.TrimSpace(captures[1])
+	// Convert wiki links to plain text (no links), skipping code regions.
+	withLinks := applyOutsideCode(source, func(s string) string {
+		return wikiLinkPattern.ReplaceAllStringFunc(s, func(match string) string {
+			captures := wikiLinkPattern.FindStringSubmatch(match)
+			if len(captures) < 3 {
+				return match
+			}
+			if captures[1] == `\` {
+				return "[[" + captures[2] + "]]"
+			}
+			return strings.TrimSpace(captures[2])
+		})
 	})
 
-	withLinks = r.expandImageSizeMacros(withLinks)
+	withLinks = applyOutsideCode(withLinks, r.expandImageSizeMacros)
 
 	// Strip secure macros entirely — they must not render on public pages.
-	withLinks = secureAesMacroRe.ReplaceAllString(withLinks, "")
+	// A leading backslash (\{{secure_aes:...}}) escapes the macro: rendered literally.
+	withLinks = applyOutsideCode(withLinks, func(s string) string {
+		return secureAesMacroRenderRe.ReplaceAllStringFunc(s, func(match string) string {
+			captures := secureAesMacroRenderRe.FindStringSubmatch(match)
+			if len(captures) >= 3 && captures[1] == `\` {
+				return "{{secure_aes:" + captures[2] + "}}"
+			}
+			return ""
+		})
+	})
 
 	var rendered bytes.Buffer
 	if err := r.engine.Convert([]byte(withLinks), &rendered); err != nil {

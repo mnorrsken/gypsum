@@ -19,6 +19,9 @@ import (
 //go:embed seed_pages/*.md
 var seedPages embed.FS
 
+//go:embed seed_skills/*.md
+var seedSkills embed.FS
+
 func main() {
 	workspaceRoot, err := os.Getwd()
 	if err != nil {
@@ -37,11 +40,18 @@ func main() {
 	templatesDir := filepath.Join(workspaceRoot, "web", "templates")
 	staticDir := filepath.Join(workspaceRoot, "web", "static")
 
+	skillsDir := filepath.Join(repoDir, "skills")
 	if err := os.MkdirAll(pagesDir, 0o755); err != nil {
 		log.Fatalf("failed to create pages directory: %v", err)
 	}
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		log.Fatalf("failed to create skills directory: %v", err)
+	}
 	if err := seedPagesIfEmpty(pagesDir); err != nil {
 		log.Fatalf("failed to seed default pages: %v", err)
+	}
+	if err := seedSkillsIfEmpty(skillsDir); err != nil {
+		log.Fatalf("failed to seed default skills: %v", err)
 	}
 
 	db, err := wiki.OpenDB(dataDir)
@@ -206,6 +216,37 @@ func seedPagesIfEmpty(pagesDir string) error {
 			return err
 		}
 		if err := os.WriteFile(filepath.Join(pagesDir, entry.Name()), body, 0o644); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func seedSkillsIfEmpty(skillsDir string) error {
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
+			return nil
+		}
+	}
+
+	seedEntries, err := seedSkills.ReadDir("seed_skills")
+	if err != nil {
+		return err
+	}
+	for _, entry := range seedEntries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		body, err := seedSkills.ReadFile(filepath.Join("seed_skills", entry.Name()))
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(skillsDir, entry.Name()), body, 0o644); err != nil {
 			return err
 		}
 	}

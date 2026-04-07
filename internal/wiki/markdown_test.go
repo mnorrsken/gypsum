@@ -165,6 +165,192 @@ func TestExpandImageSizeMacros(t *testing.T) {
 	}
 }
 
+// TestSecureMacroProcessedInMarkdownContexts verifies that {{secure_aes:...}}
+// macros are expanded in all common Markdown formatting contexts.
+// These constructs must NOT accidentally suppress macro processing.
+func TestSecureMacroProcessedInMarkdownContexts(t *testing.T) {
+	r := NewMarkdownRenderer()
+	macro := "{{secure_aes:dGVzdA==}}"
+
+	cases := []struct {
+		name   string
+		source string
+	}{
+		{"plain paragraph", macro},
+		{"surrounded by text", "before " + macro + " after"},
+		{"blockquote", "> " + macro},
+		{"unordered list item", "- " + macro},
+		{"ordered list item", "1. " + macro},
+		{"bold", "**" + macro + "**"},
+		{"italic", "*" + macro + "*"},
+		{"strikethrough", "~~" + macro + "~~"},
+		{"h1 heading", "# " + macro},
+		{"h2 heading", "## " + macro},
+		{"table cell", "| col |\n|-----|\n| " + macro + " |"},
+		{"nested blockquote", "> > " + macro},
+		{"list then macro", "- item\n\n" + macro},
+		{"multiple macros", macro + " and " + macro},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := r.Render(tc.source)
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			if !strings.Contains(string(out), "secure-inline") {
+				t.Errorf("macro should be processed in %q context, got:\n%s", tc.name, out)
+			}
+		})
+	}
+}
+
+// TestWikiLinkProcessedInMarkdownContexts verifies that [[wiki links]] are
+// resolved in all common Markdown formatting contexts.
+func TestWikiLinkProcessedInMarkdownContexts(t *testing.T) {
+	r := NewMarkdownRenderer()
+	link := "[[MyPage]]"
+
+	cases := []struct {
+		name   string
+		source string
+	}{
+		{"plain paragraph", link},
+		{"surrounded by text", "see " + link + " for details"},
+		{"blockquote", "> " + link},
+		{"unordered list item", "- " + link},
+		{"ordered list item", "1. " + link},
+		{"bold", "**" + link + "**"},
+		{"italic", "*" + link + "*"},
+		{"h2 heading", "## " + link},
+		{"table cell", "| col |\n|-----|\n| " + link + " |"},
+		{"nested blockquote", "> > " + link},
+		{"multiple links", link + " and " + link},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := r.Render(tc.source)
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			if !strings.Contains(string(out), "/wiki/MyPage") {
+				t.Errorf("wiki link should be resolved in %q context, got:\n%s", tc.name, out)
+			}
+		})
+	}
+}
+
+// TestOnlyBackslashEscapesMacro documents which constructs prevent macro
+// processing. Only backslash is a true escape; code spans and fenced blocks
+// are intentional code-formatting suppression (issue #25). All other Markdown
+// constructs must NOT prevent processing.
+func TestOnlyBackslashEscapesMacro(t *testing.T) {
+	r := NewMarkdownRenderer()
+	macro := "{{secure_aes:dGVzdA==}}"
+
+	suppressed := []struct {
+		name   string
+		source string
+	}{
+		{"backslash escape", `\` + macro},
+		{"inline code span", "`" + macro + "`"},
+		{"triple-backtick code block", "```\n" + macro + "\n```\n"},
+		{"tilde code block", "~~~\n" + macro + "\n~~~\n"},
+		{"code block with lang tag", "```go\n" + macro + "\n```\n"},
+	}
+	for _, tc := range suppressed {
+		t.Run("suppressed/"+tc.name, func(t *testing.T) {
+			out, err := r.Render(tc.source)
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			if strings.Contains(string(out), "secure-inline") {
+				t.Errorf("%q should suppress macro processing, but got secure-inline in:\n%s", tc.name, out)
+			}
+		})
+	}
+
+	// Everything else must still process the macro.
+	notSuppressed := []struct {
+		name   string
+		source string
+	}{
+		{"blockquote", "> " + macro},
+		{"list", "- " + macro},
+		{"bold", "**" + macro + "**"},
+		{"italic", "*" + macro + "*"},
+		{"table cell", "| h |\n|---|\n| " + macro + " |"},
+		{"definition list term", macro + "\n:   definition"},
+		{"footnote text", "text[^1]\n\n[^1]: " + macro},
+		{"horizontal rule before", "---\n" + macro},
+		{"indented (not code-block)", "  " + macro},
+	}
+	for _, tc := range notSuppressed {
+		t.Run("processed/"+tc.name, func(t *testing.T) {
+			out, err := r.Render(tc.source)
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			if !strings.Contains(string(out), "secure-inline") {
+				t.Errorf("%q must NOT suppress macro processing, got:\n%s", tc.name, out)
+			}
+		})
+	}
+}
+
+// TestOnlyBackslashEscapesWikiLink mirrors TestOnlyBackslashEscapesMacro for
+// [[wiki links]].
+func TestOnlyBackslashEscapesWikiLink(t *testing.T) {
+	r := NewMarkdownRenderer()
+	link := "[[MyPage]]"
+
+	suppressed := []struct {
+		name   string
+		source string
+	}{
+		{"backslash escape", `\` + link},
+		{"inline code span", "`" + link + "`"},
+		{"triple-backtick code block", "```\n" + link + "\n```\n"},
+		{"tilde code block", "~~~\n" + link + "\n~~~\n"},
+	}
+	for _, tc := range suppressed {
+		t.Run("suppressed/"+tc.name, func(t *testing.T) {
+			out, err := r.Render(tc.source)
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			if strings.Contains(string(out), "/wiki/MyPage") {
+				t.Errorf("%q should suppress wiki link, but got /wiki/ in:\n%s", tc.name, out)
+			}
+		})
+	}
+
+	notSuppressed := []struct {
+		name   string
+		source string
+	}{
+		{"blockquote", "> " + link},
+		{"list", "- " + link},
+		{"bold", "**" + link + "**"},
+		{"italic", "*" + link + "*"},
+		{"table cell", "| h |\n|---|\n| " + link + " |"},
+		{"horizontal rule before", "---\n" + link},
+		{"indented (not code-block)", "  " + link},
+	}
+	for _, tc := range notSuppressed {
+		t.Run("processed/"+tc.name, func(t *testing.T) {
+			out, err := r.Render(tc.source)
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			if !strings.Contains(string(out), "/wiki/MyPage") {
+				t.Errorf("%q must NOT suppress wiki link, got:\n%s", tc.name, out)
+			}
+		})
+	}
+}
+
 func TestRenderSecurePlaceholders(t *testing.T) {
 	r := NewMarkdownRenderer()
 	out, err := r.Render("Hello {{secure_aes:dGVzdA==}} world")
@@ -177,6 +363,106 @@ func TestRenderSecurePlaceholders(t *testing.T) {
 	}
 	if !strings.Contains(html, "secure-copy-btn") {
 		t.Errorf("expected secure-copy-btn button, got: %s", html)
+	}
+}
+
+func TestCodeSpanSuppressesWikiLink(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("Use `[[Page]]` for something.")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if strings.Contains(html, "/wiki/") {
+		t.Errorf("wiki link inside code span should not be resolved, got: %s", html)
+	}
+	if !strings.Contains(html, "[[Page]]") {
+		t.Errorf("expected literal [[Page]] in code output, got: %s", html)
+	}
+}
+
+func TestCodeSpanSuppressesSecureMacro(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("Example: `{{secure_aes:dGVzdA==}}`")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if strings.Contains(html, "secure-inline") {
+		t.Errorf("secure macro inside code span should not be expanded, got: %s", html)
+	}
+	if !strings.Contains(html, "{{secure_aes:dGVzdA==}}") {
+		t.Errorf("expected literal macro text in code output, got: %s", html)
+	}
+}
+
+func TestFencedBlockSuppressesWikiLink(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("```\n[[Page]]\n```\n")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if strings.Contains(html, "/wiki/") {
+		t.Errorf("wiki link inside fenced code block should not be resolved, got: %s", html)
+	}
+}
+
+func TestFencedBlockSuppressesSecureMacro(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("```\n{{secure_aes:dGVzdA==}}\n```\n")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if strings.Contains(html, "secure-inline") {
+		t.Errorf("secure macro inside fenced code block should not be expanded, got: %s", html)
+	}
+}
+
+func TestBackslashEscapedSecureMacro(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render(`\{{secure_aes:dGVzdA==}} is literal`)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if strings.Contains(html, "secure-inline") {
+		t.Errorf("backslash-escaped secure macro should not be expanded, got: %s", html)
+	}
+	if !strings.Contains(html, "{{secure_aes:dGVzdA==}}") {
+		t.Errorf("expected literal macro text, got: %s", html)
+	}
+}
+
+func TestBackslashEscapedWikiLink(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render(`\[[Page]] is not a link`)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if strings.Contains(html, "/wiki/") {
+		t.Errorf("backslash-escaped wiki link should not be resolved, got: %s", html)
+	}
+	if !strings.Contains(html, "[[Page]]") {
+		t.Errorf("expected literal [[Page]] text, got: %s", html)
+	}
+}
+
+func TestBackslashEscapesStandardMarkdown(t *testing.T) {
+	r := NewMarkdownRenderer()
+	// Goldmark (CommonMark) natively handles \* to suppress bold/italic.
+	out, err := r.Render(`\*not bold\*`)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if strings.Contains(html, "<strong>") || strings.Contains(html, "<em>") {
+		t.Errorf("backslash-escaped asterisks should not produce bold/italic, got: %s", html)
+	}
+	if !strings.Contains(html, "*not bold*") {
+		t.Errorf("expected literal asterisks, got: %s", html)
 	}
 }
 

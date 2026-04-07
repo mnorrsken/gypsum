@@ -37,6 +37,18 @@ When viewing the page, encrypted fields appear as `🔒****`. Click to decrypt a
 
 The editor validates custom tags on save — unknown tags, unclosed blocks, and improperly formatted multiline blocks are rejected with clear error messages.
 
+### Escaping
+
+Prefix any macro or wiki link with a backslash to display it literally without processing:
+
+| Input | Rendered as |
+|---|---|
+| `\{{secure:example}}` | `{{secure:example}}` (not encrypted) |
+| `\{{secure_aes:BASE64}}` | `{{secure_aes:BASE64}}` (not expanded) |
+| `\[[Page Title]]` | `[[Page Title]]` (not a link) |
+
+Content inside backtick code spans (`` `[[like this]]` ``) and fenced code blocks is always displayed verbatim — macros and wiki links inside them are never processed.
+
 ## Images
 
 Three ways to upload images:

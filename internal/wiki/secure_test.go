@@ -229,6 +229,122 @@ func TestValidateContent(t *testing.T) {
 	}
 }
 
+// TestSecureMacroEncryptedInMarkdownContexts verifies that {{secure:...}} is
+// encrypted in all common Markdown contexts — none of them should accidentally
+// suppress EncryptForSave.
+func TestSecureMacroEncryptedInMarkdownContexts(t *testing.T) {
+	sc := NewServerCrypto("ctx-key")
+	macro := "{{secure:s3cr3t}}"
+
+	cases := []struct {
+		name   string
+		source string
+	}{
+		{"plain", macro},
+		{"surrounded by text", "before " + macro + " after"},
+		{"blockquote", "> " + macro},
+		{"unordered list", "- " + macro},
+		{"ordered list", "1. " + macro},
+		{"bold", "**" + macro + "**"},
+		{"italic", "*" + macro + "*"},
+		{"h1 heading", "# " + macro},
+		{"table cell", "| col |\n|-----|\n| " + macro + " |"},
+		{"nested blockquote", "> > " + macro},
+		{"indented (not code-block)", "  " + macro},
+		{"after horizontal rule", "---\n" + macro},
+		{"multiple macros", macro + " and " + macro},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := sc.EncryptForSave(tc.source)
+			if err != nil {
+				t.Fatalf("EncryptForSave failed: %v", err)
+			}
+			if strings.Contains(result, "s3cr3t") {
+				t.Errorf("plaintext should be encrypted in %q context, got: %s", tc.name, result)
+			}
+			if !strings.Contains(result, "{{secure_aes:") {
+				t.Errorf("expected {{secure_aes:...}} in %q context, got: %s", tc.name, result)
+			}
+		})
+	}
+}
+
+// TestOnlyBackslashEscapesEncryption verifies that ONLY a leading backslash
+// prevents {{secure:...}} from being encrypted on save. All other Markdown
+// constructs must not accidentally suppress encryption.
+func TestOnlyBackslashEscapesEncryption(t *testing.T) {
+	sc := NewServerCrypto("escape-ctx-key")
+	macro := "{{secure:s3cr3t}}"
+
+	// Only backslash suppresses encryption.
+	t.Run("backslash suppresses", func(t *testing.T) {
+		result, err := sc.EncryptForSave(`\` + macro)
+		if err != nil {
+			t.Fatalf("EncryptForSave failed: %v", err)
+		}
+		if strings.Contains(result, "{{secure_aes:") {
+			t.Errorf("backslash-escaped macro must not be encrypted, got: %s", result)
+		}
+		if strings.Contains(result, "s3cr3t") {
+			// After escaping, {{secure:s3cr3t}} is stored literally — plaintext visible is expected.
+			// (The user chose to display this literally, not encrypt it.)
+		}
+		if !strings.Contains(result, "{{secure:s3cr3t}}") {
+			t.Errorf("escaped macro content should be preserved literally, got: %s", result)
+		}
+	})
+
+	// None of these should suppress encryption.
+	notSuppressed := []struct {
+		name   string
+		source string
+	}{
+		{"blockquote", "> " + macro},
+		{"list item", "- " + macro},
+		{"bold", "**" + macro + "**"},
+		{"italic", "*" + macro + "*"},
+		{"table cell", "| h |\n|---|\n| " + macro + " |"},
+		{"nested blockquote", "> > " + macro},
+		{"indented (not code-block)", "  " + macro},
+		{"after horizontal rule", "---\n" + macro},
+		// Note: backtick code spans and fenced blocks intentionally suppress
+		// rendering (issue #25) but EncryptForSave operates on raw markdown
+		// before rendering, so encryption still happens.
+		{"inline code span", "`" + macro + "`"},
+		{"fenced code block", "```\n" + macro + "\n```\n"},
+	}
+	for _, tc := range notSuppressed {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := sc.EncryptForSave(tc.source)
+			if err != nil {
+				t.Fatalf("EncryptForSave failed: %v", err)
+			}
+			if !strings.Contains(result, "{{secure_aes:") {
+				t.Errorf("%q must NOT suppress encryption, got: %s", tc.name, result)
+			}
+		})
+	}
+}
+
+func TestBackslashEscapedSecureMacroNotEncrypted(t *testing.T) {
+	sc := NewServerCrypto("escape-key")
+
+	// \{{secure:plaintext}} should NOT be encrypted — it is treated as literal text.
+	input := `before \{{secure:plaintext}} after`
+	result, err := sc.EncryptForSave(input)
+	if err != nil {
+		t.Fatalf("EncryptForSave failed: %v", err)
+	}
+	if strings.Contains(result, "{{secure_aes:") {
+		t.Errorf("escaped secure macro should not be encrypted, got: %s", result)
+	}
+	if !strings.Contains(result, "{{secure:plaintext}}") {
+		t.Errorf("escaped macro content should be preserved as literal, got: %s", result)
+	}
+}
+
 func TestEncryptForSavePreservingChanged(t *testing.T) {
 	sc := NewServerCrypto("preserve-key")
 

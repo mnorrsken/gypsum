@@ -407,10 +407,10 @@ func ExtractWikiLinks(content string) []string {
 	seen := make(map[string]bool)
 	var slugs []string
 	for _, m := range matches {
-		if len(m) < 2 {
+		if len(m) < 3 || m[1] == `\` {
 			continue
 		}
-		slug := SlugFromTitle(strings.TrimSpace(m[1]))
+		slug := SlugFromTitle(strings.TrimSpace(m[2]))
 		if !seen[slug] {
 			seen[slug] = true
 			slugs = append(slugs, slug)

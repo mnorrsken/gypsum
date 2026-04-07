@@ -11,6 +11,7 @@
 | `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | If set, the group header must contain this group or the request is rejected with 403. |
 | `GYPSUM_PROBE_PORT` | `:9091` | Listen address for the health-probe server (`/healthz`, `/readyz`). |
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills` | Comma-separated list of MCP tool sections to enable. Omit a section to hide those tools from AI assistants. |
+| `GYPSUM_METRICS_PORT` | `:9090` | Listen address for the Prometheus metrics server (`/metrics`). Exposes per-tool MCP call counters. |
 
 ### MCP sections
 

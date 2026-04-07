@@ -16,7 +16,7 @@ Gypsum has a built-in [MCP](https://modelcontextprotocol.io/) endpoint (Streamab
 
 Both `/mcp` and `/mcp/external` require OAuth 2.0 (PKCE) when OAuth is configured — if OAuth is not configured, the endpoints are not exposed. For Claude Desktop or CI use, the `mcp-proxy` binary bridges stdio to the HTTP endpoint; run `mcp-proxy auth <url>` to obtain a token non-interactively.
 
-Available tools: `list_pages`, `get_page`, `create_page`, `edit_page`, `delete_page`, `search_pages`, `page_links`, `what_links_here`, `link_graph`, `page_history`, `get_page_revision`, `list_images`, `upload_image`, `delete_image`, and more. Editing tools support search-and-replace, section-scoped edits, and append mode for token-efficient updates. See [MCP Server](docs/mcp.md) for setup.
+Available tools: `list_pages`, `get_page`, `create_page`, `edit_page`, `delete_page`, `search_pages`, `page_links`, `what_links_here`, `link_graph`, `page_history`, `get_page_revision`, `list_images`, `delete_image`, and more. Editing tools support search-and-replace, section-scoped edits, and append mode for token-efficient updates. See [MCP Server](docs/mcp.md) for setup.
 
 ### Skills
 
@@ -37,7 +37,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Interactive link graph
 - Page history with revision diffs
 - Image uploads (paste, drag-and-drop, or picker) with size hints
-- Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM
+- Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM; backslash-escape any macro or wiki link to display it literally
 - Visual table editor
 - MediaWiki import
 - Public page sharing via secret links

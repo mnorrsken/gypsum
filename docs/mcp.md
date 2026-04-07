@@ -73,14 +73,13 @@ Tokens expire after 24 hours. Re-run `mcp-proxy auth` to get a fresh token and u
 | Tool | Description |
 |---|---|
 | `list_pages` | List all wiki pages |
-| `get_page` | Read a page's markdown content |
+| `get_page` | Read a page's markdown content (supports `section` and `sections_only` parameters) |
 | `create_page` | Create a new page |
-| `edit_page` | Update an existing page |
+| `edit_page` | Update an existing page (see edit modes below) |
 | `delete_page` | Delete a page |
-| `search_pages` | Relevance-ranked search across pages |
+| `search_pages` | Relevance-ranked full-text search across pages |
 | `list_images` | List uploaded images with metadata |
 | `delete_image` | Delete an image |
-| `upload_image` | Upload a base64-encoded image |
 | `get_recent_pages` | Recently modified pages |
 | `get_favorites` | Favorite/pinned pages |
 | `page_history` | Git revision history for a page |
@@ -91,10 +90,27 @@ Tokens expire after 24 hours. Re-run `mcp-proxy auth` to get a fresh token and u
 | `create_page_from_mediawiki` | Create a page from MediaWiki wikitext |
 | `edit_page_from_mediawiki` | Update a page from MediaWiki wikitext |
 | `list_skills` | List all skills with tags |
-| `get_skill` | Read a skill's markdown content |
+| `get_skill` | Read a skill's markdown content (supports `section` and `sections_only` parameters) |
 | `create_skill` | Create a new skill |
-| `edit_skill` | Update an existing skill |
+| `edit_skill` | Update an existing skill (same edit modes as `edit_page`) |
 | `delete_skill` | Delete a skill |
 | `search_skills` | Tag-boosted search across skills |
 
 Skills tools (`list_skills`, `search_skills`, etc.) are included in the table above. See [Skills](skills.md) for how to create and use skills with LLMs.
+
+## Edit Modes for `edit_page` and `edit_skill`
+
+Both tools support four edit modes to minimise the amount of content sent over the wire:
+
+| Mode | Parameters | When to use |
+|---|---|---|
+| **Search-and-replace** | `old_text` + `new_text` | Small targeted edits. `old_text` must match exactly one location. |
+| **Section edit** | `section` + `content` | Replace one named section. Use `sections_only: true` on `get_page` first to discover section names. Heading line is preserved automatically. |
+| **Append** | `append: true` + `content` | Add text to the end of the page. |
+| **Full replace** | `content` only | Replace the entire page. Fetch the current content with `get_page` first. |
+
+Section names are matched case-insensitively and leading `#` markers are ignored, so `"## My Section"` and `"my section"` both work. If a heading appears more than once, the tool returns an error and suggests using search-and-replace instead.
+
+## Metrics
+
+When `GYPSUM_METRICS_PORT` is set (default `:9090`), Gypsum exposes a `/metrics` endpoint with Prometheus counters for each MCP tool call, labelled by tool name, status, and direction. See [Configuration](configuration.md) for details.

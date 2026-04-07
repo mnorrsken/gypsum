@@ -2,6 +2,15 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.40.0
+
+### Added
+- **Backslash escaping** — prefix any Gypsum-specific syntax with `\` to render it literally: `\[[Page]]` displays as `[[Page]]` without creating a wiki link, `\{{secure:…}}` is stored as plain text without encrypting, and `\{{secure_aes:…}}` is displayed as-is without expanding the secure widget.
+- **Seed skill** — fresh installs now include an example skill ("Writing Good Wiki Pages") loaded into `skills/` automatically, demonstrating the skill format and available features.
+
+### Fixed
+- **Code spans and fenced blocks suppress Gypsum processing** — wiki links and secure macros inside backtick code spans (`` `[[link]]` ``) and fenced code blocks are no longer resolved or expanded; they render as literal code as CommonMark requires.
+
 ## v0.39.0
 
 ### Added
