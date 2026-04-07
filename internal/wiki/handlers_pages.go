@@ -436,7 +436,6 @@ func toggleCheckbox(content string, index int) (string, bool) {
 		if count == index {
 			found = true
 			count++
-			// Last 3 chars are `[ ]`, `[x]`, or `[X]`
 			prefix := match[:len(match)-3]
 			if match[len(match)-2] == ' ' {
 				return prefix + "[x]"

@@ -193,38 +193,15 @@ func main() {
 }
 
 func seedPagesIfEmpty(pagesDir string) error {
-	entries, err := os.ReadDir(pagesDir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
-			return nil
-		}
-	}
-
-	seedEntries, err := seedPages.ReadDir("seed_pages")
-	if err != nil {
-		return err
-	}
-	for _, entry := range seedEntries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
-			continue
-		}
-		body, err := seedPages.ReadFile(filepath.Join("seed_pages", entry.Name()))
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(pagesDir, entry.Name()), body, 0o644); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return seedDirIfEmpty(pagesDir, seedPages, "seed_pages")
 }
 
 func seedSkillsIfEmpty(skillsDir string) error {
-	entries, err := os.ReadDir(skillsDir)
+	return seedDirIfEmpty(skillsDir, seedSkills, "seed_skills")
+}
+
+func seedDirIfEmpty(targetDir string, fs embed.FS, embedDir string) error {
+	entries, err := os.ReadDir(targetDir)
 	if err != nil {
 		return err
 	}
@@ -234,7 +211,7 @@ func seedSkillsIfEmpty(skillsDir string) error {
 		}
 	}
 
-	seedEntries, err := seedSkills.ReadDir("seed_skills")
+	seedEntries, err := fs.ReadDir(embedDir)
 	if err != nil {
 		return err
 	}
@@ -242,11 +219,11 @@ func seedSkillsIfEmpty(skillsDir string) error {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
 			continue
 		}
-		body, err := seedSkills.ReadFile(filepath.Join("seed_skills", entry.Name()))
+		body, err := fs.ReadFile(filepath.Join(embedDir, entry.Name()))
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(skillsDir, entry.Name()), body, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(targetDir, entry.Name()), body, 0o644); err != nil {
 			return err
 		}
 	}
