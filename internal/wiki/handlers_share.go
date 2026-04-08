@@ -8,13 +8,17 @@ import (
 )
 
 func (h *Handler) handleShare(w http.ResponseWriter, r *http.Request) {
+	store := h.storeFor(r)
+	db := h.dbFor(r)
+	prefix := urlPrefix(r)
+
 	slug := strings.TrimPrefix(r.URL.Path, "/share/")
 	if slug == "" {
 		http.Error(w, "missing page slug", http.StatusBadRequest)
 		return
 	}
 
-	page, err := h.store.Load(KindPage, slug)
+	page, err := store.Load(KindPage, slug)
 	if err != nil {
 		if errors.Is(err, ErrPageNotFound) {
 			http.Error(w, "page not found", http.StatusNotFound)
@@ -35,17 +39,17 @@ func (h *Handler) handleShare(w http.ResponseWriter, r *http.Request) {
 			Title: "Share: " + title,
 			Page:  &Page{Slug: slug, Title: title},
 		}
-		if h.db != nil {
-			if share, err := h.db.GetShare(slug); err == nil && share != nil {
+		if db != nil {
+			if share, err := db.GetShare(slug); err == nil && share != nil {
 				data.ShareToken = share.Token
 				data.ShareURL = buildShareURL(r, share.Token)
 				data.ShareCreated = share.CreatedAt.Format("2006-01-02 15:04")
 			}
 		}
-		h.render(w, "share", data)
+		h.render(w, r, "share", data)
 
 	case http.MethodPost:
-		if h.db == nil {
+		if db == nil {
 			http.Error(w, "sharing not available", http.StatusInternalServerError)
 			return
 		}
@@ -55,17 +59,17 @@ func (h *Handler) handleShare(w http.ResponseWriter, r *http.Request) {
 		}
 		switch r.FormValue("action") {
 		case "create", "regenerate":
-			if _, err := h.db.CreateShare(slug); err != nil {
+			if _, err := db.CreateShare(slug); err != nil {
 				http.Error(w, "failed to create share link", http.StatusInternalServerError)
 				return
 			}
 		case "revoke":
-			if err := h.db.DeleteShare(slug); err != nil {
+			if err := db.DeleteShare(slug); err != nil {
 				http.Error(w, "failed to revoke share link", http.StatusInternalServerError)
 				return
 			}
 		}
-		http.Redirect(w, r, "/share/"+slug, http.StatusFound)
+		http.Redirect(w, r, prefix+"/share/"+slug, http.StatusFound)
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

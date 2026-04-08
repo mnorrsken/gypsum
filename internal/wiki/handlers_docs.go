@@ -41,7 +41,7 @@ func (h *Handler) handleDocsList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	h.render(w, "docs", TemplateData{
+	h.render(w, r, "docs", TemplateData{
 		Title: "Documentation",
 	})
 }
@@ -79,7 +79,7 @@ func (h *Handler) handleDocs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, "doc", TemplateData{
+	h.render(w, r, "doc", TemplateData{
 		Title:        displayTitle,
 		Page:         &Page{Slug: slug, Title: displayTitle},
 		RenderedHTML: html,

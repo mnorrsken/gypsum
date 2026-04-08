@@ -18,13 +18,14 @@ func (h *Handler) handleImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	images, err := h.store.ListImages()
+	store := h.storeFor(r)
+	images, err := store.ListImages()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	h.render(w, "images", TemplateData{
+	h.render(w, r, "images", TemplateData{
 		Title:  "Images",
 		Images: images,
 	})
@@ -35,6 +36,10 @@ func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	store := h.storeFor(r)
+	autoCommit := h.autoCommitFor(r)
+	prefix := urlPrefix(r)
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB max
 		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file too large or invalid"})
@@ -90,7 +95,7 @@ func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 		filename = fmt.Sprintf("%s-%s%s", datePart, shortRand, ext)
 	}
 
-	dstPath := filepath.Join(h.store.ImagesDir(), filename)
+	dstPath := filepath.Join(store.ImagesDir(), filename)
 	dst, err := os.Create(dstPath)
 	if err != nil {
 		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "failed to save image"})
@@ -103,10 +108,10 @@ func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = h.autoCommit.CommitImageSave(filename, UsernameFromRequest(r))
+	_ = autoCommit.CommitImageSave(filename, UsernameFromRequest(r))
 
-	url := "/images/" + filename
-	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": url, "filename": filename})
+	imgURL := prefix + "/images/" + filename
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": imgURL, "filename": filename})
 }
 
 // sanitizeImageBasename converts an original filename (without extension) into
@@ -149,7 +154,8 @@ func (h *Handler) handleImageList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	images, err := h.store.ListImages()
+	store := h.storeFor(r)
+	images, err := store.ListImages()
 	if err != nil {
 		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 		return
@@ -184,6 +190,10 @@ func (h *Handler) handleImageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	store := h.storeFor(r)
+	autoCommit := h.autoCommitFor(r)
+	prefix := urlPrefix(r)
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -195,16 +205,16 @@ func (h *Handler) handleImageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.Remove(filepath.Join(h.store.ImagesDir(), filename)); err != nil {
+	if err := os.Remove(filepath.Join(store.ImagesDir(), filename)); err != nil {
 		http.Error(w, "failed to delete image", http.StatusInternalServerError)
 		return
 	}
 
-	_ = h.autoCommit.CommitImageDelete(filename, UsernameFromRequest(r))
+	_ = autoCommit.CommitImageDelete(filename, UsernameFromRequest(r))
 
 	if isHTMX(r) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	http.Redirect(w, r, "/images", http.StatusFound)
+	http.Redirect(w, r, prefix+"/images", http.StatusFound)
 }

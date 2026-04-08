@@ -13,9 +13,12 @@ import (
 )
 
 func (h *Handler) handleNewPage(w http.ResponseWriter, r *http.Request) {
+	store := h.storeFor(r)
+	prefix := urlPrefix(r)
+
 	switch r.Method {
 	case http.MethodGet:
-		h.render(w, "new", TemplateData{
+		h.render(w, r, "new", TemplateData{
 			Title: "New Page",
 		})
 	case http.MethodPost:
@@ -25,23 +28,23 @@ func (h *Handler) handleNewPage(w http.ResponseWriter, r *http.Request) {
 		}
 		title := strings.TrimSpace(r.FormValue("title"))
 		if title == "" {
-			h.render(w, "new", TemplateData{
+			h.render(w, r, "new", TemplateData{
 				Title: "New Page",
 				Query: "Please enter a page title.",
 			})
 			return
 		}
 		slug := SlugFromTitle(title)
-		_, err := h.store.Load(KindPage, slug)
+		_, err := store.Load(KindPage, slug)
 		if err == nil {
 			// page already exists
-			h.render(w, "new", TemplateData{
+			h.render(w, r, "new", TemplateData{
 				Title: "New Page",
 				Query: fmt.Sprintf("A page named \"%s\" already exists.", title),
 			})
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/edit/%s?title=%s", slug, url.QueryEscape(title)), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("%s/edit/%s?title=%s", prefix, slug, url.QueryEscape(title)), http.StatusFound)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -53,16 +56,19 @@ func (h *Handler) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	store := h.storeFor(r)
+	prefix := urlPrefix(r)
+
 	slug := strings.TrimPrefix(r.URL.Path, "/wiki/")
 	if slug == "" {
-		http.Redirect(w, r, "/wiki/Home", http.StatusFound)
+		http.Redirect(w, r, prefix+"/wiki/Home", http.StatusFound)
 		return
 	}
 
-	page, err := h.store.Load(KindPage, slug)
+	page, err := store.Load(KindPage, slug)
 	if err != nil {
 		if errors.Is(err, ErrPageNotFound) {
-			editURL := fmt.Sprintf("/edit/%s", slug)
+			editURL := fmt.Sprintf("%s/edit/%s", prefix, slug)
 			if t := r.URL.Query().Get("title"); t != "" {
 				editURL += "?title=" + url.QueryEscape(t)
 			}
@@ -90,7 +96,7 @@ func (h *Handler) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, "view", TemplateData{
+	h.render(w, r, "view", TemplateData{
 		Title:        displayTitle,
 		Page:         &Page{Slug: page.Slug, Title: displayTitle, Content: page.Content},
 		RenderedHTML: html,
@@ -98,6 +104,10 @@ func (h *Handler) handleView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
+	store := h.storeFor(r)
+	autoCommit := h.autoCommitFor(r)
+	prefix := urlPrefix(r)
+
 	slug := strings.TrimPrefix(r.URL.Path, "/edit/")
 	if slug == "" {
 		http.Error(w, "missing page slug", http.StatusBadRequest)
@@ -106,7 +116,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		page, err := h.store.Load(KindPage, slug)
+		page, err := store.Load(KindPage, slug)
 		if err != nil && !errors.Is(err, ErrPageNotFound) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -131,13 +141,13 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			raw = "# " + prettyTitle + "\n\n"
 		}
 
-		prefix := "Edit: "
+		pfx := "Edit: "
 		if isNew {
-			prefix = "New page: "
+			pfx = "New page: "
 		}
 
-		h.render(w, "edit", TemplateData{
-			Title:      prefix + title,
+		h.render(w, r, "edit", TemplateData{
+			Title:      pfx + title,
 			Page:       &Page{Slug: slug, Title: title},
 			RawContent: h.crypto.DecryptForEdit(raw),
 			IsNew:      isNew,
@@ -150,7 +160,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 		content := strings.ReplaceAll(r.FormValue("content"), "\r\n", "\n")
 
 		// For new pages, derive the slug from the H1 title in the content.
-		if _, err := h.store.Load(KindPage, slug); errors.Is(err, ErrPageNotFound) {
+		if _, err := store.Load(KindPage, slug); errors.Is(err, ErrPageNotFound) {
 			if h1, _ := ExtractH1Title(content); h1 != "" {
 				slug = SlugFromTitle(h1)
 			}
@@ -159,14 +169,14 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 		// Validate custom tags before saving
 		if validationErr := ValidateContent(content); validationErr != "" {
 			title := TitleFromSlug(slug)
-			page, _ := h.store.Load(KindPage, slug)
+			page, _ := store.Load(KindPage, slug)
 			isNew := page == nil
-			prefix := "Edit: "
+			pfx := "Edit: "
 			if isNew {
-				prefix = "New page: "
+				pfx = "New page: "
 			}
-			h.render(w, "edit", TemplateData{
-				Title:      prefix + title,
+			h.render(w, r, "edit", TemplateData{
+				Title:      pfx + title,
 				Page:       &Page{Slug: slug, Title: title},
 				RawContent: content,
 				IsNew:      isNew,
@@ -179,7 +189,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("showdiff") == "1" {
 			title := TitleFromSlug(slug)
 			oldContent := ""
-			if page, _ := h.store.Load(KindPage, slug); page != nil {
+			if page, _ := store.Load(KindPage, slug); page != nil {
 				oldContent = page.Content
 			}
 			// Encrypt the incoming editor content, preserving original
@@ -190,7 +200,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			diffHTML := RenderUnifiedDiff(oldContent, newEncrypted, slug)
-			h.render(w, "diff", TemplateData{
+			h.render(w, r, "diff", TemplateData{
 				Title:      "Diff: " + title,
 				Page:       &Page{Slug: slug, Title: title},
 				RawContent: content,
@@ -204,15 +214,15 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if err := h.store.Save(KindPage, slug, encrypted); err != nil {
+		if err := store.Save(KindPage, slug, encrypted); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if err := h.autoCommit.CommitSave(KindPage, slug, UsernameFromRequest(r)); err != nil {
+		if err := autoCommit.CommitSave(KindPage, slug, UsernameFromRequest(r)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/wiki/%s", slug), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("%s/wiki/%s", prefix, slug), http.StatusFound)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -223,8 +233,9 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	store := h.storeFor(r)
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	results, err := h.store.Search(KindPage, query)
+	results, err := store.Search(KindPage, query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -236,10 +247,10 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		Results: results,
 	}
 	if isHTMX(r) {
-		h.renderFragment(w, "search", data)
+		h.renderFragment(w, r, "search", data)
 		return
 	}
-	h.render(w, "search", data)
+	h.render(w, r, "search", data)
 }
 
 func (h *Handler) handlePages(w http.ResponseWriter, r *http.Request) {
@@ -248,13 +259,14 @@ func (h *Handler) handlePages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allPages, err := h.store.List(KindPage)
+	store := h.storeFor(r)
+	allPages, err := store.List(KindPage)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	h.render(w, "pages", TemplateData{
+	h.render(w, r, "pages", TemplateData{
 		Title:    "All Pages",
 		AllPages: allPages,
 	})
@@ -266,6 +278,7 @@ func (h *Handler) handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	autoCommit := h.autoCommitFor(r)
 	slug := strings.TrimPrefix(r.URL.Path, "/history/")
 	if slug == "" {
 		http.Error(w, "missing page slug", http.StatusBadRequest)
@@ -273,9 +286,9 @@ func (h *Handler) handleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := TitleFromSlug(slug)
-	entries, _ := h.autoCommit.DocHistory(KindPage, slug, 50)
+	entries, _ := autoCommit.DocHistory(KindPage, slug, 50)
 
-	h.render(w, "history", TemplateData{
+	h.render(w, r, "history", TemplateData{
 		Title:   "History: " + title,
 		Page:    &Page{Slug: slug, Title: title},
 		History: entries,
@@ -290,6 +303,7 @@ func (h *Handler) handleRecentEdits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	autoCommit := h.autoCommitFor(r)
 	page := 1
 	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 1 {
 		page = p
@@ -297,7 +311,7 @@ func (h *Handler) handleRecentEdits(w http.ResponseWriter, r *http.Request) {
 
 	skip := (page - 1) * recentEditsPerPage
 	// Fetch one extra to determine if there's a next page.
-	entries, _ := h.autoCommit.GlobalHistory(skip, recentEditsPerPage+1)
+	entries, _ := autoCommit.GlobalHistory(skip, recentEditsPerPage+1)
 
 	totalPages := page
 	if len(entries) > recentEditsPerPage {
@@ -305,7 +319,7 @@ func (h *Handler) handleRecentEdits(w http.ResponseWriter, r *http.Request) {
 		entries = entries[:recentEditsPerPage]
 	}
 
-	h.render(w, "recent_edits", TemplateData{
+	h.render(w, r, "recent_edits", TemplateData{
 		Title:       "Recent Edits",
 		GlobalEdits: entries,
 		CurrentPage: page,
@@ -319,6 +333,7 @@ func (h *Handler) handleHistoryDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	autoCommit := h.autoCommitFor(r)
 	slug := strings.TrimPrefix(r.URL.Path, "/history-diff/")
 	if slug == "" {
 		http.Error(w, "missing page slug", http.StatusBadRequest)
@@ -332,12 +347,12 @@ func (h *Handler) handleHistoryDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oldContent, err := h.autoCommit.DocContentAtRevision(KindPage, slug, fromHash)
+	oldContent, err := autoCommit.DocContentAtRevision(KindPage, slug, fromHash)
 	if err != nil {
 		http.Error(w, "could not load old revision: "+err.Error(), http.StatusNotFound)
 		return
 	}
-	newContent, err := h.autoCommit.DocContentAtRevision(KindPage, slug, toHash)
+	newContent, err := autoCommit.DocContentAtRevision(KindPage, slug, toHash)
 	if err != nil {
 		http.Error(w, "could not load new revision: "+err.Error(), http.StatusNotFound)
 		return
@@ -346,7 +361,7 @@ func (h *Handler) handleHistoryDiff(w http.ResponseWriter, r *http.Request) {
 	diffHTML := RenderUnifiedDiff(oldContent, newContent, slug)
 	title := TitleFromSlug(slug)
 
-	h.render(w, "history_diff", TemplateData{
+	h.render(w, r, "history_diff", TemplateData{
 		Title:    "Diff: " + title,
 		Page:     &Page{Slug: slug, Title: title},
 		DiffHTML: diffHTML,
@@ -360,7 +375,8 @@ func (h *Handler) handleGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	graph, err := h.store.LinkGraph()
+	store := h.storeFor(r)
+	graph, err := store.LinkGraph()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -372,7 +388,7 @@ func (h *Handler) handleGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, "graph", TemplateData{
+	h.render(w, r, "graph", TemplateData{
 		Title:     "Link Graph",
 		GraphJSON: template.JS(data),
 	})
@@ -391,13 +407,18 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	store := h.storeFor(r)
+	autoCommit := h.autoCommitFor(r)
+	db := h.dbFor(r)
+	prefix := urlPrefix(r)
+
 	slug := strings.TrimPrefix(r.URL.Path, "/delete/")
 	if slug == "" {
 		http.Error(w, "missing page slug", http.StatusBadRequest)
 		return
 	}
 
-	if _, err := h.store.Load(KindPage, slug); err != nil {
+	if _, err := store.Load(KindPage, slug); err != nil {
 		if errors.Is(err, ErrPageNotFound) {
 			http.Error(w, "page not found", http.StatusNotFound)
 			return
@@ -406,21 +427,21 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.store.Delete(KindPage, slug); err != nil {
+	if err := store.Delete(KindPage, slug); err != nil {
 		http.Error(w, "failed to delete page", http.StatusInternalServerError)
 		return
 	}
-	_ = h.autoCommit.CommitDelete(KindPage, slug, UsernameFromRequest(r))
+	_ = autoCommit.CommitDelete(KindPage, slug, UsernameFromRequest(r))
 	// Clean up any share link for this page.
-	if h.db != nil {
-		_ = h.db.DeleteShare(slug)
+	if db != nil {
+		_ = db.DeleteShare(slug)
 	}
 	if isHTMX(r) {
-		w.Header().Set("HX-Redirect", "/pages")
+		w.Header().Set("HX-Redirect", prefix+"/pages")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	http.Redirect(w, r, "/pages", http.StatusFound)
+	http.Redirect(w, r, prefix+"/pages", http.StatusFound)
 }
 
 // taskListItemRe matches a GFM task list item checkbox: `- [ ]` or `- [x]` etc.
@@ -454,6 +475,9 @@ func (h *Handler) handleToggleCheckbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	store := h.storeFor(r)
+	autoCommit := h.autoCommitFor(r)
+
 	slug := strings.TrimPrefix(r.URL.Path, "/toggle-checkbox/")
 	if slug == "" {
 		http.Error(w, "missing page slug", http.StatusBadRequest)
@@ -469,7 +493,7 @@ func (h *Handler) handleToggleCheckbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, err := h.store.Load(KindPage, slug)
+	page, err := store.Load(KindPage, slug)
 	if err != nil {
 		if errors.Is(err, ErrPageNotFound) {
 			http.Error(w, "page not found", http.StatusNotFound)
@@ -491,11 +515,11 @@ func (h *Handler) handleToggleCheckbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := h.store.Save(KindPage, slug, encrypted); err != nil {
+	if err := store.Save(KindPage, slug, encrypted); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := h.autoCommit.CommitSave(KindPage, slug, UsernameFromRequest(r)); err != nil {
+	if err := autoCommit.CommitSave(KindPage, slug, UsernameFromRequest(r)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -81,13 +81,14 @@ func main() {
 
 	autoCommitter := wiki.NewGitAutoCommitter(repoDir, remoteConfig)
 	autoCommitter.SetAfterPull(store.ReindexChanged)
-	if remoteConfig != nil {
-		pullInterval := 5 * time.Minute
-		if v := os.Getenv("GYPSUM_GIT_PULL_INTERVAL"); v != "" {
-			if d, err := time.ParseDuration(v); err == nil && d > 0 {
-				pullInterval = d
-			}
+
+	pullInterval := 5 * time.Minute
+	if v := os.Getenv("GYPSUM_GIT_PULL_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			pullInterval = d
 		}
+	}
+	if remoteConfig != nil {
 		autoCommitter.StartPeriodicPull(pullInterval)
 	}
 
@@ -119,6 +120,53 @@ func main() {
 	if info, err := os.Stat(docsDir); err == nil && info.IsDir() {
 		handler.SetDocsDir(docsDir)
 	}
+
+	// Multi-user mode: when GYPSUM_MULTI_USER=true, per-user wikis are enabled
+	// at /~username/ paths. The shared wiki at the base path is preserved.
+	var userMgr *wiki.UserManager
+	if os.Getenv("GYPSUM_MULTI_USER") == "true" {
+		sharedCtx := &wiki.UserContext{
+			Store:      store,
+			AutoCommit: autoCommitter,
+			DB:         db,
+		}
+
+		var gitTemplate *wiki.GitTemplateConfig
+		if tmplURL := os.Getenv("GYPSUM_GIT_REMOTE_TEMPLATE"); tmplURL != "" {
+			remoteName := envOrDefault("GYPSUM_GIT_REMOTE_NAME", "origin")
+			commitEmail := os.Getenv("GYPSUM_GIT_COMMIT_EMAIL") // may contain {user}
+
+			gitTemplate = &wiki.GitTemplateConfig{
+				URLTemplate: tmplURL,
+				RemoteName:  remoteName,
+				CommitEmail: commitEmail,
+			}
+			// Inject shared auth credentials into the template config.
+			if token := os.Getenv("GYPSUM_GIT_TOKEN"); token != "" {
+				gitTemplate.Token = url.PathEscape(token)
+			} else {
+				user := os.Getenv("GYPSUM_GIT_USERNAME")
+				pass := os.Getenv("GYPSUM_GIT_PASSWORD")
+				if user != "" && pass != "" {
+					gitTemplate.Username = url.PathEscape(user)
+					gitTemplate.Password = url.PathEscape(pass)
+				}
+			}
+			log.Printf("multi-user: git template configured → %s", tmplURL)
+		}
+
+		userMgr = wiki.NewUserManager(wiki.UserManagerConfig{
+			DataDir:      dataDir,
+			Shared:       sharedCtx,
+			GitTemplate:  gitTemplate,
+			GlobalRemote: remoteConfig,
+			PullInterval: pullInterval,
+			SecretKey:    secretKey,
+		})
+		handler.SetUserManager(userMgr)
+		log.Println("multi-user: enabled — per-user wikis at /~username/")
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
@@ -176,6 +224,9 @@ func main() {
 		<-quit
 		log.Println("shutting down…")
 		autoCommitter.Stop()
+		if userMgr != nil {
+			userMgr.Stop()
+		}
 		db.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
