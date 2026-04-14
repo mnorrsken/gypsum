@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.41.1
+
+### Fixed
+- **Defunct git processes when remote is unreachable** — git subprocesses (e.g. `ssh`, `git-remote-https`) that outlive their parent `git fetch`/`git push` process kept the stdout/stderr pipe open, preventing Go from calling `Wait()` and leaving the parent as a zombie. Fixed by adding a 2-minute timeout to all git operations and setting `WaitDelay` so Go force-closes the pipe and reaps the process if a grandchild lingers after the git process exits.
+- **Sync goroutine accumulation under write bursts** — each page save spawned a new goroutine that queued up waiting for the git mutex. Many pending saves produced a backlog of goroutines, each eventually doing a redundant pull+push cycle. Replaced with a single long-lived sync worker goroutine and a buffered channel so concurrent saves coalesce into at most one queued sync.
+
 ## v0.41.0
 
 ### Added

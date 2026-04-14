@@ -1,6 +1,7 @@
 package wiki
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,11 @@ import (
 	"sync"
 	"time"
 )
+
+// gitTimeout is the maximum time allowed for any single git operation.
+// Network operations (fetch, push) can legitimately take a while on slow
+// connections, but should never block for hours if the server is unreachable.
+const gitTimeout = 2 * time.Minute
 
 type HistoryEntry struct {
 	Hash    string
@@ -34,10 +40,11 @@ type GitRemoteConfig struct {
 }
 
 type GitAutoCommitter struct {
-	dataDir        string
-	remote         *GitRemoteConfig
-	mu             sync.Mutex // serialise git operations
-	stopCh         chan struct{}
+	dataDir   string
+	remote    *GitRemoteConfig
+	mu        sync.Mutex // serialise git operations
+	stopCh    chan struct{}
+	syncCh    chan struct{} // buffered(1): signal the sync worker; excess signals are dropped
 	afterPull func(kind DocKind, changedSlugs []string) // optional; called after pull per doc kind
 }
 
@@ -46,11 +53,13 @@ func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommit
 		dataDir: dataDir,
 		remote:  remote,
 		stopCh:  make(chan struct{}),
+		syncCh:  make(chan struct{}, 1),
 	}
 	c.markSafeDirectory()
 	c.ensureRepo()
 	c.configureRemote()
 	c.initialPull()
+	go c.syncWorker()
 	return c
 }
 
@@ -269,19 +278,32 @@ func (c *GitAutoCommitter) pullRebase() {
 	}
 }
 
-// syncAsync pulls (rebase) and pushes to the remote in the background so that
-// the caller (HTTP handler) is not blocked by network I/O.
-// Must be called without c.mu held — the goroutine acquires the lock itself.
+// syncAsync signals the sync worker to pull+push. Multiple calls while a sync
+// is already pending collapse into one — at most one sync is ever queued.
 func (c *GitAutoCommitter) syncAsync() {
 	if !c.hasRemote() {
 		return
 	}
-	go func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.pullRebase()
-		c.push()
-	}()
+	select {
+	case c.syncCh <- struct{}{}:
+	default: // sync already queued; this one is covered
+	}
+}
+
+// syncWorker is a long-lived goroutine that serialises remote sync operations.
+// It drains syncCh, so rapid saves cause at most one extra pull+push cycle.
+func (c *GitAutoCommitter) syncWorker() {
+	for {
+		select {
+		case <-c.stopCh:
+			return
+		case <-c.syncCh:
+			c.mu.Lock()
+			c.pullRebase()
+			c.push()
+			c.mu.Unlock()
+		}
+	}
 }
 
 // push pushes the current branch to the remote. Falls back to force-push on rejection.
@@ -410,10 +432,13 @@ func (c *GitAutoCommitter) hasStagedChanges(relativeFilePath string) (bool, erro
 }
 
 func (c *GitAutoCommitter) runGit(args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
 	fullArgs := make([]string, 0, len(args)+2)
 	fullArgs = append(fullArgs, "-C", c.dataDir)
 	fullArgs = append(fullArgs, args...)
-	cmd := exec.Command("git", fullArgs...)
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
+	cmd.WaitDelay = 5 * time.Second
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git %v failed: %v (%s)", args, err, string(out))
 	}
@@ -421,10 +446,14 @@ func (c *GitAutoCommitter) runGit(args ...string) error {
 }
 
 func (c *GitAutoCommitter) runGitOutput(args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
 	fullArgs := make([]string, 0, len(args)+2)
 	fullArgs = append(fullArgs, "-C", c.dataDir)
 	fullArgs = append(fullArgs, args...)
-	out, err := exec.Command("git", fullArgs...).Output()
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
+	cmd.WaitDelay = 5 * time.Second
+	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
 }
 
