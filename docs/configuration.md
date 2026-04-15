@@ -6,6 +6,7 @@
 |---|---|---|
 | `GYPSUM_SECRET_KEY` | `change-me-in-production` | Passphrase used to derive the AES-256-GCM encryption key for secure fields. **Set this in production.** |
 | `GYPSUM_GIT_PULL_INTERVAL` | `5m` | How often to pull from the git remote (Go duration string, e.g. `2m`, `30s`). Only used when a git remote is configured. |
+| `GYPSUM_GIT_PUSH_DELAY` | `30s` | Debounce window for pushes — edits within the window coalesce into a single push after the burst settles. Set to `0` to push immediately on every commit. Only used when a git remote is configured. |
 | `GYPSUM_AUTH_USER_HEADER` | _(empty)_ | Set to a header name (e.g. `Remote-User`) to enable reverse proxy authentication. The username is used as the git commit author. |
 | `GYPSUM_AUTH_GROUP_HEADER` | `Remote-Group` | Header containing comma-separated group names. Only used when `GYPSUM_AUTH_USER_HEADER` is set. |
 | `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | If set, the group header must contain this group or the request is rejected with 403. |
@@ -55,3 +56,4 @@ These are used by the Docker entrypoint script in addition to the variables abov
 | `GYPSUM_GIT_COMMIT_NAME` | _(empty)_ | Git commit author name. |
 | `GYPSUM_GIT_COMMIT_EMAIL` | _(empty)_ | Git commit author email. |
 | `GYPSUM_GIT_PULL_INTERVAL` | `5m` | How often to pull from the remote. |
+| `GYPSUM_GIT_PUSH_DELAY` | `30s` | Debounce window for pushes; `0` disables debouncing. |

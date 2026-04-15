@@ -89,6 +89,10 @@ git:
   # How often to pull from the remote (Go duration, e.g. "5m", "30s").
   # Only used when remoteUrl is set.
   pullInterval: "5m"
+  # Debounce window for pushes: edits within this window coalesce into a
+  # single push after the burst settles. Set to "0" to push immediately on
+  # every commit. Only used when remoteUrl is set.
+  pushDelay: "30s"
   # Reference an existing Kubernetes Secret for git credentials.
   # The secret must contain keys named "password" and/or "token".
   existingSecret: ""

@@ -76,6 +76,14 @@ func main() {
 			RemoteURL:   authURL,
 			CommitName:  envOrDefault("GYPSUM_GIT_COMMIT_NAME", "Gypsum"),
 			CommitEmail: envOrDefault("GYPSUM_GIT_COMMIT_EMAIL", "gypsum@local"),
+			PushDelay:   30 * time.Second,
+		}
+		if v := os.Getenv("GYPSUM_GIT_PUSH_DELAY"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil && d >= 0 {
+				remoteConfig.PushDelay = d
+			} else {
+				log.Printf("git: invalid GYPSUM_GIT_PUSH_DELAY %q, using default %s", v, remoteConfig.PushDelay)
+			}
 		}
 	}
 

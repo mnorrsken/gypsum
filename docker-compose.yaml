@@ -14,6 +14,7 @@ services:
       # GYPSUM_GIT_REMOTE_URL: "https://github.com/user/wiki-data.git"
       # GYPSUM_GIT_TOKEN: ""
       # GYPSUM_GIT_PULL_INTERVAL: "5m"
+      # GYPSUM_GIT_PUSH_DELAY: "30s"
     restart: unless-stopped
 
 volumes:

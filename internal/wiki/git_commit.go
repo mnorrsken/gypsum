@@ -33,33 +33,46 @@ type GlobalHistoryEntry struct {
 
 // GitRemoteConfig holds optional remote sync settings.
 type GitRemoteConfig struct {
-	RemoteName  string // e.g. "origin"
-	RemoteURL   string // full URL (with auth baked in if needed)
-	CommitName  string // user.name for commits
-	CommitEmail string // user.email for commits
+	RemoteName  string        // e.g. "origin"
+	RemoteURL   string        // full URL (with auth baked in if needed)
+	CommitName  string        // user.name for commits
+	CommitEmail string        // user.email for commits
+	PushDelay   time.Duration // debounce window; 0 = push immediately
 }
+
+// defaultPushDelay is the debounce window applied when PushDelay is unset.
+const defaultPushDelay = 30 * time.Second
 
 type GitAutoCommitter struct {
 	dataDir   string
 	remote    *GitRemoteConfig
 	mu        sync.Mutex // serialise git operations
 	stopCh    chan struct{}
-	syncCh    chan struct{} // buffered(1): signal the sync worker; excess signals are dropped
+	pushMu    sync.Mutex    // guards pushTimer
+	pushTimer *time.Timer   // active debounce timer (nil if none pending)
+	pushDelay time.Duration // copy of remote.PushDelay for fast access
+	pushWG    sync.WaitGroup
 	afterPull func(kind DocKind, changedSlugs []string) // optional; called after pull per doc kind
 }
 
 func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommitter {
+	delay := defaultPushDelay
+	if remote != nil {
+		delay = remote.PushDelay
+	}
+	if delay < 0 {
+		delay = 0
+	}
 	c := &GitAutoCommitter{
-		dataDir: dataDir,
-		remote:  remote,
-		stopCh:  make(chan struct{}),
-		syncCh:  make(chan struct{}, 1),
+		dataDir:   dataDir,
+		remote:    remote,
+		stopCh:    make(chan struct{}),
+		pushDelay: delay,
 	}
 	c.markSafeDirectory()
 	c.ensureRepo()
 	c.configureRemote()
 	c.initialPull()
-	go c.syncWorker()
 	return c
 }
 
@@ -108,7 +121,7 @@ func (c *GitAutoCommitter) commitDelete(relPath, message, author string) error {
 		return err
 	}
 	c.mu.Unlock()
-	c.syncAsync()
+	c.schedulePush()
 	return nil
 }
 
@@ -143,7 +156,7 @@ func (c *GitAutoCommitter) commitFile(relativeFilePath, message, author string) 
 		return err
 	}
 	c.mu.Unlock()
-	c.syncAsync()
+	c.schedulePush()
 	return nil
 }
 
@@ -189,7 +202,9 @@ func (c *GitAutoCommitter) initialPull() {
 }
 
 // StartPeriodicPull launches a background goroutine that pulls from the
-// remote at the given interval. Call Stop() to terminate it.
+// remote at the given interval. Call Stop() to terminate it. If a debounced
+// push is pending when the ticker fires, it is folded into the same locked
+// pull+push cycle so the two never duplicate git work back-to-back.
 func (c *GitAutoCommitter) StartPeriodicPull(interval time.Duration) {
 	if !c.hasRemote() {
 		return
@@ -200,9 +215,7 @@ func (c *GitAutoCommitter) StartPeriodicPull(interval time.Duration) {
 		for {
 			select {
 			case <-ticker.C:
-				c.mu.Lock()
-				c.pullRebase()
-				c.mu.Unlock()
+				c.periodicSync()
 			case <-c.stopCh:
 				return
 			}
@@ -211,12 +224,62 @@ func (c *GitAutoCommitter) StartPeriodicPull(interval time.Duration) {
 	log.Printf("git: periodic pull every %s", interval)
 }
 
-// Stop terminates the periodic pull goroutine.
+// periodicSync performs one periodic pull. If a debounced push is pending it
+// is absorbed into this cycle (single pullRebase + push) so that the push
+// callback never fires redundantly right after the periodic tick.
+func (c *GitAutoCommitter) periodicSync() {
+	foldPush := c.consumePendingPush()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pullRebase()
+	if foldPush {
+		c.push()
+	}
+}
+
+// consumePendingPush cancels the debounce timer if one is armed and returns
+// true when the caller should perform the push itself (the WaitGroup ticket
+// that schedulePush reserved is released here). Returns false when no timer
+// is pending, or when the timer already fired — in that case the existing
+// callback will serialise on c.mu naturally, so there is nothing to fold.
+func (c *GitAutoCommitter) consumePendingPush() bool {
+	c.pushMu.Lock()
+	defer c.pushMu.Unlock()
+	if c.pushTimer == nil {
+		return false
+	}
+	if !c.pushTimer.Stop() {
+		// Timer already fired; its callback is running (or about to) and
+		// will acquire c.mu after us. Leave pushTimer so schedulePush can
+		// still observe it.
+		return false
+	}
+	c.pushTimer = nil
+	c.pushWG.Done()
+	return true
+}
+
+// Stop terminates the periodic pull goroutine and flushes any pending push
+// synchronously so that buffered commits are not lost on shutdown.
 func (c *GitAutoCommitter) Stop() {
 	if c == nil {
 		return
 	}
 	close(c.stopCh)
+
+	c.pushMu.Lock()
+	t := c.pushTimer
+	c.pushTimer = nil
+	c.pushMu.Unlock()
+
+	if t != nil && t.Stop() {
+		// Cancelled a pending timer before it fired; flush its push now and
+		// release the WaitGroup ticket that schedulePush reserved for it.
+		c.doPush()
+		c.pushWG.Done()
+	}
+	// Wait for any in-flight push callback to finish.
+	c.pushWG.Wait()
 }
 
 // pullRebase fetches from the remote and rebases local commits on top.
@@ -278,32 +341,44 @@ func (c *GitAutoCommitter) pullRebase() {
 	}
 }
 
-// syncAsync signals the sync worker to pull+push. Multiple calls while a sync
-// is already pending collapse into one — at most one sync is ever queued.
-func (c *GitAutoCommitter) syncAsync() {
+// schedulePush debounces remote pushes so that a burst of edits results in a
+// single pull+push after the burst settles. The first edit in a burst arms a
+// timer; each subsequent edit cancels and re-arms it. When pushDelay is 0 the
+// push runs immediately on a new goroutine. Must be called with c.mu released.
+func (c *GitAutoCommitter) schedulePush() {
 	if !c.hasRemote() {
 		return
 	}
-	select {
-	case c.syncCh <- struct{}{}:
-	default: // sync already queued; this one is covered
+	c.pushMu.Lock()
+	defer c.pushMu.Unlock()
+
+	// Cancel any pending timer. If Stop returns true the previous
+	// WaitGroup ticket is still outstanding and can be reused for the
+	// fresh timer; otherwise the old callback already (or will shortly)
+	// call Done, so we must add a new ticket.
+	reuseTicket := false
+	if c.pushTimer != nil && c.pushTimer.Stop() {
+		reuseTicket = true
 	}
+	if !reuseTicket {
+		c.pushWG.Add(1)
+	}
+	c.pushTimer = time.AfterFunc(c.pushDelay, c.firePushCallback)
 }
 
-// syncWorker is a long-lived goroutine that serialises remote sync operations.
-// It drains syncCh, so rapid saves cause at most one extra pull+push cycle.
-func (c *GitAutoCommitter) syncWorker() {
-	for {
-		select {
-		case <-c.stopCh:
-			return
-		case <-c.syncCh:
-			c.mu.Lock()
-			c.pullRebase()
-			c.push()
-			c.mu.Unlock()
-		}
-	}
+// firePushCallback is the AfterFunc callback; it is scheduled on its own
+// goroutine by the runtime, so doPush's git work does not block the timer.
+func (c *GitAutoCommitter) firePushCallback() {
+	defer c.pushWG.Done()
+	c.doPush()
+}
+
+// doPush performs the actual pull-rebase + push under the main git lock.
+func (c *GitAutoCommitter) doPush() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pullRebase()
+	c.push()
 }
 
 // push pushes the current branch to the remote. Falls back to force-push on rejection.

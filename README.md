@@ -60,6 +60,7 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 |---|---|---|
 | `GYPSUM_SECRET_KEY` | `change-me-in-production` | AES-256-GCM encryption passphrase. **Set this in production.** |
 | `GYPSUM_GIT_PULL_INTERVAL` | `5m` | Pull interval when a git remote is configured |
+| `GYPSUM_GIT_PUSH_DELAY` | `30s` | Debounce window coalescing rapid edits into one push; `0` pushes immediately |
 | `GYPSUM_AUTH_USER_HEADER` | _(empty)_ | Header for reverse proxy auth (e.g. `Remote-User`) |
 | `GYPSUM_METRICS_PORT` | `:9090` | Prometheus metrics server listen address |
 | `GYPSUM_PROBE_PORT` | `:9091` | Health probe listen address |

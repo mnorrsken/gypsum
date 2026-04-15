@@ -124,6 +124,10 @@ spec:
             - name: GYPSUM_GIT_PULL_INTERVAL
               value: {{ .Values.git.pullInterval | quote }}
             {{- end }}
+            {{- if .Values.git.pushDelay }}
+            - name: GYPSUM_GIT_PUSH_DELAY
+              value: {{ .Values.git.pushDelay | quote }}
+            {{- end }}
             {{- if .Values.oauth.enabled }}
             - name: GYPSUM_OAUTH_ENABLED
               value: "true"

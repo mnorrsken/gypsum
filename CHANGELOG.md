@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.42.0
+
+### Added
+- **Debounced git push** — bursts of MCP edits now coalesce into a single push after the burst settles, instead of one push per commit. Configurable via `GYPSUM_GIT_PUSH_DELAY` (default `30s`; set to `0` to restore immediate push). Local commits remain per-edit so git history stays granular. On shutdown any pending push is flushed synchronously so no commits are lost.
+
+### Changed
+- **Periodic pull folds pending pushes** — when the periodic pull ticker fires while a debounced push is queued, the two are combined into a single locked pull+push cycle so they never duplicate git work back-to-back.
+
 ## v0.41.1
 
 ### Fixed

@@ -44,3 +44,4 @@ All [application variables](configuration.md) apply inside the container. The Do
 | `GYPSUM_GIT_COMMIT_NAME` | _(empty)_ | Git commit author name |
 | `GYPSUM_GIT_COMMIT_EMAIL` | _(empty)_ | Git commit author email |
 | `GYPSUM_GIT_PULL_INTERVAL` | `5m` | How often to pull from the remote |
+| `GYPSUM_GIT_PUSH_DELAY` | `30s` | Debounce window for pushes; `0` pushes immediately |
