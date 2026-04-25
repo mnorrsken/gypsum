@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.43.1
+
+### Changed
+- **`rekey` is now a subcommand of the gypsum binary** — the rekey CLI logic moved into `internal/wiki/rekey.go` and the gypsum binary dispatches when invoked as `rekey` (via symlink) or as `gypsum rekey ...`. The Docker image now ships a single binary plus a `rekey → gypsum` symlink, dropping ~16 MB. `go run ./cmd/rekey` still works locally; existing usage (`rekey -dir ... -old-key ... -new-key ...`) is unchanged.
+- **Binaries live in `/usr/local/bin/`** — both `gypsum` and `rekey` are now on the default `$PATH` inside the container. `docker exec <ctr> rekey ...` works without an absolute path.
+
 ## v0.43.0
 
 ### Changed
