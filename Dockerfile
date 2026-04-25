@@ -19,14 +19,19 @@ RUN apk add --no-cache git ca-certificates \
     && adduser -u 1000 -S app -G app
 WORKDIR /app
 
-COPY --from=builder /out/gypsum /app/gypsum
+COPY --from=builder /out/gypsum /usr/local/bin/gypsum
 COPY web /app/web
 COPY docs /app/docs
-COPY cmd/wiki/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY cmd/wiki/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-RUN chmod +x /app/docker-entrypoint.sh && mkdir -p /app/data/pages && chown -R app:app /app
+# `rekey` is the same gypsum binary; main.go dispatches on argv[0] so
+# `rekey -dir ... -old-key ... -new-key ...` runs the rekey CLI without
+# shipping a second binary.
+RUN ln -s gypsum /usr/local/bin/rekey \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && mkdir -p /app/data/pages && chown -R app:app /app
 
 USER app
 EXPOSE 8080 9091
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

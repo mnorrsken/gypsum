@@ -27,4 +27,4 @@ fi
 # Remote configuration, pulling, and pushing are handled by the Go
 # application via GitAutoCommitter — no shell-based setup needed.
 
-exec /app/gypsum
+exec gypsum

@@ -23,6 +23,16 @@ var seedPages embed.FS
 var seedSkills embed.FS
 
 func main() {
+	// Multi-call binary: when invoked as `rekey` (via symlink) or as
+	// `gypsum rekey ...`, dispatch to the rekey CLI instead of starting
+	// the server. This keeps a single binary in the Docker image.
+	if filepath.Base(os.Args[0]) == "rekey" {
+		os.Exit(wiki.RunRekey(os.Args[1:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "rekey" {
+		os.Exit(wiki.RunRekey(os.Args[2:]))
+	}
+
 	workspaceRoot, err := os.Getwd()
 	if err != nil {
 		log.Fatalf("failed to get working directory: %v", err)
