@@ -15,31 +15,43 @@
 
 <script>
 (() => {
-  // Helper: decrypt ciphertext via the server endpoint (used by copy button).
-  async function decryptSecret(ciphertext) {
-    const response = await fetch("/secure-inline/unlock", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ ciphertext }).toString(),
-    });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || "Decryption failed");
+  const LOCK_TIMEOUT_MS = 60000;
+  const LOCKED_LABEL = "🔒****";
+
+  async function unlockInline(el) {
+    const ciphertext = el.dataset.ciphertext || "";
+    if (!ciphertext) return;
+    try {
+      await window.gypsumSecure.requireKey();
+      const plain = await window.gypsumSecure.decrypt(ciphertext);
+      el.textContent = plain;
+      el.classList.add("unlocked");
+      setTimeout(() => {
+        el.textContent = LOCKED_LABEL;
+        el.classList.remove("unlocked");
+      }, LOCK_TIMEOUT_MS);
+    } catch (err) {
+      console.error("secure reveal failed:", err);
     }
-    return payload.content || "";
   }
 
-  // Copy buttons — decrypt and copy without revealing.
+  // Click on the redacted span reveals plaintext.
+  document.querySelectorAll(".secure-inline").forEach((el) => {
+    el.addEventListener("click", () => unlockInline(el));
+  });
+
+  // Copy buttons — decrypt and copy without revealing on screen.
   document.querySelectorAll(".secure-copy-btn").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const ciphertext = btn.dataset.ciphertext || "";
       if (!ciphertext) return;
       try {
-        const text = await decryptSecret(ciphertext);
+        await window.gypsumSecure.requireKey();
+        const text = await window.gypsumSecure.decrypt(ciphertext);
         await navigator.clipboard.writeText(text);
-        btn.textContent = "\u2713";
-        setTimeout(() => { btn.textContent = "\ud83d\udccb"; }, 1500);
+        btn.textContent = "✓";
+        setTimeout(() => { btn.textContent = "📋"; }, 1500);
       } catch (error) {
         console.error("secure copy failed:", error);
       }
@@ -61,18 +73,6 @@
         cb.disabled = false;
       }
     });
-  });
-
-  // Auto-relock revealed secrets after 60 seconds.
-  document.body.addEventListener("htmx:afterSwap", (e) => {
-    const el = e.detail.elt;
-    if (el.classList && el.classList.contains("secure-inline")) {
-      el.classList.add("unlocked");
-      setTimeout(() => {
-        el.innerHTML = "\ud83d\udd12****";
-        el.classList.remove("unlocked");
-      }, 60000);
-    }
   });
 })();
 </script>

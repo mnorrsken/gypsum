@@ -7,7 +7,6 @@ services:
     volumes:
       - wiki-data:/app/data
     environment:
-      GYPSUM_SECRET_KEY: "change-me-in-production"
       GYPSUM_GIT_INIT: "true"
       GYPSUM_GIT_COMMIT_NAME: "Gypsum"
       GYPSUM_GIT_COMMIT_EMAIL: "gypsum@local"

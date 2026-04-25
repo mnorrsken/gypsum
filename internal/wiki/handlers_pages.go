@@ -139,7 +139,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 		h.render(w, "edit", TemplateData{
 			Title:      prefix + title,
 			Page:       &Page{Slug: slug, Title: title},
-			RawContent: h.crypto.DecryptForEdit(raw),
+			RawContent: raw,
 			IsNew:      isNew,
 		})
 	case http.MethodPost:
@@ -175,21 +175,17 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Show diff preview if requested
+		// Show diff preview if requested. The client has already encrypted
+		// {{secure:...}} blocks (preserving original ciphertext for unchanged
+		// blocks) before submitting, so we diff incoming vs. stored content
+		// directly.
 		if r.FormValue("showdiff") == "1" {
 			title := TitleFromSlug(slug)
 			oldContent := ""
 			if page, _ := h.store.Load(KindPage, slug); page != nil {
 				oldContent = page.Content
 			}
-			// Encrypt the incoming editor content, preserving original
-			// ciphertext for unchanged blocks so the diff is clean.
-			newEncrypted, err := h.crypto.EncryptForSavePreserving(content, oldContent)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			diffHTML := RenderUnifiedDiff(oldContent, newEncrypted, slug)
+			diffHTML := RenderUnifiedDiff(oldContent, content, slug)
 			h.render(w, "diff", TemplateData{
 				Title:      "Diff: " + title,
 				Page:       &Page{Slug: slug, Title: title},
@@ -199,12 +195,7 @@ func (h *Handler) handleEdit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		encrypted, err := h.crypto.EncryptForSave(content)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if err := h.store.Save(KindPage, slug, encrypted); err != nil {
+		if err := h.store.Save(KindPage, slug, content); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -479,19 +470,13 @@ func (h *Handler) handleToggleCheckbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	decrypted := h.crypto.DecryptForEdit(page.Content)
-	updated, ok := toggleCheckbox(decrypted, index)
+	updated, ok := toggleCheckbox(page.Content, index)
 	if !ok {
 		http.Error(w, "checkbox index out of range", http.StatusBadRequest)
 		return
 	}
 
-	encrypted, err := h.crypto.EncryptForSave(updated)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := h.store.Save(KindPage, slug, encrypted); err != nil {
+	if err := h.store.Save(KindPage, slug, updated); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

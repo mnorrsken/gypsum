@@ -14,6 +14,8 @@
   <div class="editor-layout">
     <form method="post" action="/edit-skill/{{.Page.Slug}}" class="editor-form">
       <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
+      <input type="hidden" id="editor-original" value="{{.RawContent}}" />
+      <p id="editor-secure-status" class="hint" hidden></p>
       <div class="page-actions">
         <button type="submit">Save</button>
         <a class="button secondary" href="/skills/{{.Page.Slug}}">Cancel</a>
@@ -24,4 +26,63 @@
     </form>
   </div>
 </article>
+
+<script>
+(() => {
+  const textarea = document.getElementById("editor");
+  const form = textarea.closest("form");
+  const originalInput = document.getElementById("editor-original");
+  const secureStatus = document.getElementById("editor-secure-status");
+
+  // Build prefixes from "{" + "{" so the raw delimiter doesn't appear in
+  // source — Go's html/template would otherwise read it as an action start.
+  const OPEN = "{" + "{";
+  const SECURE_AES_PREFIX = OPEN + "secure_aes:";
+  const SECURE_PREFIX = OPEN + "secure:";
+  const hasSecureCipher = (s) => s.indexOf(SECURE_AES_PREFIX) >= 0;
+  const hasSecurePlain = (s) => s.indexOf(SECURE_PREFIX) >= 0;
+
+  function showStatus(msg, isError) {
+    secureStatus.textContent = msg;
+    secureStatus.hidden = !msg;
+    secureStatus.classList.toggle("error", !!isError);
+  }
+
+  async function decryptEditor() {
+    if (!hasSecureCipher(originalInput.value)) return;
+    try {
+      await window.gypsumSecure.requireKey();
+      textarea.value = await window.gypsumSecure.decryptForEdit(textarea.value);
+      showStatus("");
+    } catch (err) {
+      showStatus("Editor is locked — secure blocks shown as ciphertext. Click 🔒 to unlock.", true);
+    }
+  }
+
+  if (window.gypsumSecure) {
+    window.gypsumSecure.ready.then(decryptEditor);
+    window.gypsumSecure.onChange((unlocked) => {
+      if (unlocked && hasSecureCipher(textarea.value)) decryptEditor();
+    });
+  }
+
+  let submitting = false;
+  form.addEventListener("submit", async (e) => {
+    if (submitting) return;
+    const hasPlain = hasSecurePlain(textarea.value);
+    if (!hasPlain && !hasSecureCipher(originalInput.value)) return;
+    e.preventDefault();
+    try {
+      if (hasPlain) {
+        await window.gypsumSecure.requireKey();
+      }
+      textarea.value = await window.gypsumSecure.encryptForSave(textarea.value, originalInput.value);
+      submitting = true;
+      form.requestSubmit ? form.requestSubmit() : form.submit();
+    } catch (err) {
+      showStatus("Save aborted: " + (err && err.message ? err.message : "unlock cancelled"), true);
+    }
+  });
+})();
+</script>
 {{end}}

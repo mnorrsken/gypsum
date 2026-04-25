@@ -27,13 +27,21 @@ password: s3cret
 }}
 ```
 
-On save, the content is encrypted with AES-256-GCM:
+On save, the content is encrypted with AES-256-GCM in your browser before it
+reaches the server, becoming:
 
 ```
 WiFi password: {{secure_aes:BASE64_CIPHERTEXT}}
 ```
 
-When viewing the page, encrypted fields appear as `🔒****`. Click to decrypt and reveal for 60 seconds, then it auto-hides. A clipboard copy button appears next to revealed values.
+The passphrase is entered once via the 🔒 icon in the top bar and can be
+remembered on the device (stored as the SHA-256-derived key in
+`localStorage`). The server never sees the passphrase, the derived key, or
+any plaintext.
+
+When viewing the page, encrypted fields appear as `🔒****`. Click to decrypt
+in the browser and reveal for 60 seconds, then it auto-hides. A clipboard
+copy button appears next to revealed values.
 
 The editor validates custom tags on save — unknown tags, unclosed blocks, and improperly formatted multiline blocks are rejected with clear error messages.
 

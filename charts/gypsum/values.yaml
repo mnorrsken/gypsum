@@ -67,15 +67,6 @@ persistence:
     - ReadWriteOnce
   size: 1Gi
 
-# Gypsum application settings.
-gypsum:
-  # Secret key used for AES-256-GCM encryption of secure fields.
-  # If left empty, a pre-install hook generates a random secret automatically.
-  secretKey: ""
-  # Reference an existing Kubernetes Secret instead of creating one.
-  # The secret must contain a key named "secret-key".
-  existingSecret: ""
-
 # Git configuration (passed as environment variables).
 git:
   init: true

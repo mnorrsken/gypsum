@@ -75,11 +75,6 @@ spec:
               protocol: TCP
             {{- end }}
           env:
-            - name: GYPSUM_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "gypsum.secretName" . }}
-                  key: secret-key
             {{- if .Values.git.init }}
             - name: GYPSUM_GIT_INIT
               value: "true"

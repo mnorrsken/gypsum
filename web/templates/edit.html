@@ -15,6 +15,8 @@
   <div class="editor-layout">
     <form method="post" action="/edit/{{.Page.Slug}}" class="editor-form">
       <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
+      <input type="hidden" id="editor-original" value="{{.RawContent}}" />
+      <p id="editor-secure-status" class="hint" hidden></p>
       <div class="page-actions">
         <button type="submit">Save</button>
         <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
@@ -141,6 +143,64 @@ password: s3cret
 (() => {
   const textarea = document.getElementById("editor");
   const form = textarea.closest("form");
+  const originalInput = document.getElementById("editor-original");
+  const secureStatus = document.getElementById("editor-secure-status");
+
+  // --- Client-side decrypt on load / encrypt on submit ---
+  // Build prefixes from "{" + "{" so the raw delimiter doesn't appear in
+  // source — Go's html/template would otherwise read it as an action start.
+  const OPEN = "{" + "{";
+  const SECURE_AES_PREFIX = OPEN + "secure_aes:";
+  const SECURE_PREFIX = OPEN + "secure:";
+  const hasSecureCipher = (s) => s.indexOf(SECURE_AES_PREFIX) >= 0;
+  const hasSecurePlain = (s) => s.indexOf(SECURE_PREFIX) >= 0;
+
+  function showStatus(msg, isError) {
+    secureStatus.textContent = msg;
+    secureStatus.hidden = !msg;
+    secureStatus.classList.toggle("error", !!isError);
+  }
+
+  async function decryptEditor() {
+    if (!hasSecureCipher(originalInput.value)) return;
+    try {
+      await window.gypsumSecure.requireKey();
+      const plain = await window.gypsumSecure.decryptForEdit(textarea.value);
+      textarea.value = plain;
+      showStatus("");
+    } catch (err) {
+      showStatus("Editor is locked — secure blocks shown as ciphertext. Click 🔒 to unlock.", true);
+    }
+  }
+
+  // Re-decrypt when the user unlocks after the page already loaded.
+  if (window.gypsumSecure) {
+    window.gypsumSecure.ready.then(decryptEditor);
+    window.gypsumSecure.onChange((unlocked) => {
+      if (unlocked && hasSecureCipher(textarea.value)) decryptEditor();
+    });
+  }
+
+  // Intercept submit, encrypt secure blocks, then submit for real.
+  let submitting = false;
+  form.addEventListener("submit", async (e) => {
+    if (submitting) return; // already encrypted, let the real submit go through
+    const hasPlain = hasSecurePlain(textarea.value);
+    if (!hasPlain && !hasSecureCipher(originalInput.value)) return; // no secure work
+    e.preventDefault();
+    try {
+      if (hasPlain) {
+        await window.gypsumSecure.requireKey();
+      }
+      const oldContent = originalInput.value;
+      const encrypted = await window.gypsumSecure.encryptForSave(textarea.value, oldContent);
+      textarea.value = encrypted;
+      submitting = true;
+      form.requestSubmit ? form.requestSubmit() : form.submit();
+    } catch (err) {
+      showStatus("Save aborted: " + (err && err.message ? err.message : "unlock cancelled"), true);
+    }
+  });
 
   // --- Show-diff toggle (persisted in localStorage) ---
   const diffToggle = document.getElementById("showdiff-toggle");

@@ -2,9 +2,10 @@ package wiki
 
 import (
 	"encoding/json"
-	"fmt"
 	"html/template"
+	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -12,7 +13,6 @@ import (
 
 type Handler struct {
 	store       *PageStore
-	crypto      *ServerCrypto
 	renderer    *MarkdownRenderer
 	templates   string
 	docsDir     string // path to docs/ directory; empty = no docs section
@@ -59,10 +59,9 @@ type TemplateData struct {
 	SkillTags    []string         // tags for the current skill being viewed
 }
 
-func NewHandler(store *PageStore, crypto *ServerCrypto, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
+func NewHandler(store *PageStore, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
 	h := &Handler{
 		store:       store,
-		crypto:      crypto,
 		renderer:    renderer,
 		templates:   templatesDir,
 		autoCommit:  autoCommitter,
@@ -109,9 +108,17 @@ func (h *Handler) parseTemplates() {
 	}
 	for _, name := range names {
 		pagePath := filepath.Join(h.templates, name+".html")
+		// Skip templates that don't exist on disk (test environments may
+		// pass an empty templates dir). Log every other parse error — the
+		// usual cause is a stray "{{" in a script block tripping the
+		// html/template lexer, and silently dropping the template makes
+		// that very hard to diagnose.
+		if _, statErr := os.Stat(pagePath); statErr != nil {
+			continue
+		}
 		tmpl, err := template.New("").Funcs(templateFuncs).ParseFiles(basePath, pagePath)
 		if err != nil {
-			// Templates may not exist in test environments; skip.
+			log.Printf("template %q failed to parse: %v", name, err)
 			continue
 		}
 		h.tmplCache[name] = tmpl
@@ -145,7 +152,6 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/search", h.handleSearch)
 	mux.HandleFunc("/history/", h.handleHistory)
 	mux.HandleFunc("/history-diff/", h.handleHistoryDiff)
-	mux.HandleFunc("/secure-inline/unlock", h.handleInlineSecureUnlock)
 	mux.HandleFunc("/images", h.handleImages)
 	mux.HandleFunc("/images/upload", h.handleImageUpload)
 	mux.HandleFunc("/images/delete", h.handleImageDelete)
@@ -198,36 +204,6 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/wiki/Home", http.StatusFound)
-}
-
-func (h *Handler) handleInlineSecureUnlock(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid form"})
-		return
-	}
-
-	ciphertext := strings.TrimSpace(r.FormValue("ciphertext"))
-	if ciphertext == "" {
-		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing ciphertext"})
-		return
-	}
-
-	plain, err := h.crypto.Decrypt(ciphertext)
-	if err != nil {
-		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "decryption failed"})
-		return
-	}
-
-	if isHTMX(r) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, template.HTMLEscapeString(plain))
-		return
-	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "content": plain})
 }
 
 func (h *Handler) writeJSON(w http.ResponseWriter, status int, payload map[string]any) {

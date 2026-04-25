@@ -1,5 +1,6 @@
 // Command rekey re-encrypts all {{secure_aes:...}} fields across every page
-// in a Gypsum data directory. Use this when rotating the GYPSUM_SECRET_KEY.
+// in a Gypsum data directory. Use this to rotate the encryption passphrase
+// (the same passphrase you enter in the browser unlock dialog).
 //
 // Usage:
 //

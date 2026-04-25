@@ -2,6 +2,23 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.43.0
+
+### Changed
+- **Client-side encryption for secure fields** — `{{secure:...}}` blocks are now encrypted and decrypted entirely in the browser using WebCrypto AES-256-GCM. The server no longer holds the encryption passphrase, never sees plaintext, and stores only ciphertext. A new top-bar 🔒 button opens an unlock dialog where the passphrase is entered; tick "Remember on this device" to persist the SHA-256-derived key in `localStorage`. The wire format and key-derivation function are unchanged, so existing pages decrypt with the same passphrase you previously set in `GYPSUM_SECRET_KEY`.
+- **Logged template parse errors** — `parseTemplates` now logs html/template parse failures instead of silently dropping the template. A new regression test (`TestRealTemplatesParse`) walks every page template against the real `web/templates/` directory so stray `{{` in script blocks fail at test time rather than at render time.
+
+### Removed
+- **`GYPSUM_SECRET_KEY` env var** — no longer read or required. Drop it from your `docker-compose.yaml`, Helm values, and any other deployment manifests after upgrading. The corresponding Helm chart values (`gypsum.secretKey`, `gypsum.existingSecret`), the auto-generated encryption Secret, and the `secret.yaml` template are gone; the `secret-generate-hook` Job now only generates an OAuth password when needed.
+- **`/secure-inline/unlock` endpoint** — the server-side decrypt route is gone. Inline reveal and copy actions in the page view now decrypt locally via the unlocked browser key.
+
+### Migration
+1. Upgrade to v0.43.0.
+2. Open the wiki, click the 🔒 button in the top bar, paste your old `GYPSUM_SECRET_KEY` value, tick "Remember on this device", and Unlock.
+3. Drop `GYPSUM_SECRET_KEY` from your env / compose file / Helm values.
+
+The `rekey` CLI tool is unchanged and still available if you need to rotate the passphrase across stored pages.
+
 ## v0.42.0
 
 ### Added

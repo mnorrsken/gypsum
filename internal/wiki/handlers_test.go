@@ -13,14 +13,40 @@ import (
 	"time"
 )
 
+// TestRealTemplatesParse loads every page template from web/templates against
+// the real base layout and fails if any of them no longer parse. This catches
+// stray "{{" in script blocks, which html/template would silently reject and
+// then leave the route returning "template not found".
+func TestRealTemplatesParse(t *testing.T) {
+	templatesDir, err := filepath.Abs(filepath.Join("..", "..", "web", "templates"))
+	if err != nil {
+		t.Fatalf("resolve templates dir: %v", err)
+	}
+	if _, err := os.Stat(templatesDir); err != nil {
+		t.Skipf("templates dir not present: %v", err)
+	}
+	store := NewPageStore(t.TempDir())
+	h := NewHandler(store, NewMarkdownRenderer(), templatesDir, nil, nil, nil, AllMCPSections)
+
+	expected := []string{
+		"view", "edit", "new", "search", "pages", "history",
+		"history_diff", "images", "diff", "graph", "recent_edits", "share",
+		"doc", "docs", "skills", "skill_view", "skill_edit",
+	}
+	for _, name := range expected {
+		if _, ok := h.tmplCache[name]; !ok {
+			t.Errorf("template %q failed to parse and is missing from cache", name)
+		}
+	}
+}
+
 // newTestHandler creates a Handler with a temp directory and no templates (JSON/redirect-only tests).
 func newTestHandler(t *testing.T) (*Handler, http.Handler) {
 	t.Helper()
 	dir := t.TempDir()
 	store := NewPageStore(dir)
-	crypto := NewServerCrypto("test-key")
 	renderer := NewMarkdownRenderer()
-	h := NewHandler(store, crypto, renderer, t.TempDir(), nil, nil, nil, AllMCPSections)
+	h := NewHandler(store, renderer, t.TempDir(), nil, nil, nil, AllMCPSections)
 	return h, h.Routes()
 }
 
@@ -553,11 +579,10 @@ func newTestHandlerWithOAuth(t *testing.T) (*Handler, *DB, http.Handler) {
 	t.Helper()
 	dir := t.TempDir()
 	store := NewPageStore(dir)
-	crypto := NewServerCrypto("test-key")
 	renderer := NewMarkdownRenderer()
 	db := openTestDB(t)
 	oauth := NewOAuthServer("test-pass", "https://wiki.example.com", time.Hour, db)
-	h := NewHandler(store, crypto, renderer, t.TempDir(), nil, oauth, db, AllMCPSections)
+	h := NewHandler(store, renderer, t.TempDir(), nil, oauth, db, AllMCPSections)
 	return h, db, h.Routes()
 }
 

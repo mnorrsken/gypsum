@@ -59,13 +59,3 @@ Create the name of the service account to use.
 {{- end }}
 {{- end }}
 
-{{/*
-Return the secret name that contains the encryption key.
-*/}}
-{{- define "gypsum.secretName" -}}
-{{- if .Values.gypsum.existingSecret }}
-{{- .Values.gypsum.existingSecret }}
-{{- else }}
-{{- include "gypsum.fullname" . }}
-{{- end }}
-{{- end }}

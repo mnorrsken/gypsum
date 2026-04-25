@@ -4,7 +4,6 @@
 
 | Variable | Default | Description |
 |---|---|---|
-| `GYPSUM_SECRET_KEY` | `change-me-in-production` | Passphrase used to derive the AES-256-GCM encryption key for secure fields. **Set this in production.** |
 | `GYPSUM_GIT_PULL_INTERVAL` | `5m` | How often to pull from the git remote (Go duration string, e.g. `2m`, `30s`). Only used when a git remote is configured. |
 | `GYPSUM_GIT_PUSH_DELAY` | `30s` | Debounce window for pushes — edits within the window coalesce into a single push after the burst settles. Set to `0` to push immediately on every commit. Only used when a git remote is configured. |
 | `GYPSUM_AUTH_USER_HEADER` | _(empty)_ | Set to a header name (e.g. `Remote-User`) to enable reverse proxy authentication. The username is used as the git commit author. |
@@ -28,6 +27,17 @@ Example — read-only wiki for AI assistants:
 ```bash
 GYPSUM_MCP_SECTIONS=read
 ```
+
+## Encryption
+
+Secure fields (`{{secure:...}}`) are encrypted and decrypted entirely in the
+browser using AES-256-GCM. The passphrase never reaches the server. On first
+visit, click the 🔒 icon in the top bar and enter your passphrase; tick
+"Remember on this device" to persist the derived key in `localStorage`.
+
+Existing pages from older Gypsum versions (≤ 0.42.x) decrypt with the same
+passphrase you previously set in `GYPSUM_SECRET_KEY` — the wire format and
+key-derivation function (SHA-256 of the passphrase) are unchanged.
 
 ## OAuth Variables
 

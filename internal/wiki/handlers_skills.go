@@ -115,15 +115,10 @@ func (h *Handler) handleEditSkill(w http.ResponseWriter, r *http.Request) {
 			isNew = true
 		}
 
-		rawContent := skill.Content
-		if h.crypto != nil {
-			rawContent = h.crypto.DecryptForEdit(rawContent)
-		}
-
 		h.render(w, "skill_edit", TemplateData{
 			Title:      skill.Title,
 			Page:       skill,
-			RawContent: rawContent,
+			RawContent: skill.Content,
 			IsNew:      isNew,
 		})
 
@@ -139,15 +134,6 @@ func (h *Handler) handleEditSkill(w http.ResponseWriter, r *http.Request) {
 			if h1, _ := ExtractH1Title(content); h1 != "" {
 				slug = SlugFromTitle(h1)
 			}
-		}
-
-		if h.crypto != nil {
-			encrypted, err := h.crypto.EncryptForSave(content)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			content = encrypted
 		}
 
 		if err := h.store.Save(KindSkill, slug, content); err != nil {

@@ -13,6 +13,7 @@
       if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
+  <script src="/static/secure.js"></script>
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/alpine.min.js" defer></script>
 </head>
@@ -30,6 +31,9 @@
                  hx-target="#search-results" hx-push-url="true" />
           <button type="submit">Search</button>
         </form>
+        <button id="secure-lock-btn" class="lock-toggle" type="button" aria-label="Encryption" title="Encryption locked">
+          <span class="lock-icon">&#128274;</span>
+        </button>
         <button class="theme-toggle" @click="dark = !dark; document.documentElement.setAttribute('data-theme', dark ? 'dark' : ''); localStorage.setItem('theme', dark ? 'dark' : 'light')" aria-label="Toggle dark mode" title="Toggle dark mode">
           <span class="icon-sun">&#9728;&#65039;</span>
           <span class="icon-moon">&#127769;</span>
@@ -89,6 +93,132 @@
     </main>
   </div>
 
+  <div id="secure-lock-dialog" class="lock-dialog-overlay" hidden>
+    <div class="lock-dialog" role="dialog" aria-modal="true" aria-labelledby="secure-lock-title">
+      <div class="lock-dialog-header">
+        <h3 id="secure-lock-title">Encryption</h3>
+        <button type="button" class="lock-dialog-close" id="secure-lock-close" aria-label="Close">&times;</button>
+      </div>
+      <form id="secure-lock-form" class="lock-dialog-body">
+        <p class="hint" id="secure-lock-hint">Enter your encryption passphrase to reveal and edit secure fields.</p>
+        <label class="lock-field">
+          <span>Passphrase</span>
+          <input type="password" id="secure-lock-pass" autocomplete="current-password" autofocus />
+        </label>
+        <label class="lock-remember">
+          <input type="checkbox" id="secure-lock-remember" />
+          <span>Remember on this device</span>
+        </label>
+        <p class="lock-error" id="secure-lock-error" hidden></p>
+        <div class="lock-dialog-actions">
+          <button type="submit" id="secure-lock-submit">Unlock</button>
+          <button type="button" class="button secondary" id="secure-lock-cancel">Cancel</button>
+          <button type="button" class="button danger" id="secure-lock-clear" hidden>Lock &amp; forget</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    var dlg = document.getElementById("secure-lock-dialog");
+    var btn = document.getElementById("secure-lock-btn");
+    var icon = btn.querySelector(".lock-icon");
+    var form = document.getElementById("secure-lock-form");
+    var passInput = document.getElementById("secure-lock-pass");
+    var rememberInput = document.getElementById("secure-lock-remember");
+    var errorEl = document.getElementById("secure-lock-error");
+    var closeBtn = document.getElementById("secure-lock-close");
+    var cancelBtn = document.getElementById("secure-lock-cancel");
+    var clearBtn = document.getElementById("secure-lock-clear");
+    var submitBtn = document.getElementById("secure-lock-submit");
+    var hintEl = document.getElementById("secure-lock-hint");
+
+    var onClose = null; // optional callback when dialog closes
+
+    function refreshIcon() {
+      var unlocked = window.gypsumSecure && window.gypsumSecure.isUnlocked();
+      icon.textContent = unlocked ? "🔓" : "🔒";
+      btn.title = unlocked ? "Encryption unlocked — click to lock" : "Encryption locked — click to unlock";
+      btn.classList.toggle("unlocked", !!unlocked);
+    }
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.hidden = !msg;
+    }
+
+    function openDialog(closeCb) {
+      onClose = closeCb || null;
+      showError("");
+      passInput.value = "";
+      var unlocked = window.gypsumSecure && window.gypsumSecure.isUnlocked();
+      var hasStored = false;
+      try { hasStored = !!localStorage.getItem("gypsum-secret-key"); } catch (_) {}
+      rememberInput.checked = hasStored;
+      clearBtn.hidden = !(unlocked || hasStored);
+      submitBtn.textContent = unlocked ? "Replace key" : "Unlock";
+      hintEl.textContent = unlocked
+        ? "Already unlocked. Enter a passphrase to switch keys, or 'Lock & forget' to clear."
+        : "Enter your encryption passphrase to reveal and edit secure fields.";
+      dlg.hidden = false;
+      setTimeout(function () { passInput.focus(); }, 0);
+    }
+
+    function closeDialog() {
+      dlg.hidden = true;
+      var cb = onClose;
+      onClose = null;
+      if (cb) try { cb(); } catch (_) {}
+    }
+
+    btn.addEventListener("click", function () {
+      openDialog();
+    });
+
+    closeBtn.addEventListener("click", closeDialog);
+    cancelBtn.addEventListener("click", closeDialog);
+    dlg.addEventListener("click", function (e) {
+      if (e.target === dlg) closeDialog();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !dlg.hidden) closeDialog();
+    });
+
+    clearBtn.addEventListener("click", function () {
+      window.gypsumSecure.lock();
+      closeDialog();
+    });
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var pw = passInput.value;
+      if (!pw) {
+        showError("Passphrase required.");
+        return;
+      }
+      submitBtn.disabled = true;
+      window.gypsumSecure.unlock(pw, rememberInput.checked).then(
+        function () {
+          submitBtn.disabled = false;
+          closeDialog();
+        },
+        function (err) {
+          submitBtn.disabled = false;
+          showError(err && err.message ? err.message : "Unlock failed.");
+        }
+      );
+    });
+
+    window.gypsumOpenLockUI = openDialog;
+
+    if (window.gypsumSecure) {
+      window.gypsumSecure.onChange(refreshIcon);
+      window.gypsumSecure.ready.then(refreshIcon, refreshIcon);
+    }
+    refreshIcon();
+  })();
+  </script>
 </body>
 </html>
 {{end}}

@@ -28,12 +28,6 @@ func main() {
 		log.Fatalf("failed to get working directory: %v", err)
 	}
 
-	secretKey := os.Getenv("GYPSUM_SECRET_KEY")
-	if secretKey == "" {
-		secretKey = "change-me-in-production"
-		log.Println("WARNING: GYPSUM_SECRET_KEY not set, using default key")
-	}
-
 	dataDir := filepath.Join(workspaceRoot, "data")
 	repoDir := filepath.Join(dataDir, "repo")
 	pagesDir := filepath.Join(repoDir, "pages")
@@ -61,7 +55,6 @@ func main() {
 
 	store := wiki.NewPageStore(pagesDir)
 	store.SetDB(db)
-	crypto := wiki.NewServerCrypto(secretKey)
 	renderer := wiki.NewMarkdownRenderer()
 
 	var remoteConfig *wiki.GitRemoteConfig
@@ -122,7 +115,7 @@ func main() {
 	}
 
 	mcpSections := wiki.ParseMCPSections(os.Getenv("GYPSUM_MCP_SECTIONS"))
-	handler := wiki.NewHandler(store, crypto, renderer, templatesDir, autoCommitter, oauthServer, db, mcpSections)
+	handler := wiki.NewHandler(store, renderer, templatesDir, autoCommitter, oauthServer, db, mcpSections)
 	docsDir := filepath.Join(workspaceRoot, "docs")
 	if info, err := os.Stat(docsDir); err == nil && info.IsDir() {
 		handler.SetDocsDir(docsDir)
