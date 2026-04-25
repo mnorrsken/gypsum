@@ -181,27 +181,6 @@ password: s3cret
     });
   }
 
-  // Intercept submit, encrypt secure blocks, then submit for real.
-  let submitting = false;
-  form.addEventListener("submit", async (e) => {
-    if (submitting) return; // already encrypted, let the real submit go through
-    const hasPlain = hasSecurePlain(textarea.value);
-    if (!hasPlain && !hasSecureCipher(originalInput.value)) return; // no secure work
-    e.preventDefault();
-    try {
-      if (hasPlain) {
-        await window.gypsumSecure.requireKey();
-      }
-      const oldContent = originalInput.value;
-      const encrypted = await window.gypsumSecure.encryptForSave(textarea.value, oldContent);
-      textarea.value = encrypted;
-      submitting = true;
-      form.requestSubmit ? form.requestSubmit() : form.submit();
-    } catch (err) {
-      showStatus("Save aborted: " + (err && err.message ? err.message : "unlock cancelled"), true);
-    }
-  });
-
   // --- Show-diff toggle (persisted in localStorage) ---
   const diffToggle = document.getElementById("showdiff-toggle");
   const DIFF_PREF_KEY = "gypsum-showdiff";
@@ -209,7 +188,8 @@ password: s3cret
   diffToggle.addEventListener("change", () => {
     localStorage.setItem(DIFF_PREF_KEY, diffToggle.checked ? "1" : "0");
   });
-  form.addEventListener("submit", (e) => {
+
+  function syncShowDiffInput() {
     const prev = form.querySelector('input[name="showdiff"]');
     if (prev) prev.remove();
     if (diffToggle.checked) {
@@ -219,6 +199,35 @@ password: s3cret
       hidden.value = "1";
       form.appendChild(hidden);
     }
+  }
+
+  // Encrypt-on-submit when there's secure work to do. We can't let the form
+  // submit synchronously (encryption is async), so preventDefault, encrypt,
+  // then call form.submit() — which bypasses listeners and goes straight to
+  // the network. We replicate the showdiff-input logic here because the
+  // listener-bypass means the show-diff submit handler below won't fire.
+  // For pages with no secure blocks, this listener returns early and the
+  // default submit flow with the show-diff listener runs as normal.
+  form.addEventListener("submit", async (e) => {
+    const hasPlain = hasSecurePlain(textarea.value);
+    if (!hasPlain && !hasSecureCipher(originalInput.value)) return; // no secure work
+    e.preventDefault();
+    try {
+      if (hasPlain) {
+        await window.gypsumSecure.requireKey();
+      }
+      textarea.value = await window.gypsumSecure.encryptForSave(textarea.value, originalInput.value);
+      syncShowDiffInput();
+      form.submit();
+    } catch (err) {
+      showStatus("Save aborted: " + (err && err.message ? err.message : "unlock cancelled"), true);
+    }
+  });
+
+  // For non-secure pages, this handler attaches the showdiff input on the
+  // natural submit flow.
+  form.addEventListener("submit", (e) => {
+    syncShowDiffInput();
   });
 
   // --- Help panel toggle ---

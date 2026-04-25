@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.43.2
+
+### Fixed
+- **Editor save with secure blocks** — saving a page with `{{secure:...}}` blocks could land on the diff-preview page instead of saving when the "Show diff" preference was set, because the post-encryption resubmit re-fired listener chains in unintended order. The encryption path now calls `form.submit()` directly (bypassing listeners) and replicates the showdiff hidden-input logic inline, so a save click always saves whether or not the diff toggle is on.
+
 ## v0.43.1
 
 ### Changed

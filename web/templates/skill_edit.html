@@ -66,9 +66,7 @@
     });
   }
 
-  let submitting = false;
   form.addEventListener("submit", async (e) => {
-    if (submitting) return;
     const hasPlain = hasSecurePlain(textarea.value);
     if (!hasPlain && !hasSecureCipher(originalInput.value)) return;
     e.preventDefault();
@@ -77,8 +75,7 @@
         await window.gypsumSecure.requireKey();
       }
       textarea.value = await window.gypsumSecure.encryptForSave(textarea.value, originalInput.value);
-      submitting = true;
-      form.requestSubmit ? form.requestSubmit() : form.submit();
+      form.submit();
     } catch (err) {
       showStatus("Save aborted: " + (err && err.message ? err.message : "unlock cancelled"), true);
     }
