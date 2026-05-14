@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.45.0
+
+### Changed
+- **`rekey` renamed to `re-encrypt`** — the passphrase-rotation CLI is now `gypsum re-encrypt -dir <pages-dir> -old-key <old> -new-key <new> [-dry-run]`. The function name (`RunReencrypt`), file (`internal/wiki/reencrypt.go`), and flag-set name follow the same rename. Behaviour and flags are unchanged.
+
+### Removed
+- **Standalone `rekey` binary and Docker symlink** — `cmd/rekey/` is gone, the Makefile no longer builds `bin/rekey[.exe]`, and the Docker image no longer ships the `rekey → gypsum` symlink. Use `gypsum re-encrypt ...` instead; in containers, `docker exec <ctr> gypsum re-encrypt ...`.
+
 ## v0.44.0
 
 ### Changed

@@ -9,17 +9,17 @@ import (
 	"strings"
 )
 
-// RunRekey re-encrypts every {{secure_aes:...}} field across all pages in a
-// directory using a new passphrase. It is invoked both by the standalone
-// cmd/rekey shim and by the `rekey` subcommand of the gypsum binary.
+// RunReencrypt re-encrypts every {{secure_aes:...}} field across all pages in
+// a directory using a new passphrase. It is invoked by the `re-encrypt`
+// subcommand of the gypsum binary.
 //
 // Returns a non-zero exit code when at least one field could not be decrypted
 // with the old key.
-func RunRekey(args []string) int {
+func RunReencrypt(args []string) int {
 	stdout := os.Stdout
 	stderr := os.Stderr
 
-	fs := flag.NewFlagSet("rekey", flag.ContinueOnError)
+	fs := flag.NewFlagSet("re-encrypt", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", "", "path to pages directory (e.g. data/repo/pages)")
 	oldKey := fs.String("old-key", "", "current encryption passphrase")
@@ -30,7 +30,7 @@ func RunRekey(args []string) int {
 	}
 
 	if *dir == "" || *oldKey == "" || *newKey == "" {
-		fmt.Fprintln(stderr, "Usage: rekey -dir <pages-dir> -old-key <old> -new-key <new> [-dry-run]")
+		fmt.Fprintln(stderr, "Usage: gypsum re-encrypt -dir <pages-dir> -old-key <old> -new-key <new> [-dry-run]")
 		return 1
 	}
 
@@ -39,10 +39,10 @@ func RunRekey(args []string) int {
 		return 1
 	}
 
-	return rekeyDir(*dir, *oldKey, *newKey, *dryRun, stdout, stderr)
+	return reencryptDir(*dir, *oldKey, *newKey, *dryRun, stdout, stderr)
 }
 
-func rekeyDir(dir, oldKey, newKey string, dryRun bool, stdout, stderr io.Writer) int {
+func reencryptDir(dir, oldKey, newKey string, dryRun bool, stdout, stderr io.Writer) int {
 	oldCrypto := NewServerCrypto(oldKey)
 	newCrypto := NewServerCrypto(newKey)
 

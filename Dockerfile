@@ -24,11 +24,10 @@ COPY --from=builder /out/gypsum /usr/local/bin/gypsum
 COPY docs /app/docs
 COPY cmd/wiki/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# `rekey` is the same gypsum binary; main.go dispatches on argv[0] so
-# `rekey -dir ... -old-key ... -new-key ...` runs the rekey CLI without
-# shipping a second binary.
-RUN ln -s gypsum /usr/local/bin/rekey \
-    && chmod +x /usr/local/bin/docker-entrypoint.sh \
+# Re-encrypting stored {{secure_aes:...}} fields after rotating the
+# encryption passphrase is available as `gypsum re-encrypt -dir ... -old-key
+# ... -new-key ...` (see docs).
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
     && mkdir -p /app/data/pages && chown -R app:app /app
 
 USER app
