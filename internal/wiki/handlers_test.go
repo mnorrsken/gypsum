@@ -11,22 +11,18 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mnorrsken/gypsum/web"
 )
 
-// TestRealTemplatesParse loads every page template from web/templates against
-// the real base layout and fails if any of them no longer parse. This catches
-// stray "{{" in script blocks, which html/template would silently reject and
-// then leave the route returning "template not found".
+// TestRealTemplatesParse loads every page template from the embedded
+// web/templates tree against the real base layout and fails if any of them no
+// longer parse. This catches stray "{{" in script blocks, which html/template
+// would silently reject and then leave the route returning "template not
+// found".
 func TestRealTemplatesParse(t *testing.T) {
-	templatesDir, err := filepath.Abs(filepath.Join("..", "..", "web", "templates"))
-	if err != nil {
-		t.Fatalf("resolve templates dir: %v", err)
-	}
-	if _, err := os.Stat(templatesDir); err != nil {
-		t.Skipf("templates dir not present: %v", err)
-	}
 	store := NewPageStore(t.TempDir())
-	h := NewHandler(store, NewMarkdownRenderer(), templatesDir, nil, nil, nil, AllMCPSections)
+	h := NewHandler(store, NewMarkdownRenderer(), web.Templates(), nil, nil, nil, AllMCPSections)
 
 	expected := []string{
 		"view", "edit", "new", "search", "pages", "history",
@@ -46,7 +42,7 @@ func newTestHandler(t *testing.T) (*Handler, http.Handler) {
 	dir := t.TempDir()
 	store := NewPageStore(dir)
 	renderer := NewMarkdownRenderer()
-	h := NewHandler(store, renderer, t.TempDir(), nil, nil, nil, AllMCPSections)
+	h := NewHandler(store, renderer, nil, nil, nil, nil, AllMCPSections)
 	return h, h.Routes()
 }
 
@@ -582,7 +578,7 @@ func newTestHandlerWithOAuth(t *testing.T) (*Handler, *DB, http.Handler) {
 	renderer := NewMarkdownRenderer()
 	db := openTestDB(t)
 	oauth := NewOAuthServer("test-pass", "https://wiki.example.com", time.Hour, db)
-	h := NewHandler(store, renderer, t.TempDir(), nil, oauth, db, AllMCPSections)
+	h := NewHandler(store, renderer, nil, nil, oauth, db, AllMCPSections)
 	return h, db, h.Routes()
 }
 

@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.44.0
+
+### Changed
+- **Web assets embedded in the binary** — HTML templates and static JS/CSS (`web/templates/`, `web/static/`) are now compiled into the `gypsum` binary via `//go:embed`. The server no longer reads them from disk at runtime, so the `web/` directory is not needed alongside the binary. The Docker image drops `COPY web /app/web`; deployments that bind-mount or override `web/` will need to be adjusted.
+
 ## v0.43.2
 
 ### Fixed

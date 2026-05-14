@@ -8,6 +8,7 @@ RUN go mod download
 
 COPY cmd ./cmd
 COPY internal ./internal
+COPY web ./web
 
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/gypsum ./cmd/wiki
@@ -20,7 +21,6 @@ RUN apk add --no-cache git ca-certificates \
 WORKDIR /app
 
 COPY --from=builder /out/gypsum /usr/local/bin/gypsum
-COPY web /app/web
 COPY docs /app/docs
 COPY cmd/wiki/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 

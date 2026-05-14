@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mnorrsken/gypsum/internal/wiki"
+	"github.com/mnorrsken/gypsum/web"
 )
 
 //go:embed seed_pages/*.md
@@ -41,8 +42,6 @@ func main() {
 	dataDir := filepath.Join(workspaceRoot, "data")
 	repoDir := filepath.Join(dataDir, "repo")
 	pagesDir := filepath.Join(repoDir, "pages")
-	templatesDir := filepath.Join(workspaceRoot, "web", "templates")
-	staticDir := filepath.Join(workspaceRoot, "web", "static")
 
 	skillsDir := filepath.Join(repoDir, "skills")
 	if err := os.MkdirAll(pagesDir, 0o755); err != nil {
@@ -125,14 +124,14 @@ func main() {
 	}
 
 	mcpSections := wiki.ParseMCPSections(os.Getenv("GYPSUM_MCP_SECTIONS"))
-	handler := wiki.NewHandler(store, renderer, templatesDir, autoCommitter, oauthServer, db, mcpSections)
+	handler := wiki.NewHandler(store, renderer, web.Templates(), autoCommitter, oauthServer, db, mcpSections)
 	docsDir := filepath.Join(workspaceRoot, "docs")
 	if info, err := os.Stat(docsDir); err == nil && info.IsDir() {
 		handler.SetDocsDir(docsDir)
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServerFS(web.Static())))
 
 	var root http.Handler = mux
 	if userHeader := os.Getenv("GYPSUM_AUTH_USER_HEADER"); userHeader != "" {

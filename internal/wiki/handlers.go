@@ -3,10 +3,9 @@ package wiki
 import (
 	"encoding/json"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -14,7 +13,7 @@ import (
 type Handler struct {
 	store       *PageStore
 	renderer    *MarkdownRenderer
-	templates   string
+	templates   fs.FS
 	docsDir     string // path to docs/ directory; empty = no docs section
 	autoCommit  *GitAutoCommitter
 	oauth       *OAuthServer        // non-nil → register /mcp/external + OAuth discovery routes
@@ -59,11 +58,11 @@ type TemplateData struct {
 	SkillTags    []string         // tags for the current skill being viewed
 }
 
-func NewHandler(store *PageStore, renderer *MarkdownRenderer, templatesDir string, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
+func NewHandler(store *PageStore, renderer *MarkdownRenderer, templates fs.FS, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
 	h := &Handler{
 		store:       store,
 		renderer:    renderer,
-		templates:   templatesDir,
+		templates:   templates,
 		autoCommit:  autoCommitter,
 		oauth:       oauth,
 		db:          db,
@@ -99,7 +98,10 @@ var templateFuncs = template.FuncMap{
 
 // parseTemplates pre-parses all page templates paired with the base layout.
 func (h *Handler) parseTemplates() {
-	basePath := filepath.Join(h.templates, "base.html")
+	if h.templates == nil {
+		return
+	}
+	const basePath = "base.html"
 	names := []string{
 		"view", "edit", "new", "search", "pages", "history",
 		"history_diff", "images", "diff", "graph", "recent_edits", "share",
@@ -107,16 +109,16 @@ func (h *Handler) parseTemplates() {
 		"skills", "skill_view", "skill_edit",
 	}
 	for _, name := range names {
-		pagePath := filepath.Join(h.templates, name+".html")
-		// Skip templates that don't exist on disk (test environments may
-		// pass an empty templates dir). Log every other parse error — the
-		// usual cause is a stray "{{" in a script block tripping the
+		pagePath := name + ".html"
+		// Skip templates that aren't present in the FS (test environments
+		// may pass an empty FS). Log every other parse error — the usual
+		// cause is a stray "{{" in a script block tripping the
 		// html/template lexer, and silently dropping the template makes
 		// that very hard to diagnose.
-		if _, statErr := os.Stat(pagePath); statErr != nil {
+		if _, statErr := fs.Stat(h.templates, pagePath); statErr != nil {
 			continue
 		}
-		tmpl, err := template.New("").Funcs(templateFuncs).ParseFiles(basePath, pagePath)
+		tmpl, err := template.New("").Funcs(templateFuncs).ParseFS(h.templates, basePath, pagePath)
 		if err != nil {
 			log.Printf("template %q failed to parse: %v", name, err)
 			continue
@@ -125,16 +127,16 @@ func (h *Handler) parseTemplates() {
 	}
 
 	// Public page template is standalone (no base layout).
-	publicPath := filepath.Join(h.templates, "public.html")
-	if tmpl, err := template.New("").Funcs(templateFuncs).ParseFiles(publicPath); err == nil {
+	const publicPath = "public.html"
+	if tmpl, err := template.New("").Funcs(templateFuncs).ParseFS(h.templates, publicPath); err == nil {
 		h.tmplCache["public"] = tmpl
 	}
 
 	// Partial templates (standalone fragments for htmx responses).
 	partials := []string{"image_grid"}
 	for _, name := range partials {
-		partialPath := filepath.Join(h.templates, "partials", name+".html")
-		tmpl, err := template.New("").Funcs(templateFuncs).ParseFiles(partialPath)
+		partialPath := "partials/" + name + ".html"
+		tmpl, err := template.New("").Funcs(templateFuncs).ParseFS(h.templates, partialPath)
 		if err != nil {
 			continue
 		}
