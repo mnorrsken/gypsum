@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.45.1
+
+### Changed
+- **Smaller binaries** — the Makefile and Dockerfile now build with `-trimpath -ldflags="-s -w"`, stripping DWARF debug info and the symbol table. The `gypsum` binary drops from ~24 MB to ~17 MB (-29 %). Panic stack traces are unaffected (Go's `.gopclntab` still resolves function names); only `dlv`/`gdb` source-level debugging needs an unstripped build.
+
 ## v0.45.0
 
 ### Changed

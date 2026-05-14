@@ -4,6 +4,12 @@ REGISTRY ?= ghcr.io/mnorrsken/gypsum
 TAG      ?= latest
 IMAGE    := $(REGISTRY):$(TAG)
 
+# Strip the symbol table (-s) and DWARF debug info (-w); -trimpath drops
+# absolute build paths from the binary. Shaves ~30 % off binary size with no
+# runtime impact (panic stack traces still resolve via .gopclntab).
+GO_LDFLAGS := -s -w
+GO_BUILD   := go build -trimpath -ldflags="$(GO_LDFLAGS)"
+
 HELM_RELEASE := gypsum
 HELM_CHART   := ./charts/gypsum
 HELM_NS      := gypsum
@@ -42,10 +48,10 @@ test:
 
 build:
 	mkdir -p bin
-	go build -o bin/$(APP_NAME) $(CMD_PATH)
-	go build -o bin/mcp-proxy ./cmd/mcp-proxy
-	GOOS=windows GOARCH=amd64 go build -o bin/$(APP_NAME).exe $(CMD_PATH)
-	GOOS=windows GOARCH=amd64 go build -o bin/mcp-proxy.exe ./cmd/mcp-proxy
+	$(GO_BUILD) -o bin/$(APP_NAME) $(CMD_PATH)
+	$(GO_BUILD) -o bin/mcp-proxy ./cmd/mcp-proxy
+	GOOS=windows GOARCH=amd64 $(GO_BUILD) -o bin/$(APP_NAME).exe $(CMD_PATH)
+	GOOS=windows GOARCH=amd64 $(GO_BUILD) -o bin/mcp-proxy.exe ./cmd/mcp-proxy
 
 run:
 	go run $(CMD_PATH)
