@@ -1,16 +1,16 @@
 module github.com/mnorrsken/gypsum
 
-go 1.25.0
+go 1.26
 
 require (
-	github.com/alecthomas/chroma/v2 v2.24.1
+	github.com/alecthomas/chroma/v2 v2.25.0
 	github.com/yuin/goldmark v1.8.2
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	modernc.org/sqlite v1.50.1
 )
 
 require (
-	github.com/dlclark/regexp2 v1.12.0 // indirect
+	github.com/dlclark/regexp2/v2 v2.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
