@@ -31,13 +31,19 @@ On save, the content is encrypted with AES-256-GCM in your browser before it
 reaches the server, becoming:
 
 ```
-WiFi password: {{secure_aes:BASE64_CIPHERTEXT}}
+WiFi password: {{secure_aes2:BASE64_CIPHERTEXT}}
 ```
 
+The key is derived from your passphrase with PBKDF2-HMAC-SHA256 and the
+per-deployment salt (`GYPSUM_SECURE_SALT`). Older `{{secure_aes:...}}` blocks
+(unsalted SHA-256) still decrypt with the same passphrase; editing a page
+upgrades its blocks to `secure_aes2`. See
+[Configuration → Encryption](configuration.md#encryption) for the salt and bulk
+migration.
+
 The passphrase is entered once via the 🔒 icon in the top bar and can be
-remembered on the device (stored as the SHA-256-derived key in
-`localStorage`). The server never sees the passphrase, the derived key, or
-any plaintext.
+remembered on the device (the derived keys are stored in `localStorage`). The
+server never sees the passphrase, the derived key, or any plaintext.
 
 When viewing the page, encrypted fields appear as `🔒****`. Click to decrypt
 in the browser and reveal for 60 seconds, then it auto-hides. A clipboard
@@ -53,6 +59,7 @@ Prefix any macro or wiki link with a backslash to display it literally without p
 |---|---|
 | `\{{secure:example}}` | `{{secure:example}}` (not encrypted) |
 | `\{{secure_aes:BASE64}}` | `{{secure_aes:BASE64}}` (not expanded) |
+| `\{{secure_aes2:BASE64}}` | `{{secure_aes2:BASE64}}` (not expanded) |
 | `\[[Page Title]]` | `[[Page Title]]` (not a link) |
 
 Content inside backtick code spans (`` `[[like this]]` ``) and fenced code blocks is always displayed verbatim — macros and wiki links inside them are never processed.

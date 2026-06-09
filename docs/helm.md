@@ -65,6 +65,13 @@ helm show values oci://ghcr.io/mnorrsken/charts/gypsum
 | `oauth.tokenTtl` | `24h` | Access token lifetime |
 | `oauth.existingSecret` | `""` | Existing Secret with an `oauth-password` key |
 
+### Secure fields (PBKDF2 salt)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `secureSalt.value` | `""` | Base64 PBKDF2 salt for `{{secure:...}}` fields. If empty, auto-generated |
+| `secureSalt.existingSecret` | `""` | Existing Secret with a `secure-salt` key |
+
 ### Authentication (Reverse Proxy)
 
 | Parameter | Default | Description |
@@ -100,6 +107,13 @@ helm show values oci://ghcr.io/mnorrsken/charts/gypsum
 Encryption of `{{secure:...}}` fields happens entirely in the browser; the
 cluster never holds the encryption passphrase. Each user enters it once via
 the 🔒 dialog in the top bar.
+
+The PBKDF2 salt (`GYPSUM_SECURE_SALT`) is not secret, but it must stay stable —
+changing it makes existing `secure_aes2` fields undecryptable. It follows the
+same pattern as the OAuth password: a pre-install hook auto-generates one into a
+`<release>-gypsum-secure` Secret by default, or set `secureSalt.value` /
+`secureSalt.existingSecret` to manage it yourself. The generated Secret persists
+across upgrades.
 
 The OAuth password (`GYPSUM_OAUTH_PASSWORD`) follows the usual pattern:
 

@@ -1,18 +1,26 @@
 // Client-side AES-256-GCM for {{secure:...}} blocks.
 //
-// Wire format matches the server's historical layout:
-//   {{secure_aes:base64(nonce(12) || ciphertext+tag)}}
-// Key derivation matches the historical server KDF: SHA-256(passphrase).
-// That makes pages encrypted under the old GYPSUM_SECRET_KEY decrypt with the
-// same passphrase entered here in the browser, with no migration.
+// Two wire formats are supported:
+//   {{secure_aes:base64(nonce(12) || ct+tag)}}   — legacy, key = SHA-256(passphrase)
+//   {{secure_aes2:base64(nonce(12) || ct+tag)}}  — key = PBKDF2-HMAC-SHA256(passphrase, salt)
+//
+// Legacy blocks (and pages encrypted under the old GYPSUM_SECRET_KEY) stay
+// readable with no migration. New blocks are written as secure_aes2 using the
+// per-deployment salt served in window.gypsumSecureConfig. A single passphrase
+// derives both keys, so a page may freely mix the two formats.
 (function () {
   "use strict";
 
-  var STORAGE_KEY = "gypsum-secret-key"; // hex-encoded 32-byte raw key
+  var STORAGE_KEY = "gypsum-secret-key";
   var SUBTLE = window.crypto && window.crypto.subtle;
 
-  var memKey = null;          // imported AES-GCM CryptoKey, or null when locked
-  var memKeyBytes = null;     // raw 32-byte Uint8Array, kept for storage rehydration
+  var cfg = window.gypsumSecureConfig || { salt: "", iterations: 600000 };
+  var ITERATIONS = cfg.iterations || 600000;
+
+  // legacyKey decrypts {{secure_aes:...}}; pbkdf2Key decrypts/encrypts
+  // {{secure_aes2:...}}. Raw bytes are kept for localStorage rehydration.
+  var legacyKey = null, legacyBytes = null;
+  var pbkdf2Key = null, pbkdf2Bytes = null;
 
   var listeners = [];         // notified on lock/unlock so UI can refresh
   var pendingUnlock = null;   // resolves when the user finishes the unlock modal
@@ -54,34 +62,76 @@
     return out;
   }
 
+  // saltBytes is null when no salt is configured; in that degraded mode new
+  // blocks fall back to the legacy secure_aes format.
+  var saltBytes = null;
+  if (cfg.salt) {
+    try { saltBytes = base64ToBytes(cfg.salt); } catch (_) { saltBytes = null; }
+  }
+
   function notify() {
     for (var i = 0; i < listeners.length; i++) {
       try { listeners[i](isUnlocked()); } catch (_) { /* ignore */ }
     }
   }
 
+  // Unlocked means we hold the key used to write new blocks: pbkdf2Key when a
+  // salt is configured, otherwise the legacy key.
   function isUnlocked() {
-    return memKey !== null;
+    return saltBytes ? pbkdf2Key !== null : legacyKey !== null;
+  }
+
+  // pbkdf2Available reports whether new blocks should be written as secure_aes2.
+  function pbkdf2Available() {
+    return !!(saltBytes && pbkdf2Key);
+  }
+  function activeMacro() {
+    return pbkdf2Available() ? "secure_aes2" : "secure_aes";
+  }
+  function activeKey() {
+    return pbkdf2Available() ? pbkdf2Key : legacyKey;
   }
 
   async function importKeyBytes(rawBytes) {
     return SUBTLE.importKey("raw", rawBytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
   }
 
-  // SHA-256(passphrase) → 32-byte raw key. Matches the old server-side KDF in
-  // internal/wiki/secure.go.
-  async function deriveBytes(passphrase) {
+  // SHA-256(passphrase) → 32-byte raw key (legacy KDF).
+  async function sha256Bytes(passphrase) {
     var digest = await SUBTLE.digest("SHA-256", utf8(passphrase));
     return new Uint8Array(digest);
   }
 
+  // PBKDF2-HMAC-SHA256(passphrase, salt, iterations) → 32-byte raw key.
+  async function pbkdf2DeriveBytes(passphrase) {
+    var base = await SUBTLE.importKey("raw", utf8(passphrase), { name: "PBKDF2" }, false, ["deriveBits"]);
+    var bits = await SUBTLE.deriveBits(
+      { name: "PBKDF2", salt: saltBytes, iterations: ITERATIONS, hash: "SHA-256" },
+      base, 256
+    );
+    return new Uint8Array(bits);
+  }
+
+  function persist() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        v: 2,
+        legacy: legacyBytes ? bytesToHex(legacyBytes) : null,
+        pbkdf2: pbkdf2Bytes ? bytesToHex(pbkdf2Bytes) : null,
+        salt: cfg.salt || "",
+      }));
+    } catch (_) { /* quota / disabled */ }
+  }
+
   async function unlock(passphrase, remember) {
-    var bytes = await deriveBytes(passphrase);
-    var key = await importKeyBytes(bytes);
-    memKey = key;
-    memKeyBytes = bytes;
+    legacyBytes = await sha256Bytes(passphrase);
+    legacyKey = await importKeyBytes(legacyBytes);
+    if (saltBytes) {
+      pbkdf2Bytes = await pbkdf2DeriveBytes(passphrase);
+      pbkdf2Key = await importKeyBytes(pbkdf2Bytes);
+    }
     if (remember) {
-      try { localStorage.setItem(STORAGE_KEY, bytesToHex(bytes)); } catch (_) { /* quota / disabled */ }
+      persist();
     } else {
       try { localStorage.removeItem(STORAGE_KEY); } catch (_) { /* ignore */ }
     }
@@ -89,35 +139,65 @@
   }
 
   function lock() {
-    memKey = null;
-    memKeyBytes = null;
+    legacyKey = legacyBytes = null;
+    pbkdf2Key = pbkdf2Bytes = null;
     try { localStorage.removeItem(STORAGE_KEY); } catch (_) { /* ignore */ }
     notify();
   }
 
+  async function importLegacy(bytes) {
+    if (bytes && bytes.length === 32) {
+      legacyBytes = bytes;
+      legacyKey = await importKeyBytes(bytes);
+    }
+  }
+
   // Rehydrate from localStorage on first load so persistent users skip the prompt.
   async function tryRehydrate() {
-    var hex;
-    try { hex = localStorage.getItem(STORAGE_KEY); } catch (_) { hex = null; }
-    if (!hex) return;
-    var bytes = hexToBytes(hex);
+    var raw;
+    try { raw = localStorage.getItem(STORAGE_KEY); } catch (_) { raw = null; }
+    if (!raw) return;
+
+    // New JSON format: {v:2, legacy, pbkdf2, salt}.
+    if (raw.charAt(0) === "{") {
+      var obj;
+      try { obj = JSON.parse(raw); } catch (_) { obj = null; }
+      if (!obj || obj.v !== 2) {
+        try { localStorage.removeItem(STORAGE_KEY); } catch (_) { /* ignore */ }
+        return;
+      }
+      // A salt change invalidates the cached PBKDF2 key — force a re-unlock.
+      if ((obj.salt || "") !== (cfg.salt || "")) {
+        try { localStorage.removeItem(STORAGE_KEY); } catch (_) { /* ignore */ }
+        return;
+      }
+      try {
+        if (obj.legacy) await importLegacy(hexToBytes(obj.legacy));
+        if (obj.pbkdf2) {
+          var pb = hexToBytes(obj.pbkdf2);
+          if (pb && pb.length === 32) { pbkdf2Bytes = pb; pbkdf2Key = await importKeyBytes(pb); }
+        }
+      } catch (_) {
+        lock();
+      }
+      return;
+    }
+
+    // Legacy bare-hex format from before secure_aes2: a SHA-256 key only. The
+    // user keeps read access to old blocks and re-unlocks once to gain pbkdf2.
+    var bytes = hexToBytes(raw);
     if (!bytes || bytes.length !== 32) {
       try { localStorage.removeItem(STORAGE_KEY); } catch (_) { /* ignore */ }
       return;
     }
-    try {
-      memKey = await importKeyBytes(bytes);
-      memKeyBytes = bytes;
-    } catch (_) {
-      memKey = null;
-      memKeyBytes = null;
-    }
+    try { await importLegacy(bytes); } catch (_) { legacyKey = legacyBytes = null; }
   }
 
   async function encrypt(plaintext) {
-    if (!memKey) throw new Error("Locked: no key available");
+    var key = activeKey();
+    if (!key) throw new Error("Locked: no key available");
     var nonce = window.crypto.getRandomValues(new Uint8Array(12));
-    var ct = await SUBTLE.encrypt({ name: "AES-GCM", iv: nonce }, memKey, utf8(plaintext));
+    var ct = await SUBTLE.encrypt({ name: "AES-GCM", iv: nonce }, key, utf8(plaintext));
     var ctBytes = new Uint8Array(ct);
     var combined = new Uint8Array(nonce.length + ctBytes.length);
     combined.set(nonce, 0);
@@ -125,25 +205,28 @@
     return bytesToBase64(combined);
   }
 
-  async function decrypt(b64) {
-    if (!memKey) throw new Error("Locked: no key available");
+  // decrypt selects the key by variant: "2" → pbkdf2Key, anything else → legacy.
+  async function decrypt(b64, variant) {
+    var key = variant === "2" ? pbkdf2Key : legacyKey;
+    if (!key) throw new Error("Locked: no key available");
     var raw;
     try { raw = base64ToBytes(b64); } catch (_) { throw new Error("invalid base64"); }
     if (raw.length < 12) throw new Error("ciphertext too short");
     var nonce = raw.subarray(0, 12);
     var ct = raw.subarray(12);
-    var plain = await SUBTLE.decrypt({ name: "AES-GCM", iv: nonce }, memKey, ct);
+    var plain = await SUBTLE.decrypt({ name: "AES-GCM", iv: nonce }, key, ct);
     return decodeUtf8(plain);
   }
 
   // --- Macro substitution helpers (mirrors internal/wiki/secure.go) ---
 
-  // {{secure_aes:BASE64}} where BASE64 is [A-Za-z0-9+/=]+.
-  var SECURE_AES_RE = /\{\{secure_aes:([A-Za-z0-9+/=]+)\}\}/g;
+  // {{secure_aes:CT}} or {{secure_aes2:CT}}. Group 1 is the variant ("" or "2"),
+  // group 2 is the base64 ciphertext.
+  var SECURE_AES_RE = /\{\{secure_aes(2?):([A-Za-z0-9+/=]+)\}\}/g;
   // (\\?){{secure:(.*?)}} with DOTALL via [\s\S].
   var SECURE_RE = /(\\?)\{\{secure:([\s\S]*?)\}\}/g;
 
-  // Replace every {{secure_aes:CT}} in markdown with {{secure:plaintext}}. If a
+  // Replace every {{secure_aes[2]:CT}} in markdown with {{secure:plaintext}}. If a
   // ciphertext fails to decrypt, the original macro is left in place — the user
   // sees only the blocks their key can read, and broken ones round-trip safely.
   async function decryptForEdit(markdown) {
@@ -151,12 +234,12 @@
     var m;
     SECURE_AES_RE.lastIndex = 0;
     while ((m = SECURE_AES_RE.exec(markdown)) !== null) {
-      matches.push({ start: m.index, end: m.index + m[0].length, ct: m[1] });
+      matches.push({ start: m.index, end: m.index + m[0].length, variant: m[1], ct: m[2] });
     }
     if (matches.length === 0) return markdown;
 
     var plains = await Promise.all(matches.map(function (mm) {
-      return decrypt(mm.ct).then(
+      return decrypt(mm.ct, mm.variant).then(
         function (p) { return { ok: true, plain: p }; },
         function ()  { return { ok: false }; }
       );
@@ -182,13 +265,14 @@
     return out;
   }
 
-  // Replace every {{secure:plain}} in markdown with {{secure_aes:CT}}.
+  // Replace every {{secure:plain}} in markdown with {{secure_aes2:CT}} (or
+  // {{secure_aes:CT}} when no salt is configured).
   // \{{secure:...}} stays literal (the editor keeps the leading backslash).
   // If oldMarkdown is provided, plaintexts that match an existing
-  // {{secure_aes:...}} block in oldMarkdown reuse the original ciphertext so
-  // unchanged blocks produce no diff (mirrors EncryptForSavePreserving in Go).
+  // {{secure_aes2:...}} block reuse the original ciphertext so unchanged blocks
+  // produce no diff. Legacy {{secure_aes:...}} blocks are NOT reused, so editing
+  // a page upgrades all of its secure blocks to the stronger KDF.
   async function encryptForSave(markdown, oldMarkdown) {
-    // Build plaintext → original-ciphertext-macro map from oldMarkdown.
     var preserve = null;
     if (oldMarkdown) {
       preserve = Object.create(null);
@@ -196,10 +280,10 @@
       var om;
       SECURE_AES_RE.lastIndex = 0;
       while ((om = SECURE_AES_RE.exec(oldMarkdown)) !== null) {
-        oldMatches.push({ macro: om[0], ct: om[1] });
+        if (om[1] === "2") oldMatches.push({ macro: om[0], ct: om[2] });
       }
       var plains = await Promise.all(oldMatches.map(function (mm) {
-        return decrypt(mm.ct).then(
+        return decrypt(mm.ct, "2").then(
           function (p) { return p; },
           function ()  { return null; }
         );
@@ -242,7 +326,7 @@
         replacements.push(preserve[content]);
       } else {
         var ct = await encrypt(content);
-        replacements.push("{{secure_aes:" + ct + "}}");
+        replacements.push("{{" + activeMacro() + ":" + ct + "}}");
       }
     }
 

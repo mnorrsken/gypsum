@@ -151,8 +151,9 @@ password: s3cret
   // source — Go's html/template would otherwise read it as an action start.
   const OPEN = "{" + "{";
   const SECURE_AES_PREFIX = OPEN + "secure_aes:";
+  const SECURE_AES2_PREFIX = OPEN + "secure_aes2:";
   const SECURE_PREFIX = OPEN + "secure:";
-  const hasSecureCipher = (s) => s.indexOf(SECURE_AES_PREFIX) >= 0;
+  const hasSecureCipher = (s) => s.indexOf(SECURE_AES_PREFIX) >= 0 || s.indexOf(SECURE_AES2_PREFIX) >= 0;
   const hasSecurePlain = (s) => s.indexOf(SECURE_PREFIX) >= 0;
 
   function showStatus(msg, isError) {

@@ -150,6 +150,16 @@ spec:
               value: {{ .Values.auth.requiredGroup | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.secureSalt.value }}
+            - name: GYPSUM_SECURE_SALT
+              value: {{ .Values.secureSalt.value | quote }}
+            {{- else }}
+            - name: GYPSUM_SECURE_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secureSalt.existingSecret | default (printf "%s-secure" (include "gypsum.fullname" .)) }}
+                  key: secure-salt
+            {{- end }}
             {{- if .Values.probePort }}
             - name: GYPSUM_PROBE_PORT
               value: ":{{ .Values.probePort }}"

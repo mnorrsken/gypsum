@@ -41,6 +41,10 @@ func OpenDB(dataDir string) (*DB, error) {
 			token      TEXT PRIMARY KEY,
 			expires_at DATETIME NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS app_config (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
 		CREATE VIRTUAL TABLE IF NOT EXISTS fts_pages USING fts5(
 			slug UNINDEXED,
 			title,
@@ -66,6 +70,30 @@ func OpenDB(dataDir string) (*DB, error) {
 
 // Close closes the underlying database connection.
 func (d *DB) Close() error { return d.db.Close() }
+
+// ---------- App config ----------
+
+// GetConfig returns the value for key and whether it was found.
+func (d *DB) GetConfig(key string) (string, bool, error) {
+	var value string
+	err := d.db.QueryRow("SELECT value FROM app_config WHERE key = ?", key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return value, true, nil
+}
+
+// SetConfig stores (or replaces) the value for key.
+func (d *DB) SetConfig(key, value string) error {
+	_, err := d.db.Exec(
+		"INSERT INTO app_config(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+		key, value,
+	)
+	return err
+}
 
 // ---------- Share operations ----------
 

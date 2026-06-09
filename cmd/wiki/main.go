@@ -125,6 +125,14 @@ func main() {
 	if info, err := os.Stat(docsDir); err == nil && info.IsDir() {
 		handler.SetDocsDir(docsDir)
 	}
+
+	// Resolve the per-deployment PBKDF2 salt for {{secure_aes2:...}} blocks:
+	// GYPSUM_SECURE_SALT if set, otherwise a value persisted in the database.
+	secureSalt, err := wiki.ResolveSecureSalt(os.Getenv("GYPSUM_SECURE_SALT"), db)
+	if err != nil {
+		log.Fatalf("failed to resolve secure salt: %v", err)
+	}
+	handler.SetSecureSalt(secureSalt)
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServerFS(web.Static())))

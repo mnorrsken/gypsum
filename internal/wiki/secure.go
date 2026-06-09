@@ -3,6 +3,7 @@ package wiki
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/pbkdf2"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -12,23 +13,88 @@ import (
 	"strings"
 )
 
-// secureAesMacroRe matches {{secure_aes:PAYLOAD}} where PAYLOAD is base64 ciphertext.
+// SecurePBKDF2Iterations is the PBKDF2-HMAC-SHA256 work factor for {{secure_aes2:...}}
+// blocks. It is served to the browser so client and server agree on the KDF.
+const SecurePBKDF2Iterations = 600000
+
+const securePBKDF2KeyLen = 32
+
+// secureAesMacroRe matches the legacy {{secure_aes:PAYLOAD}} (SHA-256 KDF).
 var secureAesMacroRe = regexp.MustCompile(`\{\{secure_aes:([\w+/=]+)\}\}`)
+
+// secureAes2MacroRe matches {{secure_aes2:PAYLOAD}} (PBKDF2 KDF + per-deploy salt).
+var secureAes2MacroRe = regexp.MustCompile(`\{\{secure_aes2:([\w+/=]+)\}\}`)
 
 // secureMacroRe matches {{secure:CONTENT}} used in the editor for decrypted blocks.
 // An optional leading backslash is captured so \{{secure:...}} can be skipped.
 var secureMacroRe = regexp.MustCompile(`(?s)(\\?)\{\{secure:(.*?)\}\}`)
 
-// ServerCrypto provides AES-256-GCM encryption using a single server key.
+// ServerCrypto provides AES-256-GCM encryption using a single server key. The
+// CLI re-encrypt tool is the only runtime user — during normal edit/save all
+// crypto happens in the browser and the server never holds a key.
 type ServerCrypto struct {
 	key [32]byte
+	// macro is the wire-format name this instance reads and writes
+	// ("secure_aes" for the legacy SHA-256 KDF, "secure_aes2" for PBKDF2).
+	macro string
+	// decryptRe matches blocks of the configured macro.
+	decryptRe *regexp.Regexp
 }
 
-// NewServerCrypto derives a 256-bit key from the supplied passphrase.
+// NewServerCrypto derives a 256-bit key from the passphrase using the legacy
+// unsalted SHA-256 KDF. It reads and writes {{secure_aes:...}} blocks.
 func NewServerCrypto(passphrase string) *ServerCrypto {
-	sc := &ServerCrypto{}
-	sc.key = sha256.Sum256([]byte(passphrase))
-	return sc
+	return &ServerCrypto{
+		key:       sha256.Sum256([]byte(passphrase)),
+		macro:     "secure_aes",
+		decryptRe: secureAesMacroRe,
+	}
+}
+
+const secureSaltConfigKey = "secure_salt"
+
+// ResolveSecureSalt returns the base64-encoded per-deployment PBKDF2 salt.
+// Priority: the GYPSUM_SECURE_SALT value (envSalt) if non-empty, otherwise a
+// value persisted in the database, otherwise a freshly generated 16-byte salt
+// which is stored so it stays stable across restarts. The salt is not secret —
+// it only ensures two deployments derive different keys from the same passphrase.
+func ResolveSecureSalt(envSalt string, db *DB) (string, error) {
+	if envSalt != "" {
+		if _, err := base64.StdEncoding.DecodeString(envSalt); err != nil {
+			return "", fmt.Errorf("GYPSUM_SECURE_SALT is not valid base64: %w", err)
+		}
+		return envSalt, nil
+	}
+	if db != nil {
+		if v, ok, err := db.GetConfig(secureSaltConfigKey); err != nil {
+			return "", err
+		} else if ok && v != "" {
+			return v, nil
+		}
+	}
+	raw := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, raw); err != nil {
+		return "", err
+	}
+	salt := base64.StdEncoding.EncodeToString(raw)
+	if db != nil {
+		if err := db.SetConfig(secureSaltConfigKey, salt); err != nil {
+			return "", err
+		}
+	}
+	return salt, nil
+}
+
+// NewServerCryptoPBKDF2 derives a 256-bit key with PBKDF2-HMAC-SHA256 over the
+// passphrase and per-deployment salt. It reads and writes {{secure_aes2:...}}.
+func NewServerCryptoPBKDF2(passphrase string, salt []byte, iterations int) (*ServerCrypto, error) {
+	dk, err := pbkdf2.Key(sha256.New, passphrase, salt, iterations, securePBKDF2KeyLen)
+	if err != nil {
+		return nil, err
+	}
+	sc := &ServerCrypto{macro: "secure_aes2", decryptRe: secureAes2MacroRe}
+	copy(sc.key[:], dk)
+	return sc, nil
 }
 
 // Encrypt encrypts plaintext and returns a base64 string (nonce + ciphertext).
@@ -80,11 +146,12 @@ func (sc *ServerCrypto) Decrypt(encoded string) (string, error) {
 	return string(plain), nil
 }
 
-// DecryptForEdit replaces every {{secure_aes:CIPHERTEXT}} in markdown with
-// {{secure:DECRYPTED}} so the editor shows cleartext.
+// DecryptForEdit replaces every block of this instance's macro
+// ({{secure_aes:...}} or {{secure_aes2:...}}) in markdown with {{secure:DECRYPTED}}
+// so the editor shows cleartext. Blocks that fail to decrypt are left as-is.
 func (sc *ServerCrypto) DecryptForEdit(markdown string) string {
-	return secureAesMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
-		captures := secureAesMacroRe.FindStringSubmatch(match)
+	return sc.decryptRe.ReplaceAllStringFunc(markdown, func(match string) string {
+		captures := sc.decryptRe.FindStringSubmatch(match)
 		if len(captures) < 2 || captures[1] == "" {
 			return match
 		}
@@ -112,8 +179,8 @@ func (sc *ServerCrypto) EncryptForSave(markdown string) (string, error) {
 // caused by AES-GCM's random nonce.
 func (sc *ServerCrypto) EncryptForSavePreserving(markdown, oldMarkdown string) (string, error) {
 	// Build plaintext → original ciphertext map from old content.
-	preserve := make(map[string]string) // plaintext → "{{secure_aes:...}}"
-	for _, m := range secureAesMacroRe.FindAllStringSubmatch(oldMarkdown, -1) {
+	preserve := make(map[string]string) // plaintext → original macro
+	for _, m := range sc.decryptRe.FindAllStringSubmatch(oldMarkdown, -1) {
 		if len(m) < 2 {
 			continue
 		}
@@ -156,7 +223,7 @@ func (sc *ServerCrypto) encryptForSave(markdown string, preserve map[string]stri
 			encryptErr = err
 			return match
 		}
-		return fmt.Sprintf("{{secure_aes:%s}}", encoded)
+		return fmt.Sprintf("{{%s:%s}}", sc.macro, encoded)
 	})
 	return result, encryptErr
 }
@@ -173,7 +240,7 @@ func ValidateContent(content string) string {
 		lineNum := i + 1
 		for _, loc := range anyDoubleBraceOpen.FindAllStringIndex(line, -1) {
 			rest := line[loc[0]:]
-			if strings.HasPrefix(rest, "{{secure:") || strings.HasPrefix(rest, "{{secure_aes:") {
+			if strings.HasPrefix(rest, "{{secure:") || strings.HasPrefix(rest, "{{secure_aes:") || strings.HasPrefix(rest, "{{secure_aes2:") {
 				continue
 			}
 			if len(rest) > 2 && rest[2] != '{' && rest[2] != ' ' && rest[2] != '\n' {

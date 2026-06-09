@@ -104,6 +104,16 @@ oauth:
   # The secret must contain a key named "oauth-password".
   existingSecret: ""
 
+# Per-deployment PBKDF2 salt for encrypted {{secure_aes2}} fields. The salt is
+# not secret, but it must stay stable: changing it makes existing secure_aes2
+# blocks undecryptable. If both value and existingSecret are empty, a pre-install
+# hook generates a random salt and stores it in a Secret on first install.
+secureSalt:
+  # A base64-encoded salt to use directly (e.g. output of `head -c 16 /dev/urandom | base64`).
+  value: ""
+  # Reference an existing Kubernetes Secret containing a key named "secure-salt".
+  existingSecret: ""
+
 # Port for the dedicated health-probe server (liveness/readiness).
 # This server runs without auth middleware so Kubernetes probes always succeed.
 probePort: 9091

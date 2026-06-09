@@ -27,9 +27,11 @@ var wikiLinkPattern = regexp.MustCompile(`(\\?)\[\[([^\]]+)\]\]`)
 //   - 500x300  → width: 500px; height: 300px
 var imageSizePattern = regexp.MustCompile(`!\[([^\]]*)\|(\d+(?:%|x\d+)?)\]\(([^)]*)\)`)
 
-// secureAesMacroRenderRe is like secureAesMacroRe but captures an optional
-// leading backslash so \{{secure_aes:...}} can be rendered as literal text.
-var secureAesMacroRenderRe = regexp.MustCompile(`(\\?)\{\{secure_aes:([\w+/=]+)\}\}`)
+// secureAesMacroRenderRe matches both {{secure_aes:...}} (legacy SHA-256) and
+// {{secure_aes2:...}} (PBKDF2). Group 1 is an optional leading backslash so the
+// macro can be rendered as literal text; group 2 is the variant ("" or "2");
+// group 3 is the base64 payload.
+var secureAesMacroRenderRe = regexp.MustCompile(`(\\?)\{\{secure_aes(2?):([\w+/=]+)\}\}`)
 
 // codeSegmentRe matches fenced code blocks (3+ backticks or tildes) and inline
 // code spans. Used to protect code regions from Gypsum-specific substitutions.
@@ -41,7 +43,7 @@ var codeSegmentRe = regexp.MustCompile(
 // customEscapeInCodeRe matches backslash-escaped custom macros inside code
 // regions so the leading backslash can be stripped (leaving literal text)
 // without expanding the macro itself.
-var customEscapeInCodeRe = regexp.MustCompile(`\\(\[\[[^\]]+\]\]|\{\{secure_aes:[\w+/=]+\}\}|\{\{secure:[^}]*\}\})`)
+var customEscapeInCodeRe = regexp.MustCompile(`\\(\[\[[^\]]+\]\]|\{\{secure_aes2?:[\w+/=]+\}\}|\{\{secure:[^}]*\}\})`)
 
 // applyOutsideCode applies fn to portions of source that are not inside
 // inline code spans or fenced code blocks, leaving code regions unchanged.
@@ -193,21 +195,22 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 		})
 	})
 
-	// Replace secure_aes macros with placeholder tokens before goldmark so they
-	// don't get wrapped in their own <p> blocks. The tokens survive HTML
-	// rendering and are swapped for real HTML afterwards.
-	var securePlaceholders []string
+	// Replace secure_aes / secure_aes2 macros with placeholder tokens before
+	// goldmark so they don't get wrapped in their own <p> blocks. The tokens
+	// survive HTML rendering and are swapped for real HTML afterwards.
+	type securePlaceholder struct{ ciphertext, variant string }
+	var securePlaceholders []securePlaceholder
 	withPlaceholders := applyOutsideCode(withLinks, func(s string) string {
 		return secureAesMacroRenderRe.ReplaceAllStringFunc(s, func(match string) string {
 			captures := secureAesMacroRenderRe.FindStringSubmatch(match)
-			if len(captures) < 3 {
+			if len(captures) < 4 {
 				return match
 			}
 			if captures[1] == `\` {
-				return "{{secure_aes:" + captures[2] + "}}"
+				return "{{secure_aes" + captures[2] + ":" + captures[3] + "}}"
 			}
 			idx := len(securePlaceholders)
-			securePlaceholders = append(securePlaceholders, captures[2])
+			securePlaceholders = append(securePlaceholders, securePlaceholder{captures[3], captures[2]})
 			return fmt.Sprintf("SECURE_PLACEHOLDER_%d", idx)
 		})
 	})
@@ -222,12 +225,12 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 	}
 
 	result := rendered.String()
-	for i, ciphertext := range securePlaceholders {
+	for i, ph := range securePlaceholders {
 		placeholder := fmt.Sprintf("SECURE_PLACEHOLDER_%d", i)
 		replacement := fmt.Sprintf(
-			`<span class="secure-inline" data-ciphertext="%s" title="Click to reveal">🔒****</span>`+
-				`<button class="secure-copy-btn" data-ciphertext="%s" title="Copy to clipboard">📋</button>`,
-			ciphertext, ciphertext,
+			`<span class="secure-inline" data-ciphertext="%s" data-variant="%s" title="Click to reveal">🔒****</span>`+
+				`<button class="secure-copy-btn" data-ciphertext="%s" data-variant="%s" title="Copy to clipboard">📋</button>`,
+			ph.ciphertext, ph.variant, ph.ciphertext, ph.variant,
 		)
 		result = strings.Replace(result, placeholder, replacement, 1)
 	}
@@ -271,8 +274,8 @@ func (r *MarkdownRenderer) RenderPublic(source string) (template.HTML, error) {
 	withLinks = applyOutsideCode(withLinks, func(s string) string {
 		return secureAesMacroRenderRe.ReplaceAllStringFunc(s, func(match string) string {
 			captures := secureAesMacroRenderRe.FindStringSubmatch(match)
-			if len(captures) >= 3 && captures[1] == `\` {
-				return "{{secure_aes:" + captures[2] + "}}"
+			if len(captures) >= 4 && captures[1] == `\` {
+				return "{{secure_aes" + captures[2] + ":" + captures[3] + "}}"
 			}
 			return ""
 		})

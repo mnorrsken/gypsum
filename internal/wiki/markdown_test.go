@@ -657,3 +657,61 @@ func TestExpandImageSizeMacroEscaping(t *testing.T) {
 		}
 	})
 }
+
+// TestRenderSecureAes2Placeholder verifies that both secure macro variants
+// render to reveal placeholders carrying the right data-variant, and that
+// secure_aes2 blocks are stripped from public output.
+func TestRenderSecureAes2Placeholder(t *testing.T) {
+	r := NewMarkdownRenderer()
+
+	t.Run("secure_aes2 renders with variant 2", func(t *testing.T) {
+		out, err := r.Render("token: {{secure_aes2:YWJjZGVm}}")
+		if err != nil {
+			t.Fatalf("Render: %v", err)
+		}
+		html := string(out)
+		if !strings.Contains(html, `data-ciphertext="YWJjZGVm"`) {
+			t.Fatalf("expected ciphertext in placeholder, got: %s", html)
+		}
+		if !strings.Contains(html, `data-variant="2"`) {
+			t.Fatalf("expected data-variant=\"2\", got: %s", html)
+		}
+	})
+
+	t.Run("legacy secure_aes renders with empty variant", func(t *testing.T) {
+		out, err := r.Render("token: {{secure_aes:YWJjZGVm}}")
+		if err != nil {
+			t.Fatalf("Render: %v", err)
+		}
+		if !strings.Contains(string(out), `data-variant=""`) {
+			t.Fatalf("expected empty data-variant for legacy, got: %s", out)
+		}
+	})
+
+	t.Run("secure_aes2 stripped from public render", func(t *testing.T) {
+		out, err := r.RenderPublic("token: {{secure_aes2:YWJjZGVm}} end")
+		if err != nil {
+			t.Fatalf("RenderPublic: %v", err)
+		}
+		html := string(out)
+		if strings.Contains(html, "secure_aes2") || strings.Contains(html, "YWJjZGVm") {
+			t.Fatalf("public render must strip secure_aes2, got: %s", html)
+		}
+		if !strings.Contains(html, "token:") || !strings.Contains(html, "end") {
+			t.Fatalf("surrounding text should survive, got: %s", html)
+		}
+	})
+
+	t.Run("escaped secure_aes2 renders literally", func(t *testing.T) {
+		out, err := r.Render(`\{{secure_aes2:YWJjZGVm}}`)
+		if err != nil {
+			t.Fatalf("Render: %v", err)
+		}
+		if !strings.Contains(string(out), "{{secure_aes2:YWJjZGVm}}") {
+			t.Fatalf("expected literal macro for escaped form, got: %s", out)
+		}
+		if strings.Contains(string(out), "secure-inline") {
+			t.Fatalf("escaped macro should not become a placeholder, got: %s", out)
+		}
+	})
+}

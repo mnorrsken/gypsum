@@ -404,3 +404,106 @@ func TestEncryptForSavePreservingChanged(t *testing.T) {
 		t.Fatal("changed first block should have different ciphertext")
 	}
 }
+
+func TestServerCryptoPBKDF2RoundTrip(t *testing.T) {
+	salt := []byte("0123456789abcdef")
+	sc, err := NewServerCryptoPBKDF2("pbkdf2-pass", salt, 1000)
+	if err != nil {
+		t.Fatalf("NewServerCryptoPBKDF2: %v", err)
+	}
+	enc, err := sc.Encrypt("top secret")
+	if err != nil {
+		t.Fatalf("Encrypt: %v", err)
+	}
+	got, err := sc.Decrypt(enc)
+	if err != nil {
+		t.Fatalf("Decrypt: %v", err)
+	}
+	if got != "top secret" {
+		t.Fatalf("round-trip mismatch: got %q", got)
+	}
+}
+
+func TestServerCryptoPBKDF2WrongSaltFails(t *testing.T) {
+	enc, err := mustPBKDF2(t, "pass", []byte("salt-aaaaaaaaaaa"), 1000).Encrypt("secret")
+	if err != nil {
+		t.Fatalf("Encrypt: %v", err)
+	}
+	// Same passphrase, different salt → different key → decryption must fail.
+	if _, err := mustPBKDF2(t, "pass", []byte("salt-bbbbbbbbbbb"), 1000).Decrypt(enc); err == nil {
+		t.Fatal("expected decryption with wrong salt to fail")
+	}
+}
+
+func TestPBKDF2CryptoEmitsSecureAes2(t *testing.T) {
+	sc := mustPBKDF2(t, "pass", []byte("saltsaltsaltsalt"), 1000)
+	out, err := sc.EncryptForSave("login: {{secure:hunter2}}")
+	if err != nil {
+		t.Fatalf("EncryptForSave: %v", err)
+	}
+	if !strings.Contains(out, "{{secure_aes2:") {
+		t.Fatalf("expected {{secure_aes2:...}}, got %q", out)
+	}
+	if strings.Contains(out, "{{secure_aes:") {
+		t.Fatalf("PBKDF2 crypto must not emit legacy secure_aes, got %q", out)
+	}
+	back := sc.DecryptForEdit(out)
+	if !strings.Contains(back, "{{secure:hunter2}}") {
+		t.Fatalf("DecryptForEdit round-trip failed: %q", back)
+	}
+}
+
+func TestValidateContentAllowsSecureAes2(t *testing.T) {
+	if msg := ValidateContent("Hello {{secure_aes2:YWJjZGVm}} world"); msg != "" {
+		t.Fatalf("secure_aes2 should be valid, got: %q", msg)
+	}
+}
+
+func TestResolveSecureSaltEnvWins(t *testing.T) {
+	db := openTestDB(t)
+	salt, err := ResolveSecureSalt("ZW52LXNhbHQ=", db)
+	if err != nil {
+		t.Fatalf("ResolveSecureSalt: %v", err)
+	}
+	if salt != "ZW52LXNhbHQ=" {
+		t.Fatalf("env salt should win, got %q", salt)
+	}
+	// Env value must not be persisted to the DB.
+	if _, ok, _ := db.GetConfig("secure_salt"); ok {
+		t.Fatal("env salt should not be persisted")
+	}
+}
+
+func TestResolveSecureSaltRejectsBadBase64(t *testing.T) {
+	if _, err := ResolveSecureSalt("not!base64", nil); err == nil {
+		t.Fatal("expected error for invalid base64 env salt")
+	}
+}
+
+func TestResolveSecureSaltGeneratesAndPersists(t *testing.T) {
+	db := openTestDB(t)
+	first, err := ResolveSecureSalt("", db)
+	if err != nil {
+		t.Fatalf("ResolveSecureSalt: %v", err)
+	}
+	if first == "" {
+		t.Fatal("expected a generated salt")
+	}
+	// Second call returns the same persisted salt (stable across restarts).
+	second, err := ResolveSecureSalt("", db)
+	if err != nil {
+		t.Fatalf("ResolveSecureSalt (2nd): %v", err)
+	}
+	if first != second {
+		t.Fatalf("salt not stable: %q vs %q", first, second)
+	}
+}
+
+func mustPBKDF2(t *testing.T, pass string, salt []byte, iter int) *ServerCrypto {
+	t.Helper()
+	sc, err := NewServerCryptoPBKDF2(pass, salt, iter)
+	if err != nil {
+		t.Fatalf("NewServerCryptoPBKDF2: %v", err)
+	}
+	return sc
+}

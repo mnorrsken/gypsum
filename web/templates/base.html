@@ -13,6 +13,11 @@
       if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
+  <script>
+    // Per-deployment PBKDF2 parameters for secure_aes2 blocks. The salt is not
+    // secret; it ensures the derived key is deployment-specific.
+    window.gypsumSecureConfig = { salt: "{{.SecureSalt}}", iterations: {{.SecureIters}} };
+  </script>
   <script src="/static/secure.js"></script>
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/alpine.min.js" defer></script>

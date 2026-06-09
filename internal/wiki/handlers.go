@@ -21,6 +21,13 @@ type Handler struct {
 	mcpSections map[MCPSection]bool // enabled MCP tool sections
 	mcpMetrics  *MCPMetrics         // shared across all MCP handlers
 	tmplCache   map[string]*template.Template
+	secureSalt  string // base64 PBKDF2 salt served to the browser for {{secure_aes2}}
+}
+
+// SetSecureSalt sets the base64-encoded per-deployment PBKDF2 salt that is
+// injected into every page so the browser can derive the secure_aes2 key.
+func (h *Handler) SetSecureSalt(saltB64 string) {
+	h.secureSalt = saltB64
 }
 
 type ImageInfo struct {
@@ -43,19 +50,21 @@ type TemplateData struct {
 	Query        string
 	Results      []SearchResult
 	Images       []ImageInfo
-	History       []HistoryEntry
-	GlobalEdits   []GlobalHistoryEntry
-	CurrentPage   int
-	TotalPages    int
-	IsNew         bool
+	History      []HistoryEntry
+	GlobalEdits  []GlobalHistoryEntry
+	CurrentPage  int
+	TotalPages   int
+	IsNew        bool
 	DiffHTML     template.HTML
 	GraphJSON    template.JS
-	ShareToken   string // non-empty if page has an active share link
-	ShareURL     string // full public URL for the share link
-	ShareCreated string // human-readable creation time
+	ShareToken   string           // non-empty if page has an active share link
+	ShareURL     string           // full public URL for the share link
+	ShareCreated string           // human-readable creation time
 	DocPages     []PageLink       // documentation pages from docs/
 	Skills       []SkillListEntry // skill pages with tags
 	SkillTags    []string         // tags for the current skill being viewed
+	SecureSalt   string           // base64 PBKDF2 salt for {{secure_aes2}}
+	SecureIters  int              // PBKDF2 iteration count
 }
 
 func NewHandler(store *PageStore, renderer *MarkdownRenderer, templates fs.FS, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
@@ -232,6 +241,9 @@ func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) 
 	if skills, err := h.store.ListSkillEntries(); err == nil {
 		data.Skills = skills
 	}
+
+	data.SecureSalt = h.secureSalt
+	data.SecureIters = SecurePBKDF2Iterations
 
 	tmpl := h.tmplCache[name]
 	if tmpl == nil {

@@ -37,7 +37,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Interactive link graph
 - Page history with revision diffs
 - Image uploads (paste, drag-and-drop, or picker) with size hints
-- Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM, encrypted and decrypted entirely in the browser — the server never sees plaintext or the key
+- Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM and PBKDF2 key derivation, encrypted and decrypted entirely in the browser — the server never sees plaintext or the key
 - Visual table editor
 - MediaWiki import
 - Public page sharing via secret links — shared pages are HTML-sanitized for anonymous viewers
@@ -64,6 +64,7 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 | `GYPSUM_METRICS_PORT` | `:9090` | Prometheus metrics server listen address |
 | `GYPSUM_PROBE_PORT` | `:9091` | Health probe listen address |
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills` | Comma-separated MCP tool sections to enable |
+| `GYPSUM_SECURE_SALT` | _(auto-generated)_ | Base64 PBKDF2 salt for `{{secure:...}}` fields; auto-generated and persisted if unset |
 
 OAuth, auth, and Docker-specific variables are documented in [Configuration](docs/configuration.md).
 

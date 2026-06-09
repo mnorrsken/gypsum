@@ -12,6 +12,7 @@
 | `GYPSUM_PROBE_PORT` | `:9091` | Listen address for the health-probe server (`/healthz`, `/readyz`). |
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills` | Comma-separated list of MCP tool sections to enable. Omit a section to hide those tools from AI assistants. |
 | `GYPSUM_METRICS_PORT` | `:9090` | Listen address for the Prometheus metrics server (`/metrics`). Exposes per-tool MCP call counters. |
+| `GYPSUM_SECURE_SALT` | _(auto-generated)_ | Base64-encoded PBKDF2 salt for `{{secure:...}}` fields. If unset, a random salt is generated on first run and persisted in `gypsum.db`. The salt is not secret, but it must stay stable — see [Encryption](#encryption). |
 
 ### MCP sections
 
@@ -35,9 +36,34 @@ browser using AES-256-GCM. The passphrase never reaches the server. On first
 visit, click the 🔒 icon in the top bar and enter your passphrase; tick
 "Remember on this device" to persist the derived key in `localStorage`.
 
-Existing pages from older Gypsum versions (≤ 0.42.x) decrypt with the same
-passphrase you previously set in `GYPSUM_SECRET_KEY` — the wire format and
-key-derivation function (SHA-256 of the passphrase) are unchanged.
+New blocks are written as `{{secure_aes2:...}}` with **PBKDF2-HMAC-SHA256**
+(600,000 iterations) over the passphrase and the per-deployment
+`GYPSUM_SECURE_SALT`. The salt is not secret — it only ensures two deployments
+derive different keys from the same passphrase — but it must stay **stable**:
+changing it makes existing `secure_aes2` blocks undecryptable. If you don't set
+it, Gypsum generates one on first run and stores it in `gypsum.db`; for
+multi-replica or rebuild-from-scratch deployments, set it explicitly (the Helm
+chart generates and persists one in a Secret automatically).
+
+Legacy `{{secure_aes:...}}` blocks (including pages from Gypsum ≤ 0.42.x that
+used `GYPSUM_SECRET_KEY`) still decrypt with the same passphrase via the old
+unsalted SHA-256 KDF — no migration is required. Editing and saving a page
+upgrades its secure blocks to `secure_aes2`; to migrate in bulk, use
+`gypsum re-encrypt` (see below).
+
+### Migrating secure fields
+
+`gypsum re-encrypt` rotates the passphrase and/or salt and upgrades legacy
+blocks to `secure_aes2`:
+
+```bash
+gypsum re-encrypt -dir data/repo/pages \
+  -old-key <old-passphrase> -new-key <new-passphrase> \
+  -new-salt "$GYPSUM_SECURE_SALT" [-old-salt <base64>] [-dry-run]
+```
+
+Pass `-old-salt` when the directory already contains `secure_aes2` blocks that
+must be decrypted; omit it when migrating only legacy `secure_aes` blocks.
 
 ## OAuth Variables
 

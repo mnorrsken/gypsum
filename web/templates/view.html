@@ -23,7 +23,7 @@
     if (!ciphertext) return;
     try {
       await window.gypsumSecure.requireKey();
-      const plain = await window.gypsumSecure.decrypt(ciphertext);
+      const plain = await window.gypsumSecure.decrypt(ciphertext, el.dataset.variant);
       el.textContent = plain;
       el.classList.add("unlocked");
       setTimeout(() => {
@@ -48,7 +48,7 @@
       if (!ciphertext) return;
       try {
         await window.gypsumSecure.requireKey();
-        const text = await window.gypsumSecure.decrypt(ciphertext);
+        const text = await window.gypsumSecure.decrypt(ciphertext, btn.dataset.variant);
         await navigator.clipboard.writeText(text);
         btn.textContent = "✓";
         setTimeout(() => { btn.textContent = "📋"; }, 1500);

@@ -2,6 +2,19 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.46.0
+
+### Added
+- **PBKDF2 key derivation for secure fields** — new `{{secure_aes2:...}}` blocks derive their AES-256-GCM key with PBKDF2-HMAC-SHA256 (600,000 iterations) over the passphrase and a per-deployment salt, replacing the unsalted single-SHA-256 KDF. Encryption and decryption still happen entirely in the browser. Legacy `{{secure_aes:...}}` blocks (including pages from ≤ 0.42.x that used `GYPSUM_SECRET_KEY`) keep decrypting with the same passphrase — no migration required — and editing a page upgrades all of its secure blocks to `secure_aes2`.
+- **`GYPSUM_SECURE_SALT`** — base64 PBKDF2 salt served to the browser. If unset, a random salt is generated on first run and persisted in `gypsum.db` so it stays stable across restarts. The salt is not secret; it ensures two deployments derive different keys from the same passphrase.
+- **Helm salt generation** — the pre-install hook now also generates a random salt into a `<release>-gypsum-secure` Secret when neither `secureSalt.value` nor `secureSalt.existingSecret` is set, and wires `GYPSUM_SECURE_SALT` into the deployment.
+
+### Changed
+- **`gypsum re-encrypt` is salt-aware** — it now decrypts both legacy `secure_aes` (with `-old-key`) and `secure_aes2` (with `-old-key` + `-old-salt`) and re-encrypts everything to `secure_aes2` under `-new-key` and the now-required `-new-salt`. This is the bulk migration path from the old KDF to PBKDF2.
+
+### Notes
+- After upgrading, returning users re-enter their passphrase once: the new salt means the cached SHA-256 key cannot derive the PBKDF2 key. Existing encrypted blocks remain readable immediately; the next save or new secret prompts a one-time unlock, then the derived keys are cached again.
+
 ## v0.45.3
 
 ### Security
