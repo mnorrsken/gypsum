@@ -507,6 +507,18 @@ func (c *GitAutoCommitter) hasStagedChanges(relativeFilePath string) (bool, erro
 }
 
 func (c *GitAutoCommitter) runGit(args ...string) error {
+	err := c.runGitOnce(args...)
+	if err != nil && c.clearStaleLock(err) {
+		// A previous git process was killed (timeout, OOM, SIGTERM) mid-write
+		// and left .git/index.lock behind. We are the sole owner of this repo
+		// and all index-mutating ops are serialised on c.mu, so the lock is
+		// always stale: remove it and retry once.
+		err = c.runGitOnce(args...)
+	}
+	return err
+}
+
+func (c *GitAutoCommitter) runGitOnce(args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 	fullArgs := make([]string, 0, len(args)+2)
@@ -518,6 +530,25 @@ func (c *GitAutoCommitter) runGit(args ...string) error {
 		return fmt.Errorf("git %v failed: %v (%s)", args, err, string(out))
 	}
 	return nil
+}
+
+// clearStaleLock removes a stale .git/index.lock when err indicates a git
+// command failed because the lock already existed. Returns true only if a lock
+// file was actually removed (so the caller may retry). Safe because this
+// committer is the sole git user of the repo and index-mutating ops hold c.mu.
+func (c *GitAutoCommitter) clearStaleLock(err error) bool {
+	if err == nil || !strings.Contains(err.Error(), "index.lock") {
+		return false
+	}
+	lock := filepath.Join(c.dataDir, ".git", "index.lock")
+	if rmErr := os.Remove(lock); rmErr != nil {
+		if !os.IsNotExist(rmErr) {
+			log.Printf("git: failed to remove stale lock %s: %v", lock, rmErr)
+		}
+		return false
+	}
+	log.Printf("git: removed stale lock %s left by a killed git process", lock)
+	return true
 }
 
 func (c *GitAutoCommitter) runGitOutput(args ...string) (string, error) {

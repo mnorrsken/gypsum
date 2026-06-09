@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.45.2
+
+### Fixed
+- **Stale git lock recovery** — if a git process was killed mid-write (timeout, OOM, SIGTERM) and left `.git/index.lock` behind, every subsequent auto-commit would fail. The committer now detects the lock-contention error, removes the stale lock, and retries the command once. Safe because Gypsum is the sole git user of the data repo and index-mutating operations are serialised internally.
+
 ## v0.45.1
 
 ### Changed

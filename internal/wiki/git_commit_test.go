@@ -34,6 +34,35 @@ func TestGitAutoCommitterAutoInitsRepo(t *testing.T) {
 	}
 }
 
+func TestGitAutoCommitterRecoversFromStaleLock(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	dataDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dataDir, "pages"), 0o755); err != nil {
+		t.Fatalf("failed to create pages dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "pages", "Home.md"), []byte("# Home"), 0o644); err != nil {
+		t.Fatalf("failed to write page: %v", err)
+	}
+
+	committer := NewGitAutoCommitter(dataDir, nil) // auto-initializes repo
+
+	// Simulate a git process that was killed mid-write, leaving index.lock.
+	lock := filepath.Join(dataDir, ".git", "index.lock")
+	if err := os.WriteFile(lock, nil, 0o644); err != nil {
+		t.Fatalf("failed to plant stale lock: %v", err)
+	}
+
+	if err := committer.CommitSave(KindPage, "Home", ""); err != nil {
+		t.Fatalf("CommitSave should recover from stale lock, got: %v", err)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatalf("expected stale lock to be removed, stat err: %v", err)
+	}
+}
+
 func TestGitAutoCommitterCommitsChangedFile(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
