@@ -57,6 +57,11 @@ func (h *Handler) handleDocs(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/docs", http.StatusFound)
 		return
 	}
+	// Defense in depth: the slug maps to a file inside docsDir only.
+	if strings.Contains(slug, "/") || strings.Contains(slug, `\`) || strings.Contains(slug, "..") {
+		http.NotFound(w, r)
+		return
+	}
 
 	path := filepath.Join(h.docsDir, slug+".md")
 	content, err := os.ReadFile(path)

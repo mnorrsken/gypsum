@@ -552,3 +552,108 @@ func TestWikiLinkIncludesTitleParam(t *testing.T) {
 		t.Errorf("expected original title as link text, got: %s", html)
 	}
 }
+
+// TestRenderPublicSanitizesHTML verifies that public (anonymous) rendering
+// strips author-supplied HTML/JS while authenticated rendering keeps it, and
+// that legitimate goldmark output survives the sanitizer.
+func TestRenderPublicSanitizesHTML(t *testing.T) {
+	r := NewMarkdownRenderer()
+
+	render := func(t *testing.T, src string) string {
+		t.Helper()
+		out, err := r.RenderPublic(src)
+		if err != nil {
+			t.Fatalf("RenderPublic failed: %v", err)
+		}
+		return string(out)
+	}
+
+	t.Run("raw script is stripped on public render only", func(t *testing.T) {
+		src := "hello\n\n<script>alert(1)</script>\n\nworld"
+		html := render(t, src)
+		if strings.Contains(html, "<script>") {
+			t.Errorf("public render must not contain script tags, got: %s", html)
+		}
+		if !strings.Contains(html, "hello") || !strings.Contains(html, "world") {
+			t.Errorf("surrounding text should be preserved, got: %s", html)
+		}
+		priv, err := r.Render(src)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		if !strings.Contains(string(priv), "<script>") {
+			t.Errorf("authenticated render should keep raw HTML, got: %s", priv)
+		}
+	})
+
+	t.Run("event handler attributes are stripped", func(t *testing.T) {
+		html := render(t, `<img src="/images/a.png" onerror="alert(1)">`)
+		if strings.Contains(html, "onerror") {
+			t.Errorf("public render must not contain event handlers, got: %s", html)
+		}
+	})
+
+	t.Run("javascript urls do not reach public output", func(t *testing.T) {
+		html := render(t, "![x|500](javascript:alert(1))\n\n[link](javascript:alert(2))")
+		if strings.Contains(html, "javascript:") {
+			t.Errorf("public render must not contain javascript URLs, got: %s", html)
+		}
+	})
+
+	t.Run("sized images survive sanitization", func(t *testing.T) {
+		html := render(t, "![photo|500x300](/images/test.png)")
+		if !strings.Contains(html, "<img") {
+			t.Errorf("expected <img> tag, got: %s", html)
+		}
+		if !strings.Contains(html, "width: 500px") && !strings.Contains(html, "width:500px") {
+			t.Errorf("expected size style to survive, got: %s", html)
+		}
+	})
+
+	t.Run("task list checkboxes survive sanitization", func(t *testing.T) {
+		html := render(t, "- [x] done\n- [ ] todo")
+		if !strings.Contains(html, `type="checkbox"`) {
+			t.Errorf("expected task-list checkbox to survive, got: %s", html)
+		}
+	})
+
+	t.Run("code highlighting markup survives sanitization", func(t *testing.T) {
+		html := render(t, "```go\nfunc main() {}\n```")
+		if !strings.Contains(html, "<pre") || !strings.Contains(html, "<code") {
+			t.Errorf("expected pre/code blocks, got: %s", html)
+		}
+		if !strings.Contains(html, "class=") {
+			t.Errorf("expected chroma highlight classes to survive, got: %s", html)
+		}
+	})
+}
+
+// TestExpandImageSizeMacroEscaping verifies that the raw <img> emitted by the
+// image-size macro cannot be broken out of via alt text or the URL.
+func TestExpandImageSizeMacroEscaping(t *testing.T) {
+	r := NewMarkdownRenderer()
+
+	t.Run("quotes in alt cannot break out of the attribute", func(t *testing.T) {
+		out, err := r.Render(`![x" onerror=alert(1)|500](/images/a.png)`)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		html := string(out)
+		if strings.Contains(html, `alt="x" `) {
+			t.Errorf("quote broke out of alt attribute: %s", html)
+		}
+		if !strings.Contains(html, "&#34;") {
+			t.Errorf("expected escaped quote in alt, got: %s", html)
+		}
+	})
+
+	t.Run("javascript url leaves macro unexpanded", func(t *testing.T) {
+		out, err := r.Render("![x|500](javascript:alert(1))")
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		if strings.Contains(string(out), "style=") {
+			t.Errorf("macro should not expand for javascript URL: %s", out)
+		}
+	})
+}

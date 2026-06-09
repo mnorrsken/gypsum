@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.45.3
+
+### Security
+- **Public share pages are HTML-sanitized** — `/public/{token}` (and `/docs/`) output now passes through a bluemonday sanitizer, so author-supplied raw HTML/JS in a shared page can no longer execute for anonymous visitors. Authenticated pages still render raw HTML as before. Sized images, syntax-highlighting classes, heading anchors, and task-list checkboxes are preserved.
+- **Image-size macro escapes its attributes** — `![alt|500](url)` no longer allows breaking out of the generated `<img>` tag via quotes in the alt text, and `javascript:`/`data:` URLs leave the macro unexpanded.
+- **`/docs/{slug}` rejects path separators and `..`** — defense-in-depth guard on top of the ServeMux path cleaning.
+- **Baseline security headers** — every response now carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, and `Referrer-Policy: strict-origin-when-cross-origin`. HSTS and CSP remain the reverse proxy's responsibility.
+
 ## v0.45.2
 
 ### Fixed

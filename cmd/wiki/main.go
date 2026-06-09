@@ -141,7 +141,7 @@ func main() {
 	}
 
 	addr := ":8080"
-	srv := &http.Server{Addr: addr, Handler: accessLog(root)}
+	srv := &http.Server{Addr: addr, Handler: accessLog(securityHeaders(root))}
 
 	// Start a dedicated probe server for Kubernetes liveness/readiness checks.
 	// This runs on a separate port without auth middleware so probes always work.
@@ -301,6 +301,18 @@ type responseRecorder struct {
 func (rr *responseRecorder) WriteHeader(code int) {
 	rr.status = code
 	rr.ResponseWriter.WriteHeader(code)
+}
+
+// securityHeaders is middleware that sets baseline security response headers.
+// HSTS and CSP are intentionally left to the TLS-terminating reverse proxy.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "SAMEORIGIN")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // accessLog is middleware that logs method, path, status, and duration for each request.

@@ -688,3 +688,29 @@ func TestHandleNewPagePostRedirects(t *testing.T) {
 		t.Fatalf("expected redirect to /edit/My_New_Page, got %s", loc)
 	}
 }
+
+// TestHandleDocsRejectsPathTraversal exercises the handler-level guard
+// directly (the ServeMux already cleans ".." paths; this is defense in depth).
+func TestHandleDocsRejectsPathTraversal(t *testing.T) {
+	h, _ := newTestHandler(t)
+
+	dir := t.TempDir()
+	docs := filepath.Join(dir, "docs")
+	if err := os.MkdirAll(docs, 0o755); err != nil {
+		t.Fatalf("failed to create docs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "secret.md"), []byte("# Secret"), 0o644); err != nil {
+		t.Fatalf("failed to write secret file: %v", err)
+	}
+	h.SetDocsDir(docs)
+
+	for _, slug := range []string{"../secret", `..\secret`, "sub/../../secret"} {
+		req := httptest.NewRequest(http.MethodGet, "/docs/placeholder", nil)
+		req.URL.Path = "/docs/" + slug
+		rec := httptest.NewRecorder()
+		h.handleDocs(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("slug %q: expected 404, got %d", slug, rec.Code)
+		}
+	}
+}

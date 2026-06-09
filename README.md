@@ -40,7 +40,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM, encrypted and decrypted entirely in the browser — the server never sees plaintext or the key
 - Visual table editor
 - MediaWiki import
-- Public page sharing via secret links
+- Public page sharing via secret links — shared pages are HTML-sanitized for anonymous viewers
 - Dark/light theme, responsive layout, print-friendly pages
 
 ## Quick Start

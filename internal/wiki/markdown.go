@@ -3,12 +3,14 @@ package wiki
 import (
 	"bytes"
 	"fmt"
+	stdhtml "html"
 	"html/template"
 	"net/url"
 	"regexp"
 	"strings"
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -87,6 +89,28 @@ func stripCustomEscapesInCode(source string) string {
 
 type MarkdownRenderer struct {
 	engine goldmark.Markdown
+	// publicPolicy sanitizes rendered HTML for anonymous viewers (public
+	// shares, docs). The engine allows raw HTML (html.WithUnsafe) for
+	// authenticated pages; public output must not execute author HTML/JS.
+	publicPolicy *bluemonday.Policy
+}
+
+// newPublicPolicy builds the sanitizer for public pages: standard UGC rules
+// plus the attributes goldmark's extensions and the image-size macro emit.
+func newPublicPolicy() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+	// Sized images: ![alt|500x300](url) expands to <img style="width:...">.
+	p.AllowStyles("width", "height", "max-width").OnElements("img")
+	p.AllowAttrs("alt").OnElements("img")
+	// Chroma syntax-highlighting spans and goldmark wrapper classes.
+	p.AllowAttrs("class").OnElements("span", "code", "pre", "div", "p", "a", "sup", "section", "ol", "ul", "li", "img", "table")
+	// Auto heading anchors and footnote references.
+	p.AllowAttrs("id").OnElements("h1", "h2", "h3", "h4", "h5", "h6", "sup", "li", "section")
+	p.AllowAttrs("role").OnElements("a", "li", "section")
+	// GFM task-list checkboxes (rendered disabled).
+	p.AllowAttrs("type").Matching(regexp.MustCompile(`^checkbox$`)).OnElements("input")
+	p.AllowAttrs("checked", "disabled").OnElements("input")
+	return p
 }
 
 func NewMarkdownRenderer() *MarkdownRenderer {
@@ -112,7 +136,7 @@ func NewMarkdownRenderer() *MarkdownRenderer {
 		),
 	)
 
-	return &MarkdownRenderer{engine: engine}
+	return &MarkdownRenderer{engine: engine, publicPolicy: newPublicPolicy()}
 }
 
 // ExtractH1Title checks if source begins with a level-1 heading (# …).
@@ -261,7 +285,9 @@ func (r *MarkdownRenderer) RenderPublic(source string) (template.HTML, error) {
 		return "", err
 	}
 
-	return template.HTML(rendered.String()), nil
+	// Anonymous viewers must not execute author-supplied HTML/JS: the engine
+	// renders raw HTML (html.WithUnsafe), so sanitize the public output.
+	return template.HTML(r.publicPolicy.SanitizeBytes(rendered.Bytes())), nil
 }
 
 // expandImageSizeMacros replaces ![alt|SIZE](url) with raw <img> tags.
@@ -272,6 +298,9 @@ func (r *MarkdownRenderer) expandImageSizeMacros(source string) string {
 			return match
 		}
 		alt, size, imgURL := caps[1], caps[2], caps[3]
+		if !safeImageURL(imgURL) {
+			return match
+		}
 		var style string
 		if strings.HasSuffix(size, "%") {
 			style = fmt.Sprintf("max-width:%s;height:auto", size)
@@ -281,6 +310,17 @@ func (r *MarkdownRenderer) expandImageSizeMacros(source string) string {
 		} else {
 			style = fmt.Sprintf("max-width:%spx;height:auto", size)
 		}
-		return fmt.Sprintf(`<img src="%s" alt="%s" style="%s">`, imgURL, alt, style)
+		return fmt.Sprintf(`<img src="%s" alt="%s" style="%s">`,
+			stdhtml.EscapeString(imgURL), stdhtml.EscapeString(alt), style)
 	})
+}
+
+// safeImageURL reports whether an image-size macro URL is http(s) or relative.
+// Anything else (javascript:, data:, unparseable) is left as literal text.
+func safeImageURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "" || u.Scheme == "http" || u.Scheme == "https"
 }
