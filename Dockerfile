@@ -16,7 +16,7 @@ ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/gypsum ./cmd/wiki
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk add --no-cache git ca-certificates \
     && addgroup -g 1000 -S app \
