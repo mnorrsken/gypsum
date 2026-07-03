@@ -10,11 +10,10 @@ import (
 // toolSectionMap maps tool names to their section for dispatch-time checks.
 var toolSectionMap = map[string]MCPSection{
 	"list_pages": MCPSectionRead, "get_page": MCPSectionRead, "search_pages": MCPSectionRead,
-	"list_images": MCPSectionRead, "get_recent_pages": MCPSectionRead, "get_favorites": MCPSectionRead,
+	"suggest_page_location": MCPSectionRead, "list_images": MCPSectionRead,
 	"page_history": MCPSectionRead, "get_page_revision": MCPSectionRead,
-	"page_links": MCPSectionRead, "what_links_here": MCPSectionRead, "link_graph": MCPSectionRead,
+	"page_links": MCPSectionRead, "link_graph": MCPSectionRead,
 	"create_page": MCPSectionEdit, "edit_page": MCPSectionEdit,
-	"create_page_from_mediawiki": MCPSectionEdit, "edit_page_from_mediawiki": MCPSectionEdit,
 	"delete_page": MCPSectionDelete, "delete_image": MCPSectionDelete,
 	"list_skills": MCPSectionSkills, "get_skill": MCPSectionSkills,
 	"create_skill": MCPSectionSkills, "edit_skill": MCPSectionSkills,
@@ -29,7 +28,7 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 	}
 	switch params.Name {
 	case "list_pages":
-		return m.toolListPages()
+		return m.toolListPages(params.Arguments)
 	case "get_page":
 		return m.toolGetPage(params.Arguments)
 	case "create_page":
@@ -40,28 +39,20 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 		return m.toolDeletePage(params.Arguments)
 	case "search_pages":
 		return m.toolSearchPages(params.Arguments)
+	case "suggest_page_location":
+		return m.toolSuggestPageLocation(params.Arguments)
 	case "list_images":
 		return m.toolListImages()
 	case "delete_image":
 		return m.toolDeleteImage(params.Arguments)
-	case "get_recent_pages":
-		return m.toolGetRecentPages(params.Arguments)
-	case "get_favorites":
-		return m.toolGetFavorites()
 	case "page_history":
 		return m.toolPageHistory(params.Arguments)
 	case "get_page_revision":
 		return m.toolGetPageRevision(params.Arguments)
 	case "page_links":
 		return m.toolPageLinks(params.Arguments)
-	case "what_links_here":
-		return m.toolWhatLinksHere(params.Arguments)
 	case "link_graph":
-		return m.toolLinkGraph()
-	case "create_page_from_mediawiki":
-		return m.toolCreatePageFromMediaWiki(params.Arguments)
-	case "edit_page_from_mediawiki":
-		return m.toolEditPageFromMediaWiki(params.Arguments)
+		return m.toolLinkGraph(params.Arguments)
 	case "list_skills":
 		return m.toolListSkills()
 	case "get_skill":
@@ -81,10 +72,40 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 
 // ── Tool implementations ────────────────────────────────────────────────
 
-func (m *MCPHandler) toolListPages() mcpCallToolResult {
+func (m *MCPHandler) toolListPages(args map[string]any) mcpCallToolResult {
+	if fav, _ := mcpArgBool(args, "favorites_only"); fav {
+		favs, err := m.store.LoadFavorites()
+		if err != nil {
+			return mcpError("failed to load favorites: " + err.Error())
+		}
+		if len(favs) == 0 {
+			return mcpText("No favorites set.")
+		}
+		return mcpJSON(favs)
+	}
+
+	limit := 0
+	if n, ok := mcpArgNumber(args, "limit"); ok && n > 0 {
+		limit = int(n)
+	}
+
+	if sort, _ := mcpArgString(args, "sort"); sort == "recent" {
+		pages, err := m.store.RecentPagesWithTime(limit)
+		if err != nil {
+			return mcpError("failed to list recent pages: " + err.Error())
+		}
+		if len(pages) == 0 {
+			return mcpText("No pages yet.")
+		}
+		return mcpJSON(pages)
+	}
+
 	pages, err := m.store.List(KindPage)
 	if err != nil {
 		return mcpError("failed to list pages: " + err.Error())
+	}
+	if limit > 0 && len(pages) > limit {
+		pages = pages[:limit]
 	}
 	return mcpJSON(pages)
 }
@@ -98,6 +119,34 @@ func (m *MCPHandler) toolGetPage(args map[string]any) mcpCallToolResult {
 	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
+
+	includeLinks, _ := mcpArgBool(args, "include_links")
+	sectionsOnly, _ := mcpArgBool(args, "sections_only")
+	_, hasSection := mcpArgString(args, "section")
+	if includeLinks && !sectionsOnly && !hasSection {
+		var sb strings.Builder
+		sb.WriteString(page.Content)
+		sb.WriteString("\n\n## Links\n")
+		out := ExtractWikiLinks(page.Content)
+		if len(out) == 0 {
+			sb.WriteString("Outgoing: (none)\n")
+		} else {
+			fmt.Fprintf(&sb, "Outgoing: %s\n", strings.Join(out, ", "))
+		}
+		if backlinks, err := m.store.BackLinks(slug); err == nil {
+			if len(backlinks) == 0 {
+				sb.WriteString("Backlinks: (none — this page is orphaned)\n")
+			} else {
+				slugs := make([]string, len(backlinks))
+				for i, b := range backlinks {
+					slugs[i] = b.Slug
+				}
+				fmt.Fprintf(&sb, "Backlinks: %s\n", strings.Join(slugs, ", "))
+			}
+		}
+		return mcpText(sb.String())
+	}
+
 	return getDocResult(page.Content, args)
 }
 
@@ -111,6 +160,10 @@ func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
 		return mcpError("missing required argument: content")
 	}
 
+	if format, _ := mcpArgString(args, "format"); format == "mediawiki" {
+		content = ConvertMediaWikiToMarkdown(content)
+	}
+
 	slug := SlugFromTitle(title)
 	if _, err := m.store.Load(KindPage, slug); err == nil {
 		return mcpError("page already exists: " + slug)
@@ -120,7 +173,13 @@ func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
 		return mcpError("failed to save page: " + err.Error())
 	}
 	_ = m.autoCommit.CommitSave(KindPage, slug, "")
-	return mcpText(fmt.Sprintf("Created page '%s' (slug: %s)", title, slug))
+
+	msg := fmt.Sprintf("Created page '%s' (slug: %s)", title, slug)
+	if linkFrom, ok := mcpArgString(args, "link_from"); ok && strings.TrimSpace(linkFrom) != "" {
+		section, _ := mcpArgString(args, "link_section")
+		msg += " " + m.addWikiLink(linkFrom, title, section)
+	}
+	return mcpText(msg)
 }
 
 func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
@@ -132,15 +191,79 @@ func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
 	if err != nil {
 		return mcpError("page not found: " + slug)
 	}
-	finalContent, res := applyEditMode(page.Content, args)
-	if res != nil {
-		return *res
+
+	var finalContent string
+	if format, _ := mcpArgString(args, "format"); format == "mediawiki" {
+		content, hasContent := mcpArgString(args, "content")
+		if !hasContent {
+			return mcpError("missing required argument: content (required with format=mediawiki)")
+		}
+		finalContent = ConvertMediaWikiToMarkdown(content)
+	} else {
+		c, res := applyEditMode(page.Content, args)
+		if res != nil {
+			return *res
+		}
+		finalContent = c
 	}
+
 	if err := m.store.Save(KindPage, slug, finalContent); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
 	_ = m.autoCommit.CommitSave(KindPage, slug, "")
 	return mcpText(fmt.Sprintf("Updated page '%s'", slug))
+}
+
+// addWikiLink adds a [[childTitle]] link to the parent page identified by
+// parentRef (slug or title). It returns a human-readable note describing the
+// outcome; it never fails the caller — a missing parent is reported, not fatal.
+func (m *MCPHandler) addWikiLink(parentRef, childTitle, section string) string {
+	parentSlug := parentRef
+	parent, err := m.store.Load(KindPage, parentSlug)
+	if err != nil {
+		parentSlug = SlugFromTitle(parentRef)
+		parent, err = m.store.Load(KindPage, parentSlug)
+	}
+	if err != nil {
+		return fmt.Sprintf("(note: link_from page '%s' not found — no link added; the page is not yet discoverable)", parentRef)
+	}
+
+	linkLine := fmt.Sprintf("- [[%s]]", childTitle)
+	if strings.Contains(parent.Content, "[["+childTitle+"]]") {
+		return fmt.Sprintf("(already linked from '%s')", parentSlug)
+	}
+
+	var updated string
+	if strings.TrimSpace(section) != "" {
+		body, err := GetSection(parent.Content, section)
+		if err != nil {
+			return fmt.Sprintf("(note: section '%s' not found in '%s' — no link added)", section, parentSlug)
+		}
+		// GetSection includes the heading line; ReplaceSection re-adds it, so
+		// drop the first line before appending the new link.
+		if nl := strings.IndexByte(body, '\n'); nl >= 0 {
+			body = body[nl+1:]
+		} else {
+			body = ""
+		}
+		newBody := strings.TrimRight(body, "\n") + "\n" + linkLine
+		updated, err = ReplaceSection(parent.Content, section, newBody)
+		if err != nil {
+			return fmt.Sprintf("(note: could not update section '%s' in '%s': %s)", section, parentSlug, err.Error())
+		}
+	} else {
+		sep := "\n\n"
+		if strings.HasSuffix(parent.Content, "\n") {
+			sep = "\n"
+		}
+		updated = parent.Content + sep + linkLine + "\n"
+	}
+
+	if err := m.store.Save(KindPage, parentSlug, updated); err != nil {
+		return fmt.Sprintf("(note: failed to add link from '%s': %s)", parentSlug, err.Error())
+	}
+	_ = m.autoCommit.CommitSave(KindPage, parentSlug, "")
+	return fmt.Sprintf("Linked from '%s'.", parentSlug)
 }
 
 func (m *MCPHandler) toolDeletePage(args map[string]any) mcpCallToolResult {
@@ -165,8 +288,22 @@ func (m *MCPHandler) toolSearchPages(args map[string]any) mcpCallToolResult {
 	if !ok {
 		return mcpError("missing required argument: query")
 	}
+	limit := 10
+	if n, ok := mcpArgNumber(args, "limit"); ok && n > 0 {
+		limit = int(n)
+	}
 
-	text, found := m.runMultiSearch(KindPage, queries)
+	// Build link counts once so results can flag hub pages.
+	var counts map[string][2]int
+	if graph, err := m.store.LinkGraph(); err == nil {
+		indeg := computeIndegree(graph)
+		counts = make(map[string][2]int, len(graph))
+		for slug, links := range graph {
+			counts[slug] = [2]int{len(links), indeg[slug]}
+		}
+	}
+
+	text, found := m.runMultiSearch(KindPage, queries, counts, limit)
 	if !found {
 		return mcpText("No results found for: " + strings.Join(queries, ", "))
 	}
@@ -199,29 +336,6 @@ func (m *MCPHandler) toolDeleteImage(args map[string]any) mcpCallToolResult {
 	}
 	_ = m.autoCommit.CommitImageDelete(filename, "")
 	return mcpText(fmt.Sprintf("Deleted image '%s'", filename))
-}
-
-func (m *MCPHandler) toolGetRecentPages(args map[string]any) mcpCallToolResult {
-	count := 10
-	if n, ok := mcpArgNumber(args, "count"); ok && n > 0 {
-		count = int(n)
-	}
-	pages, err := m.store.RecentPages(count)
-	if err != nil {
-		return mcpError("failed to get recent pages: " + err.Error())
-	}
-	return mcpJSON(pages)
-}
-
-func (m *MCPHandler) toolGetFavorites() mcpCallToolResult {
-	favs, err := m.store.LoadFavorites()
-	if err != nil {
-		return mcpError("failed to load favorites: " + err.Error())
-	}
-	if len(favs) == 0 {
-		return mcpText("No favorites set.")
-	}
-	return mcpJSON(favs)
 }
 
 func (m *MCPHandler) toolPageHistory(args map[string]any) mcpCallToolResult {
@@ -266,101 +380,155 @@ func (m *MCPHandler) toolPageLinks(args map[string]any) mcpCallToolResult {
 	if !ok {
 		return mcpError("missing required argument: slug")
 	}
-	page, err := m.store.Load(KindPage, slug)
-	if err != nil {
-		return mcpError("page not found: " + slug)
+	direction, _ := mcpArgString(args, "direction")
+	if direction == "" {
+		direction = "both"
 	}
-	links := ExtractWikiLinks(page.Content)
-	if len(links) == 0 {
-		return mcpText("Page '" + slug + "' has no outgoing wiki links.")
+
+	result := map[string]any{}
+	if direction == "out" || direction == "both" {
+		page, err := m.store.Load(KindPage, slug)
+		if err != nil {
+			return mcpError("page not found: " + slug)
+		}
+		out := ExtractWikiLinks(page.Content)
+		if out == nil {
+			out = []string{}
+		}
+		result["outgoing"] = out
 	}
-	return mcpJSON(links)
+	if direction == "in" || direction == "both" {
+		backlinks, err := m.store.BackLinks(slug)
+		if err != nil {
+			return mcpError("failed to compute backlinks: " + err.Error())
+		}
+		slugs := make([]string, len(backlinks))
+		for i, b := range backlinks {
+			slugs[i] = b.Slug
+		}
+		result["backlinks"] = slugs
+		if len(slugs) == 0 {
+			result["note"] = "no backlinks — this page is orphaned; consider linking it from a parent page"
+		}
+	}
+	if len(result) == 0 {
+		return mcpError("invalid direction: must be 'out', 'in', or 'both'")
+	}
+	return mcpJSON(result)
 }
 
-func (m *MCPHandler) toolWhatLinksHere(args map[string]any) mcpCallToolResult {
-	slug, ok := mcpArgString(args, "slug")
-	if !ok {
-		return mcpError("missing required argument: slug")
-	}
-	backlinks, err := m.store.BackLinks(slug)
-	if err != nil {
-		return mcpError("failed to compute backlinks: " + err.Error())
-	}
-	if len(backlinks) == 0 {
-		return mcpText("No pages link to '" + slug + "'. This page is orphaned — consider linking it from a parent page.")
-	}
-	return mcpJSON(backlinks)
-}
-
-func (m *MCPHandler) toolCreatePageFromMediaWiki(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolSuggestPageLocation(args map[string]any) mcpCallToolResult {
 	title, ok := mcpArgString(args, "title")
 	if !ok {
 		return mcpError("missing required argument: title")
 	}
-	wikitext, ok := mcpArgString(args, "wikitext")
-	if !ok {
-		return mcpError("missing required argument: wikitext")
+	keywords, _ := mcpArgStringArray(args, "keywords")
+	limit := 5
+	if n, ok := mcpArgNumber(args, "limit"); ok && n > 0 {
+		limit = int(n)
 	}
 
-	slug := SlugFromTitle(title)
-	if _, err := m.store.Load(KindPage, slug); err == nil {
-		return mcpError("page already exists: " + slug)
+	suggestions, err := m.store.SuggestParents(title, keywords, limit)
+	if err != nil {
+		return mcpError("failed to suggest locations: " + err.Error())
 	}
-
-	content := ConvertMediaWikiToMarkdown(wikitext)
-	if err := m.store.Save(KindPage, slug, content); err != nil {
-		return mcpError("failed to save page: " + err.Error())
+	if len(suggestions) == 0 {
+		return mcpText("No existing pages to link from yet — create the page and link it from Home. " +
+			"Pass link_from='Home' to create_page.")
 	}
-	_ = m.autoCommit.CommitSave(KindPage, slug, "")
-	return mcpText(fmt.Sprintf("Created page '%s' (slug: %s) from MediaWiki source", title, slug))
+	return mcpJSON(suggestions)
 }
 
-func (m *MCPHandler) toolEditPageFromMediaWiki(args map[string]any) mcpCallToolResult {
-	slug, ok := mcpArgString(args, "slug")
-	if !ok {
-		return mcpError("missing required argument: slug")
-	}
-	wikitext, ok := mcpArgString(args, "wikitext")
-	if !ok {
-		return mcpError("missing required argument: wikitext")
-	}
-
-	if _, err := m.store.Load(KindPage, slug); err != nil {
-		return mcpError("page not found: " + slug)
-	}
-
-	content := ConvertMediaWikiToMarkdown(wikitext)
-	if err := m.store.Save(KindPage, slug, content); err != nil {
-		return mcpError("failed to save page: " + err.Error())
-	}
-	_ = m.autoCommit.CommitSave(KindPage, slug, "")
-	return mcpText(fmt.Sprintf("Updated page '%s' from MediaWiki source", slug))
-}
-
-func (m *MCPHandler) toolLinkGraph() mcpCallToolResult {
+func (m *MCPHandler) toolLinkGraph(args map[string]any) mcpCallToolResult {
 	graph, err := m.store.LinkGraph()
 	if err != nil {
 		return mcpError("failed to build link graph: " + err.Error())
 	}
+
+	if orphans, _ := mcpArgBool(args, "orphans_only"); orphans {
+		slugs := orphanSlugs(graph)
+		if len(slugs) == 0 {
+			return mcpText("No orphaned pages — every page has at least one backlink.")
+		}
+		return mcpJSON(slugs)
+	}
+
+	if slug, ok := mcpArgString(args, "slug"); ok && slug != "" {
+		if _, exists := graph[slug]; !exists {
+			return mcpError("page not found in link graph: " + slug)
+		}
+		depth := 1
+		if n, ok := mcpArgNumber(args, "depth"); ok && n > 0 {
+			depth = int(n)
+		}
+		return mcpJSON(neighborhood(graph, slug, depth))
+	}
+
+	if format, _ := mcpArgString(args, "format"); format == "tree" {
+		roots := m.treeRoots(graph)
+		return mcpText(renderLinkTree(graph, roots))
+	}
+
 	return mcpJSON(graph)
+}
+
+// treeRoots picks sensible starting points for the link tree: favorite pages
+// that exist, else "Home", else all pages that have no backlinks.
+func (m *MCPHandler) treeRoots(graph map[string][]string) []string {
+	var roots []string
+	if favs, err := m.store.LoadFavorites(); err == nil {
+		for _, f := range favs {
+			if _, ok := graph[f.Slug]; ok {
+				roots = append(roots, f.Slug)
+			}
+		}
+	}
+	if len(roots) == 0 {
+		if _, ok := graph["Home"]; ok {
+			roots = append(roots, "Home")
+		}
+	}
+	if len(roots) == 0 {
+		roots = orphanSlugs(graph)
+	}
+	return roots
 }
 
 // ── Multi-query search helper ──────────────────────────────────────────
 
-func (m *MCPHandler) runMultiSearch(kind DocKind, queries []string) (string, bool) {
+// runMultiSearch runs each query and formats a combined, de-duplicated result
+// list (a page matched by several queries appears once). When counts is
+// non-nil, each result is annotated with its [out, in] link counts. limit
+// caps the total number of results (0 = unlimited).
+func (m *MCPHandler) runMultiSearch(kind DocKind, queries []string, counts map[string][2]int, limit int) (string, bool) {
 	var sb strings.Builder
+	seen := map[string]bool{}
+	total := 0
 	found := false
 	for _, q := range queries {
 		results, err := m.store.Search(kind, q)
 		if err != nil || len(results) == 0 {
 			continue
 		}
-		found = true
-		if len(queries) > 1 {
-			fmt.Fprintf(&sb, "### Results for: %s\n\n", q)
-		}
+		wroteHeader := false
 		for _, r := range results {
+			if seen[r.Slug] {
+				continue
+			}
+			if limit > 0 && total >= limit {
+				break
+			}
+			seen[r.Slug] = true
+			total++
+			found = true
+			if len(queries) > 1 && !wroteHeader {
+				fmt.Fprintf(&sb, "### Results for: %s\n\n", q)
+				wroteHeader = true
+			}
 			fmt.Fprintf(&sb, "## %s\n**Slug:** %s\n", r.Title, r.Slug)
+			if c, ok := counts[r.Slug]; ok {
+				fmt.Fprintf(&sb, "**Links:** %d outgoing, %d backlinks\n", c[0], c[1])
+			}
 			if len(r.Snippets) > 0 {
 				for _, snip := range r.Snippets {
 					fmt.Fprintf(&sb, "> %s\n", snip)
@@ -463,6 +631,10 @@ func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
 	if !ok {
 		return mcpError("missing required argument: query")
 	}
+	limit := 10
+	if n, ok := mcpArgNumber(args, "limit"); ok && n > 0 {
+		limit = int(n)
+	}
 
 	// Collect unique slugs across all queries.
 	seen := map[string]struct{}{}
@@ -493,7 +665,7 @@ func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
 		return mcpText(skill.Content)
 	}
 
-	text, _ := m.runMultiSearch(KindSkill, queries)
+	text, _ := m.runMultiSearch(KindSkill, queries, nil, limit)
 	return mcpText(text)
 }
 

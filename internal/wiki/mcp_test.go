@@ -161,8 +161,8 @@ func TestMCPToolsList(t *testing.T) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(result.Tools) != 23 {
-		t.Fatalf("expected 23 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 19 {
+		t.Fatalf("expected 19 tools, got %d", len(result.Tools))
 	}
 	// Verify all tools have name, description, and schema
 	for _, tool := range result.Tools {
@@ -503,26 +503,29 @@ func TestMCPDeleteImagePathTraversal(t *testing.T) {
 	}
 }
 
-func TestMCPGetRecentPages(t *testing.T) {
+func TestMCPListPagesRecent(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"Old", "old page")
-	_ = store.Save(KindPage,"New", "new page")
+	_ = store.Save(KindPage, "Old", "old page")
+	_ = store.Save(KindPage, "New", "new page")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name":      "get_recent_pages",
-		"arguments": map[string]any{"count": 1},
+		"name":      "list_pages",
+		"arguments": map[string]any{"sort": "recent", "limit": 1},
 	})
 	text := toolResultText(t, resp)
-	// Should contain the most recent page
+	// Should contain the most recent page and a timestamp field.
 	if !bytes.Contains([]byte(text), []byte("New")) {
 		t.Fatalf("expected New in recent pages: %s", text)
 	}
+	if !bytes.Contains([]byte(text), []byte("modified")) {
+		t.Fatalf("expected modified timestamp in recent pages: %s", text)
+	}
 }
 
-func TestMCPGetFavoritesEmpty(t *testing.T) {
+func TestMCPListPagesFavoritesEmpty(t *testing.T) {
 	handler, _ := newTestMCP(t)
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name": "get_favorites", "arguments": map[string]any{},
+		"name": "list_pages", "arguments": map[string]any{"favorites_only": true},
 	})
 	text := toolResultText(t, resp)
 	if text != "No favorites set." {
@@ -530,12 +533,12 @@ func TestMCPGetFavoritesEmpty(t *testing.T) {
 	}
 }
 
-func TestMCPGetFavorites(t *testing.T) {
+func TestMCPListPagesFavorites(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"_favorites", "[[Home]]\n[[Notes]]")
+	_ = store.Save(KindPage, "_favorites", "[[Home]]\n[[Notes]]")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name": "get_favorites", "arguments": map[string]any{},
+		"name": "list_pages", "arguments": map[string]any{"favorites_only": true},
 	})
 	text := toolResultText(t, resp)
 	if !bytes.Contains([]byte(text), []byte("Home")) {
@@ -595,7 +598,7 @@ func TestMCPMissingRequiredArgs(t *testing.T) {
 		{"get_page_revision", map[string]any{"slug": "x"}},
 		{"get_page_revision", map[string]any{"hash": "x"}},
 		{"page_links", map[string]any{}},
-		{"what_links_here", map[string]any{}},
+		{"suggest_page_location", map[string]any{}},
 	}
 
 	for _, tt := range tests {
@@ -623,27 +626,31 @@ func TestMCPPageLinks(t *testing.T) {
 	}
 }
 
-func TestMCPPageLinksNoLinks(t *testing.T) {
+func TestMCPPageLinksOutgoingOnly(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"Lonely", "No links here.")
+	_ = store.Save(KindPage, "Home", "See [[About]] and [[Contact]]")
+	_ = store.Save(KindPage, "About", "Back to [[Home]]")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name": "page_links", "arguments": map[string]any{"slug": "Lonely"},
+		"name": "page_links", "arguments": map[string]any{"slug": "Home", "direction": "out"},
 	})
 	text := toolResultText(t, resp)
-	if !bytes.Contains([]byte(text), []byte("no outgoing")) {
-		t.Fatalf("expected no outgoing message: %s", text)
+	if !bytes.Contains([]byte(text), []byte("outgoing")) {
+		t.Fatalf("expected outgoing key: %s", text)
+	}
+	if bytes.Contains([]byte(text), []byte("backlinks")) {
+		t.Fatalf("direction=out should not include backlinks: %s", text)
 	}
 }
 
-func TestMCPWhatLinksHere(t *testing.T) {
+func TestMCPPageLinksBacklinks(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"Home", "See [[About]]")
-	_ = store.Save(KindPage,"Other", "Also see [[About]]")
-	_ = store.Save(KindPage,"About", "About page")
+	_ = store.Save(KindPage, "Home", "See [[About]]")
+	_ = store.Save(KindPage, "Other", "Also see [[About]]")
+	_ = store.Save(KindPage, "About", "About page")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name": "what_links_here", "arguments": map[string]any{"slug": "About"},
+		"name": "page_links", "arguments": map[string]any{"slug": "About", "direction": "in"},
 	})
 	text := toolResultText(t, resp)
 	if !bytes.Contains([]byte(text), []byte("Home")) || !bytes.Contains([]byte(text), []byte("Other")) {
@@ -651,12 +658,12 @@ func TestMCPWhatLinksHere(t *testing.T) {
 	}
 }
 
-func TestMCPWhatLinksHereOrphaned(t *testing.T) {
+func TestMCPPageLinksOrphaned(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"Orphan", "Nobody links here")
+	_ = store.Save(KindPage, "Orphan", "Nobody links here")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
-		"name": "what_links_here", "arguments": map[string]any{"slug": "Orphan"},
+		"name": "page_links", "arguments": map[string]any{"slug": "Orphan", "direction": "in"},
 	})
 	text := toolResultText(t, resp)
 	if !bytes.Contains([]byte(text), []byte("orphaned")) {
@@ -1542,4 +1549,230 @@ func TestMCPGetSkillSectionsOnly(t *testing.T) {
 	if !strings.Contains(text, "# Skill Title") || !strings.Contains(text, "## When to Use") || !strings.Contains(text, "## Instructions") {
 		t.Fatalf("expected headings with level prefixes: %s", text)
 	}
+}
+
+// ── New structure/discovery tools ───────────────────────────────────────
+
+func TestMCPSuggestPageLocation(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Home", "Index: [[Databases]] and [[Networking]]")
+	_ = store.Save(KindPage, "Databases", "About [[Postgres]] and [[SQLite]] databases")
+	_ = store.Save(KindPage, "Postgres", "Postgres database notes")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "suggest_page_location",
+		"arguments": map[string]any{
+			"title":    "MySQL Tuning",
+			"keywords": []any{"database"},
+		},
+	})
+	text := toolResultText(t, resp)
+	// Databases is both topically relevant and a hub, so it should be suggested.
+	if !bytes.Contains([]byte(text), []byte("Databases")) {
+		t.Fatalf("expected Databases suggested as parent: %s", text)
+	}
+	if !bytes.Contains([]byte(text), []byte("out_links")) {
+		t.Fatalf("expected link metrics in suggestion: %s", text)
+	}
+}
+
+func TestMCPCreatePageWithLinkFrom(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Home", "# Home\nWelcome.")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":     "New Child",
+			"content":   "child content",
+			"link_from": "Home",
+		},
+	})
+	text := toolResultText(t, resp)
+	if !bytes.Contains([]byte(text), []byte("Linked from 'Home'")) {
+		t.Fatalf("expected linked-from confirmation: %s", text)
+	}
+	home, err := store.Load(KindPage, "Home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(home.Content, "[[New Child]]") {
+		t.Fatalf("expected [[New Child]] link added to Home: %q", home.Content)
+	}
+}
+
+func TestMCPCreatePageWithLinkFromSection(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Index", "# Index\n## Pages\n- [[Existing]]\n## Footer\nend")
+
+	mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":        "Fresh",
+			"content":      "x",
+			"link_from":    "Index",
+			"link_section": "Pages",
+		},
+	})
+	idx, _ := store.Load(KindPage, "Index")
+	pagesSection, err := GetSection(idx.Content, "Pages")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pagesSection, "[[Fresh]]") {
+		t.Fatalf("expected [[Fresh]] under Pages section: %q", idx.Content)
+	}
+	if strings.Contains(mustSection(t, idx.Content, "Footer"), "[[Fresh]]") {
+		t.Fatalf("link should not leak into Footer: %q", idx.Content)
+	}
+}
+
+func TestMCPCreatePageLinkFromMissingParent(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":     "Solo",
+			"content":   "x",
+			"link_from": "Nonexistent",
+		},
+	})
+	text := toolResultText(t, resp)
+	// Page still created, but note explains the missing parent.
+	if !bytes.Contains([]byte(text), []byte("Created page 'Solo'")) {
+		t.Fatalf("expected page created: %s", text)
+	}
+	if !bytes.Contains([]byte(text), []byte("not found")) {
+		t.Fatalf("expected missing-parent note: %s", text)
+	}
+}
+
+func TestMCPCreatePageMediaWikiFormat(t *testing.T) {
+	handler, store := newTestMCP(t)
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "create_page",
+		"arguments": map[string]any{
+			"title":   "Imported",
+			"content": "'''bold''' text",
+			"format":  "mediawiki",
+		},
+	})
+	toolResultText(t, resp)
+	p, err := store.Load(KindPage, "Imported")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.Content, "**bold**") {
+		t.Fatalf("expected mediawiki bold converted to markdown: %q", p.Content)
+	}
+}
+
+func TestMCPEditPageMediaWikiFormat(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Doc", "old")
+	mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name": "edit_page",
+		"arguments": map[string]any{
+			"slug":    "Doc",
+			"content": "''italic''",
+			"format":  "mediawiki",
+		},
+	})
+	p, _ := store.Load(KindPage, "Doc")
+	if !strings.Contains(p.Content, "*italic*") {
+		t.Fatalf("expected converted italic: %q", p.Content)
+	}
+}
+
+func TestMCPGetPageIncludeLinks(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "A", "links to [[B]]")
+	_ = store.Save(KindPage, "B", "target")
+	_ = store.Save(KindPage, "C", "also links [[B]]")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "get_page",
+		"arguments": map[string]any{"slug": "B", "include_links": true},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Backlinks:") || !strings.Contains(text, "A") || !strings.Contains(text, "C") {
+		t.Fatalf("expected backlinks A and C: %s", text)
+	}
+}
+
+func TestMCPLinkGraphOrphansOnly(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Home", "See [[About]]")
+	_ = store.Save(KindPage, "About", "content")
+	_ = store.Save(KindPage, "Lonely", "no backlinks")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "link_graph",
+		"arguments": map[string]any{"orphans_only": true},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Home") || !strings.Contains(text, "Lonely") {
+		t.Fatalf("expected Home and Lonely as orphans: %s", text)
+	}
+	if strings.Contains(text, "About") {
+		t.Fatalf("About has a backlink and should not be an orphan: %s", text)
+	}
+}
+
+func TestMCPLinkGraphTree(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Home", "See [[About]]")
+	_ = store.Save(KindPage, "About", "Back to [[Home]]")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "link_graph",
+		"arguments": map[string]any{"format": "tree"},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "- Home") || !strings.Contains(text, "About") {
+		t.Fatalf("expected tree outline: %s", text)
+	}
+}
+
+func TestMCPLinkGraphNeighborhood(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Home", "See [[About]]")
+	_ = store.Save(KindPage, "About", "content")
+	_ = store.Save(KindPage, "Far", "unrelated")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "link_graph",
+		"arguments": map[string]any{"slug": "Home", "depth": 1},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "Home") || !strings.Contains(text, "About") {
+		t.Fatalf("expected Home and About in neighborhood: %s", text)
+	}
+	if strings.Contains(text, "Far") {
+		t.Fatalf("Far is unrelated and should be excluded: %s", text)
+	}
+}
+
+func TestMCPSearchPagesLinkCounts(t *testing.T) {
+	handler, store := newTestMCP(t)
+	_ = store.Save(KindPage, "Hub", "Guide linking [[One]] and [[Two]]")
+	_ = store.Save(KindPage, "One", "Guide content one")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "search_pages",
+		"arguments": map[string]any{"query": []any{"Guide"}},
+	})
+	text := toolResultText(t, resp)
+	if !strings.Contains(text, "outgoing") {
+		t.Fatalf("expected link counts in search results: %s", text)
+	}
+}
+
+func mustSection(t *testing.T, content, heading string) string {
+	t.Helper()
+	body, err := GetSection(content, heading)
+	if err != nil {
+		t.Fatalf("section %q: %v", heading, err)
+	}
+	return body
 }

@@ -2,6 +2,23 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.47.0
+
+### Added
+- **`suggest_page_location` MCP tool** — given a working title (and optional keywords), returns a ranked list of existing pages that would make good parents to link a new page from, combining full-text relevance with link-graph position (hub/index pages are favored). Each suggestion includes the outgoing/backlink counts, the headings that already contain links (good insertion points), and a few sample links — so an agent can decide where a page belongs without listing and reading candidate pages.
+- **`create_page` gains `link_from` (+ `link_section`)** — atomically add a `[[link]]` to the new page from a parent page (optionally under a named heading), so the "every page must be linked from a parent" convention is enforced in one call instead of a follow-up `edit_page`. A missing parent is reported as a note rather than failing the create.
+- **`get_page` gains `include_links`** — append the page's outgoing links and backlinks after the content, so you can understand where a page sits in the wiki in a single read.
+- **`link_graph` scoped modes** — `format: tree` renders an indented outline from favorites/Home; `slug` (+ `depth`) returns just the neighborhood subgraph around a page; `orphans_only` lists pages with no backlinks. Prefer these over fetching the full map on large wikis.
+
+### Changed
+- **`list_pages` absorbs `get_recent_pages` and `get_favorites`** — pass `sort: recent` (results include a `modified` timestamp), `favorites_only: true`, or `limit`. The two standalone tools are removed.
+- **`page_links` absorbs `what_links_here`** — one tool with `direction: out | in | both` (default `both`) returns outgoing links and/or backlinks. `what_links_here` is removed.
+- **MediaWiki import folded into `create_page`/`edit_page`** — pass `format: mediawiki` with wikitext in `content`. The standalone `create_page_from_mediawiki` and `edit_page_from_mediawiki` tools are removed.
+- **`search_pages` is leaner and more informative** — results are de-duplicated across multiple queries, capped by a new `limit` (default 10), and annotated with each page's outgoing/backlink counts so hub pages stand out. `search_skills` also accepts `limit`.
+
+### Notes
+- The MCP tool surface drops from 23 to 19 tools. This is a breaking change for connectors that call the removed tool names (`get_recent_pages`, `get_favorites`, `what_links_here`, `create_page_from_mediawiki`, `edit_page_from_mediawiki`) — use the consolidated equivalents above. The section-based enable/disable model (read/edit/delete/skills) is unchanged.
+
 ## v0.46.0
 
 ### Added

@@ -9,10 +9,16 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:    "list_pages",
 			Section: MCPSectionRead,
-			Description: "List all wiki pages (alphabetically sorted). Returns page slugs and titles. " +
-				"Prefer search_pages over this tool when looking for specific pages — " +
-				"do not list all pages just to find one.",
-			InputSchema: mcpSchema("object", nil, nil),
+			Description: "List wiki pages. By default returns every page (slug + title) sorted alphabetically. " +
+				"Pass 'sort: recent' to order by last-modified (each entry then includes a 'modified' timestamp), " +
+				"'favorites_only: true' to return just the pinned/favorite sidebar pages, " +
+				"or 'limit' to cap the number of results. " +
+				"Prefer search_pages over this tool when looking for specific pages — do not list all pages just to find one.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"sort":           mcpPropString("Ordering: 'title' (default, alphabetical) or 'recent' (most recently modified first, adds a 'modified' timestamp)."),
+				"limit":          map[string]any{"type": "number", "description": "Maximum number of pages to return (0/omitted = all)."},
+				"favorites_only": map[string]any{"type": "boolean", "description": "If true, return only favorite/pinned pages from the sidebar."},
+			}, nil),
 		},
 		{
 			Name:    "get_page",
@@ -22,39 +28,41 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"If you are not sure of the exact slug, use search_pages first to find it. " +
 				"Do NOT guess slugs — search instead. " +
 				"Optional: pass 'section' to get only a specific section (matched by heading name, any level), " +
-				"or 'sections_only: true' to list just the section headings (shown with # prefix to indicate level).",
+				"'sections_only: true' to list just the section headings (shown with # prefix to indicate level), " +
+				"or 'include_links: true' to append this page's outgoing links and backlinks (useful for understanding where it sits in the wiki).",
 			InputSchema: mcpSchema("object", map[string]any{
 				"slug":          mcpPropString("Exact page slug, e.g. 'Home' or 'My_Page'. Slugs use underscores for spaces. Must be exact — use search_pages if unsure."),
 				"section":       mcpPropString("Return only the named section (matched by # heading name, case-insensitive). Omit to get full page."),
 				"sections_only": map[string]any{"type": "boolean", "description": "If true, return only the list of # section headings (not content). Useful for discovering page structure before a section edit."},
+				"include_links": map[string]any{"type": "boolean", "description": "If true, append the page's outgoing wiki links and backlinks after the content."},
 			}, []string{"slug"}),
 		},
 		{
 			Name:        "search_pages",
 			Section:     MCPSectionRead,
-			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. Each query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets showing where terms were found in the page content. Multiple queries can be provided to search for different topics at once.",
+			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. Each query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets and each page's outgoing/backlink counts (so you can spot hub pages). Multiple queries can be provided to search for different topics at once.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"query": mcpPropStringArray("Search queries — each is split into terms on whitespace/punctuation, each prefix-matched independently. Multiple queries search for different topics in one call."),
+				"limit": map[string]any{"type": "number", "description": "Maximum number of results to return across all queries (default 10)."},
 			}, []string{"query"}),
+		},
+		{
+			Name:    "suggest_page_location",
+			Section: MCPSectionRead,
+			Description: "Suggest where a NEW page should live: returns a ranked list of existing pages that would make good parents to link it from. " +
+				"Use this before create_page to decide the 'link_from' target, instead of manually listing and reading candidate pages. " +
+				"Ranking combines full-text relevance to the title/keywords with each candidate's position in the link graph (hub/index pages are favored). " +
+				"For each suggestion it returns the slug, outgoing/backlink counts, a reason, the headings that already contain links (good insertion points), and a few sample existing links for context.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"title":    mcpPropString("Working title of the new page, e.g. 'Kubernetes Deployment'."),
+				"keywords": mcpPropStringArray("Optional extra topic keywords to widen the relevance match, e.g. ['deploy', 'infrastructure']."),
+				"limit":    map[string]any{"type": "number", "description": "Maximum number of suggestions to return (default 5)."},
+			}, []string{"title"}),
 		},
 		{
 			Name:        "list_images",
 			Section:     MCPSectionRead,
 			Description: "List all uploaded images with metadata (name, size, modification time, which pages use them).",
-			InputSchema: mcpSchema("object", nil, nil),
-		},
-		{
-			Name:        "get_recent_pages",
-			Section:     MCPSectionRead,
-			Description: "Get the most recently modified wiki pages.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"count": map[string]any{"type": "number", "description": "Number of pages to return (default 10)"},
-			}, nil),
-		},
-		{
-			Name:        "get_favorites",
-			Section:     MCPSectionRead,
-			Description: "Get the list of favorite/pinned pages from the wiki sidebar.",
 			InputSchema: mcpSchema("object", nil, nil),
 		},
 		{
@@ -76,28 +84,32 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"slug", "hash"}),
 		},
 		{
-			Name:        "page_links",
-			Section:     MCPSectionRead,
-			Description: "Get all outgoing wiki links from a page. Returns the slugs of pages that this page links to via [[Page Title]] syntax.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Page slug to inspect"),
-			}, []string{"slug"}),
-		},
-		{
-			Name:    "what_links_here",
+			Name:    "page_links",
 			Section: MCPSectionRead,
-			Description: "Find all pages that link to a given page (backlinks/parent pages). " +
-				"Every page should be linked from at least one other page to be discoverable in the wiki.",
+			Description: "Inspect the [[wiki links]] connected to a page. " +
+				"By default returns both outgoing links (pages this page links to) and incoming links/backlinks (pages that link here). " +
+				"Pass 'direction: out' or 'direction: in' to get just one side. " +
+				"Every page should have at least one backlink to be discoverable — a page with no backlinks is orphaned.",
 			InputSchema: mcpSchema("object", map[string]any{
-				"slug": mcpPropString("Target page slug to find backlinks for"),
+				"slug":      mcpPropString("Page slug to inspect"),
+				"direction": mcpPropString("Which links to return: 'out' (outgoing), 'in' (backlinks), or 'both' (default)."),
 			}, []string{"slug"}),
 		},
 		{
 			Name:    "link_graph",
 			Section: MCPSectionRead,
-			Description: "Get the full wiki link graph. Returns a map of every page slug to the list of slugs it links to. " +
-				"Useful for understanding the overall wiki structure and finding orphaned pages.",
-			InputSchema: mcpSchema("object", nil, nil),
+			Description: "Explore the wiki link structure. Modes:\n" +
+				"(1) Default: returns the full map of every page slug to the slugs it links to.\n" +
+				"(2) 'format: tree': an indented text outline of the wiki starting from favorites (or Home), showing how pages nest — the best way to see overall structure.\n" +
+				"(3) 'slug' + optional 'depth': the local neighborhood subgraph within N link hops of a page (default depth 1).\n" +
+				"(4) 'orphans_only: true': just the pages that nothing links to (candidates that need a parent link).\n" +
+				"Prefer the scoped modes over the full map on large wikis.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"format":       mcpPropString("'map' (default, slug→links object) or 'tree' (indented outline from favorites/Home)."),
+				"slug":         mcpPropString("If set, return only the neighborhood subgraph around this page."),
+				"depth":        map[string]any{"type": "number", "description": "Neighborhood radius in link hops when 'slug' is set (default 1)."},
+				"orphans_only": map[string]any{"type": "boolean", "description": "If true, return only pages with no backlinks."},
+			}, nil),
 		},
 
 		// ── Edit tools ───────────────────────────────────────────────
@@ -107,11 +119,15 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Description: "Create a new wiki page. Use this when the user says things like 'document on my wiki', 'add a note to my wiki', 'save this to the wiki', or 'create a wiki page'. " +
 				"Fails if the page already exists. " +
 				"The slug is derived from the title (spaces become underscores, e.g. 'My Page' → 'My_Page'). " +
-				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page (e.g. Home or a relevant category page) so it is discoverable. " +
+				"IMPORTANT: pass 'link_from' with a parent page (e.g. 'Home' or a relevant category page) so the new page is discoverable — every page should be linked from at least one other page. Use suggest_page_location first if unsure which parent to use. " +
+				"To import MediaWiki wikitext instead of Markdown, pass 'format: mediawiki' and put the wikitext in 'content'. " +
 				wikiFormattingGuide,
 			InputSchema: mcpSchema("object", map[string]any{
-				"title":   mcpPropString("Page title, e.g. 'My New Page'. This becomes the slug and the display title."),
-				"content": mcpPropString("Markdown content for the page. " + wikiContentGuide),
+				"title":        mcpPropString("Page title, e.g. 'My New Page'. This becomes the slug and the display title."),
+				"content":      mcpPropString("Page content. Markdown by default, or MediaWiki wikitext when format=mediawiki. " + wikiContentGuide),
+				"format":       mcpPropString("'markdown' (default) or 'mediawiki' (content is wikitext and will be converted to Markdown)."),
+				"link_from":    mcpPropString("Slug or title of an existing page to add a [[link]] to this new page from, making it discoverable. Strongly recommended."),
+				"link_section": mcpPropString("Optional heading name within the link_from page under which to add the link (e.g. 'Pages'). Defaults to the end of that page."),
 			}, []string{"title", "content"}),
 		},
 		{
@@ -122,6 +138,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"(2) SECTION EDIT: pass 'section' (a # heading name) and 'content' to replace just that section's body. Use get_page with sections_only=true to discover section names.\n" +
 				"(3) APPEND: pass 'append: true' and 'content' to add text to the end of the page.\n" +
 				"(4) FULL REPLACE: pass only 'content' to replace the entire page (use get_page first).\n" +
+				"To replace the whole page from MediaWiki wikitext, pass 'format: mediawiki' with 'content' (converted to Markdown; other modes ignore format). " +
 				"If you do not know the exact slug, use search_pages first — do NOT guess slugs. " +
 				"When adding [[wiki links]] to new pages, make sure those pages exist or will be created. " +
 				wikiFormattingGuide,
@@ -132,37 +149,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"new_text": mcpPropString("Replacement text (search-and-replace mode). Provide with old_text. Can be empty to delete matched text."),
 				"section":  mcpPropString("Heading name of the section to replace (case-insensitive, any level — ## works too). Use with 'content'. The heading line is preserved."),
 				"append":   map[string]any{"type": "boolean", "description": "If true, append 'content' to the end of the page instead of replacing."},
+				"format":   mcpPropString("'markdown' (default) or 'mediawiki' (full-replace only: 'content' is wikitext, converted to Markdown)."),
 			}, []string{"slug"}),
-		},
-		{
-			Name:    "create_page_from_mediawiki",
-			Section: MCPSectionEdit,
-			Description: "Create a new wiki page from MediaWiki wikitext. ONLY use this tool when importing content from a MediaWiki source — " +
-				"for normal page creation, use create_page with Markdown instead. " +
-				"The wikitext is automatically converted to Markdown. " +
-				"Handles: '''bold'''/''italic'', == headings ==, <syntaxhighlight>/<source>/<pre>/<nowiki>/<code>, " +
-				"* and # lists, {| tables |}, [[wiki links]], [external links], categories, templates, refs, and " +
-				"MediaWiki space-prefixed preformatted lines. " +
-				"Fails if the page already exists. " +
-				"IMPORTANT: After creating a page, always add a [[Page Title]] link to it from at least one parent page.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"title":    mcpPropString("Page title, e.g. 'My New Page'. This becomes the slug and display title."),
-				"wikitext": mcpPropString("MediaWiki wikitext source to convert and save as the page content."),
-			}, []string{"title", "wikitext"}),
-		},
-		{
-			Name:    "edit_page_from_mediawiki",
-			Section: MCPSectionEdit,
-			Description: "Update an existing wiki page from MediaWiki wikitext. ONLY use this tool when importing content from a MediaWiki source — " +
-				"for normal page editing, use edit_page with Markdown instead. " +
-				"The wikitext is automatically converted to Markdown and replaces the entire page content. " +
-				"Handles: '''bold'''/''italic'', == headings ==, <syntaxhighlight>/<source>/<pre>/<nowiki>/<code>, " +
-				"* and # lists, {| tables |}, [[wiki links]], [external links], categories, templates, refs, and " +
-				"MediaWiki space-prefixed preformatted lines.",
-			InputSchema: mcpSchema("object", map[string]any{
-				"slug":     mcpPropString("Page slug to edit, e.g. 'My_Page'"),
-				"wikitext": mcpPropString("MediaWiki wikitext source to convert and save as the new page content."),
-			}, []string{"slug", "wikitext"}),
 		},
 
 		// ── Delete tools ─────────────────────────────────────────────
@@ -219,7 +207,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"Recommended structure: start with '# Title', then a brief description of what this skill covers, " +
 				"a '## When to Use' section describing when to apply it, " +
 				"a '## Instructions' section with the actual steps, " +
-				"and end with a 'Tags: keyword1, keyword2, ...' line for discoverability. " +
+				"and end with a 'Tags: keyword1, keyword2, ...' line for discoverability (skills are found by tags/search, not links). " +
 				"The slug is derived from the title (spaces become underscores). " +
 				"Fails if the skill already exists.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -268,6 +256,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"Returns the full skill content when exactly one match is found.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"query": mcpPropStringArray("Search queries — each is split into terms, each prefix-matched. E.g. ['go testing', 'deploy kubernetes']. Multiple queries search for different topics in one call."),
+				"limit": map[string]any{"type": "number", "description": "Maximum number of results to return when multiple match (default 10)."},
 			}, []string{"query"}),
 		},
 	}
