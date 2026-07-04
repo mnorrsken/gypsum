@@ -70,33 +70,40 @@ Tokens expire after 24 hours. Re-run `mcp-proxy auth` to get a fresh token and u
 
 ## Available Tools
 
-| Tool | Description |
-|---|---|
-| `list_pages` | List all wiki pages |
-| `get_page` | Read a page's markdown content (supports `section` and `sections_only` parameters) |
-| `create_page` | Create a new page |
-| `edit_page` | Update an existing page (see edit modes below) |
-| `delete_page` | Delete a page |
-| `search_pages` | Relevance-ranked full-text search across pages |
-| `list_images` | List uploaded images with metadata |
-| `delete_image` | Delete an image |
-| `get_recent_pages` | Recently modified pages |
-| `get_favorites` | Favorite/pinned pages |
-| `page_history` | Git revision history for a page |
-| `get_page_revision` | Page content at a specific revision |
-| `page_links` | Outgoing wiki links from a page |
-| `what_links_here` | Backlinks to a given page |
-| `link_graph` | Full wiki link graph |
-| `create_page_from_mediawiki` | Create a page from MediaWiki wikitext |
-| `edit_page_from_mediawiki` | Update a page from MediaWiki wikitext |
-| `list_skills` | List all skills with tags |
-| `get_skill` | Read a skill's markdown content (supports `section` and `sections_only` parameters) |
-| `create_skill` | Create a new skill |
-| `edit_skill` | Update an existing skill (same edit modes as `edit_page`) |
-| `delete_skill` | Delete a skill |
-| `search_skills` | Tag-boosted search across skills |
+Tools are grouped into sections (read, edit, delete, skills) that can be enabled independently. Several tools were consolidated in v0.47.0 — see the notes below the table.
 
-Skills tools (`list_skills`, `search_skills`, etc.) are included in the table above. See [Skills](skills.md) for how to create and use skills with LLMs.
+### Page tools
+
+| Tool | Section | Description |
+|---|---|---|
+| `list_pages` | read | List wiki pages. `sort: recent` orders by last-modified (adds a `modified` timestamp), `favorites_only: true` returns just pinned pages, `limit` caps results. Prefer `search_pages` to find a specific page. |
+| `get_page` | read | Read a page's markdown by exact slug. Supports `section`, `sections_only`, and `include_links` (append outgoing links + backlinks). |
+| `search_pages` | read | Relevance-ranked (BM25) full-text search across pages. Accepts multiple `query` strings and a `limit`; results include snippets and link counts. |
+| `suggest_page_location` | read | Suggest good parent pages to link a **new** page from — ranked by relevance and link-graph position. Use before `create_page` to pick `link_from`. |
+| `list_images` | read | List uploaded images with metadata (name, size, mtime, using pages). |
+| `page_history` | read | Git revision history for a page. |
+| `get_page_revision` | read | Page content at a specific git revision. |
+| `page_links` | read | Wiki links connected to a page. `direction: out`/`in`/`both` (default) for outgoing links, backlinks, or both. |
+| `link_graph` | read | Explore link structure. Modes: full `map` (default), `format: tree` outline, `slug`+`depth` neighborhood subgraph, or `orphans_only: true`. |
+| `create_page` | edit | Create a new page. `link_from`/`link_section` links it from a parent for discoverability; `format: mediawiki` imports wikitext. |
+| `edit_page` | edit | Update an existing page (see edit modes below); `format: mediawiki` on full-replace imports wikitext. |
+| `delete_page` | delete | Delete a page permanently. |
+| `delete_image` | delete | Delete an uploaded image by filename. |
+
+### Skill tools
+
+| Tool | Section | Description |
+|---|---|---|
+| `list_skills` | skills | List all skills with slug, title, and tags. |
+| `search_skills` | skills | Tag-boosted search across skills; accepts multiple `query` strings and a `limit`. |
+| `get_skill` | skills | Read a skill's markdown by exact slug (supports `section` and `sections_only`). |
+| `create_skill` | skills | Create a new skill. |
+| `edit_skill` | skills | Update an existing skill (same edit modes as `edit_page`). |
+| `delete_skill` | skills | Delete a skill. |
+
+See [Skills](skills.md) for how to create and use skills with LLMs.
+
+**Consolidations (v0.47.0):** `list_pages` absorbed the former `get_recent_pages` and `get_favorites` (now `sort: recent` / `favorites_only: true`); `page_links` absorbed `what_links_here` (now `direction: in`); and `create_page`/`edit_page` absorbed the standalone MediaWiki tools (now `format: mediawiki`). The MCP surface is 19 tools.
 
 ## Edit Modes for `edit_page` and `edit_skill`
 

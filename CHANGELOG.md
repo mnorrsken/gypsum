@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.47.1
+
+### Changed
+- **Documentation synced with the v0.47.0 MCP surface** — the built-in `docs/mcp.md` tool reference now lists the actual 19 tools (grouped by section, with the new parameters), drops the five removed tools, and adds `suggest_page_location`. `README.md` gets the same fix.
+- **Docs-maintenance rule** — `CLAUDE.md` now requires updating the built-in `docs/` whenever the API/tool surface changes or for any change that isn't a straight patch.
+
 ## v0.47.0
 
 ### Added
