@@ -92,6 +92,61 @@ func (c *GitAutoCommitter) CommitDelete(kind DocKind, slug, author string) error
 	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete %s %s", kind.Label(), slug), author)
 }
 
+// noteRelPath returns the repo-relative path for a note file. Archived notes
+// live under notes/archive/; active notes directly under notes/.
+func noteRelPath(id string, archived bool) string {
+	if archived {
+		return filepath.Join("notes", "archive", MarkdownFilename(id))
+	}
+	return filepath.Join("notes", MarkdownFilename(id))
+}
+
+// CommitNoteSave commits a note file at its current location (active or archived).
+func (c *GitAutoCommitter) CommitNoteSave(id string, archived bool, author string) error {
+	return c.commitFile(noteRelPath(id, archived), fmt.Sprintf("wiki: update note %s", id), author)
+}
+
+// CommitNoteDelete commits the deletion of a note at its current location.
+func (c *GitAutoCommitter) CommitNoteDelete(id string, archived bool, author string) error {
+	return c.commitDelete(noteRelPath(id, archived), fmt.Sprintf("wiki: delete note %s", id), author)
+}
+
+// CommitNoteMove records an archive/restore as a single rename commit: the file
+// moves between notes/ and notes/archive/.
+func (c *GitAutoCommitter) CommitNoteMove(id string, toArchive bool, author string) error {
+	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
+		return nil
+	}
+	from := noteRelPath(id, !toArchive)
+	to := noteRelPath(id, toArchive)
+	verb := "archive"
+	if !toArchive {
+		verb = "restore"
+	}
+	c.mu.Lock()
+	if err := c.runGit("add", "-f", "--", to); err != nil {
+		c.mu.Unlock()
+		return err
+	}
+	if err := c.runGit("rm", "--cached", "--ignore-unmatch", "--", from); err != nil {
+		c.mu.Unlock()
+		return err
+	}
+	commitName, commitEmail := c.resolveAuthor(author)
+	if err := c.runGit(
+		"-c", fmt.Sprintf("user.name=%s", commitName),
+		"-c", fmt.Sprintf("user.email=%s", commitEmail),
+		"commit", "-m", fmt.Sprintf("wiki: %s note %s", verb, id),
+		"--allow-empty",
+	); err != nil {
+		c.mu.Unlock()
+		return err
+	}
+	c.mu.Unlock()
+	c.schedulePush()
+	return nil
+}
+
 func (c *GitAutoCommitter) CommitImageSave(filename, author string) error {
 	return c.commitFile(filepath.Join("images", filename), fmt.Sprintf("wiki: upload image %s", filename), author)
 }
@@ -338,6 +393,9 @@ func (c *GitAutoCommitter) pullRebase() {
 	if c.afterPull != nil {
 		c.afterPull(KindPage, c.changedDocSlugs("pages", headBefore))
 		c.afterPull(KindSkill, c.changedDocSlugs("skills", headBefore))
+		// Notes may have moved between notes/ and notes/archive/; a nil slice
+		// signals ReindexChanged to do a full note reindex.
+		c.afterPull(KindNote, nil)
 	}
 }
 

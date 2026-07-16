@@ -1,0 +1,47 @@
+{{define "content"}}
+<article class="notes-page">
+  <div class="page-header">
+    <h1>{{if .NotesArchived}}Archived Notes{{else}}Quick Notes{{end}}</h1>
+    {{if .NotesArchived}}
+      <a class="edit-link" href="/notes">&larr; Back to board</a>
+    {{else}}
+      <a class="edit-link" href="/notes/archived">View archived</a>
+    {{end}}
+  </div>
+
+  {{if not .NotesArchived}}
+  <p class="hint">Just start typing — notes save automatically. The first line becomes the title.</p>
+  {{end}}
+
+  {{if and .NotesArchived (not .Notes)}}
+  <p class="hint">No archived notes.</p>
+  {{end}}
+
+  <div class="notes-grid" id="notes-grid" data-archived="{{if .NotesArchived}}1{{else}}0{{end}}">
+    {{range .Notes}}
+    <div class="note-card note-color-{{.Color}}" data-id="{{.ID}}">
+      <textarea class="note-text" spellcheck="false" {{if $.NotesArchived}}readonly{{end}}>{{.Content}}</textarea>
+      <div class="note-footer">
+        <span class="note-updated" data-ts="{{.Updated.Unix}}"></span>
+        <span class="note-actions">
+          {{if $.NotesArchived}}
+            <button type="button" class="note-btn note-restore" title="Restore to board">restore</button>
+          {{else}}
+            <button type="button" class="note-btn note-archive" title="Archive note">archive</button>
+          {{end}}
+          <button type="button" class="note-btn note-delete" title="Delete permanently">delete</button>
+        </span>
+      </div>
+    </div>
+    {{end}}
+
+    {{if not .NotesArchived}}
+    <div class="note-card note-new" data-new="1">
+      <textarea class="note-text" spellcheck="false" placeholder="New note&hellip;"></textarea>
+    </div>
+    {{end}}
+  </div>
+</article>
+
+<script src="/static/notes.js"></script>
+{{end}}

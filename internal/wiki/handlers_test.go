@@ -28,6 +28,7 @@ func TestRealTemplatesParse(t *testing.T) {
 		"view", "edit", "new", "search", "pages", "history",
 		"history_diff", "images", "diff", "graph", "recent_edits", "share",
 		"doc", "docs", "skills", "skill_view", "skill_edit",
+		"notes",
 	}
 	for _, name := range expected {
 		if _, ok := h.tmplCache[name]; !ok {

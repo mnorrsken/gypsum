@@ -13,14 +13,19 @@ type DocKind string
 const (
 	KindPage  DocKind = "pages"
 	KindSkill DocKind = "skills"
+	KindNote  DocKind = "notes"
 )
 
-// Label returns a human-readable singular name ("page" or "skill").
+// Label returns a human-readable singular name ("page", "skill", or "note").
 func (k DocKind) Label() string {
-	if k == KindSkill {
+	switch k {
+	case KindSkill:
 		return "skill"
+	case KindNote:
+		return "note"
+	default:
+		return "page"
 	}
-	return "page"
 }
 
 type Page struct {

@@ -15,24 +15,31 @@ type PageStore struct {
 	pagesDir  string
 	imagesDir string
 	skillsDir string
+	notesDir  string
 	db        *DB // optional; enables FTS5 search when non-nil
 }
 
 // docDir returns the filesystem directory for the given document kind.
 func (s *PageStore) docDir(kind DocKind) string {
-	if kind == KindSkill {
+	switch kind {
+	case KindSkill:
 		return s.skillsDir
+	case KindNote:
+		return s.notesDir
+	default:
+		return s.pagesDir
 	}
-	return s.pagesDir
 }
 
 func NewPageStore(pagesDir string) *PageStore {
 	parent := filepath.Dir(pagesDir)
 	imagesDir := filepath.Join(parent, "images")
 	skillsDir := filepath.Join(parent, "skills")
+	notesDir := filepath.Join(parent, "notes")
 	_ = os.MkdirAll(imagesDir, 0o755)
 	_ = os.MkdirAll(skillsDir, 0o755)
-	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir, skillsDir: skillsDir}
+	_ = os.MkdirAll(filepath.Join(notesDir, "archive"), 0o755)
+	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir, skillsDir: skillsDir, notesDir: notesDir}
 }
 
 // SetDB attaches a database for FTS5 full-text search and triggers a full reindex.
@@ -41,6 +48,7 @@ func (s *PageStore) SetDB(db *DB) {
 	if db != nil {
 		s.reindex(KindPage)
 		s.reindex(KindSkill)
+		s.reindex(KindNote)
 	}
 }
 
@@ -49,6 +57,12 @@ func (s *PageStore) SetDB(db *DB) {
 // determined). An empty slice means nothing changed.
 func (s *PageStore) ReindexChanged(kind DocKind, changedSlugs []string) {
 	if s.db == nil {
+		return
+	}
+	if kind == KindNote {
+		// Notes move between notes/ and notes/archive/, so a per-slug diff can't
+		// tell where a changed note now lives; the corpus is small, so reindex all.
+		s.reindexNotes()
 		return
 	}
 	if changedSlugs == nil {
@@ -83,6 +97,10 @@ func (s *PageStore) ReindexChanged(kind DocKind, changedSlugs []string) {
 
 // reindex rebuilds the FTS index for the given kind from all markdown files on disk.
 func (s *PageStore) reindex(kind DocKind) {
+	if kind == KindNote {
+		s.reindexNotes()
+		return
+	}
 	dir := s.docDir(kind)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -272,10 +290,13 @@ func (s *PageStore) Save(kind DocKind, slug, content string) error {
 		return err
 	}
 	if s.db != nil {
-		if kind == KindSkill {
+		switch kind {
+		case KindSkill:
 			tags := strings.Join(ExtractTags(content), " ")
 			_ = s.db.IndexSkill(slug, TitleFromSlug(slug), tags, content)
-		} else {
+		case KindNote:
+			_ = s.db.IndexNote(slug, NoteTitle(content), content, false)
+		default:
 			_ = s.db.IndexPage(slug, TitleFromSlug(slug), content)
 		}
 	}
@@ -289,9 +310,12 @@ func (s *PageStore) Delete(kind DocKind, slug string) error {
 		return err
 	}
 	if s.db != nil {
-		if kind == KindSkill {
+		switch kind {
+		case KindSkill:
 			_ = s.db.RemoveSkill(slug)
-		} else {
+		case KindNote:
+			_ = s.db.RemoveNote(slug)
+		default:
 			_ = s.db.RemovePage(slug)
 		}
 	}

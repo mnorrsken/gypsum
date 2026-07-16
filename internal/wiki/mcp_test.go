@@ -161,8 +161,8 @@ func TestMCPToolsList(t *testing.T) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(result.Tools) != 19 {
-		t.Fatalf("expected 19 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 25 {
+		t.Fatalf("expected 25 tools, got %d", len(result.Tools))
 	}
 	// Verify all tools have name, description, and schema
 	for _, tool := range result.Tools {
@@ -212,8 +212,8 @@ func TestMCPToolsSections(t *testing.T) {
 
 func TestMCPParseSections(t *testing.T) {
 	s := ParseMCPSections("")
-	if len(s) != 4 {
-		t.Fatalf("empty input should return all 4 sections, got %d", len(s))
+	if len(s) != 5 {
+		t.Fatalf("empty input should return all 5 sections, got %d", len(s))
 	}
 	s = ParseMCPSections("read,skills")
 	if !s[MCPSectionRead] || !s[MCPSectionSkills] {
@@ -297,7 +297,7 @@ func TestMCPCreateAndGetPage(t *testing.T) {
 
 func TestMCPCreatePageDuplicate(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"Existing", "content")
+	_ = store.Save(KindPage, "Existing", "content")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name": "create_page",
@@ -314,7 +314,7 @@ func TestMCPCreatePageDuplicate(t *testing.T) {
 
 func TestMCPEditPage(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"MyPage", "old content")
+	_ = store.Save(KindPage, "MyPage", "old content")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name": "edit_page",
@@ -329,7 +329,7 @@ func TestMCPEditPage(t *testing.T) {
 	}
 
 	// Verify on disk
-	page, _ := store.Load(KindPage,"MyPage")
+	page, _ := store.Load(KindPage, "MyPage")
 	if page.Content != "new content" {
 		t.Fatalf("content not updated: %q", page.Content)
 	}
@@ -352,7 +352,7 @@ func TestMCPEditPageNotFound(t *testing.T) {
 
 func TestMCPDeletePage(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"ToDelete", "bye")
+	_ = store.Save(KindPage, "ToDelete", "bye")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name":      "delete_page",
@@ -364,7 +364,7 @@ func TestMCPDeletePage(t *testing.T) {
 	}
 
 	// Verify gone
-	_, err := store.Load(KindPage,"ToDelete")
+	_, err := store.Load(KindPage, "ToDelete")
 	if err != ErrPageNotFound {
 		t.Fatalf("expected ErrPageNotFound, got %v", err)
 	}
@@ -381,8 +381,8 @@ func TestMCPDeletePageNotFound(t *testing.T) {
 
 func TestMCPSearchPages(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"Alpha", "contains keyword gypsum here")
-	_ = store.Save(KindPage,"Beta", "nothing relevant")
+	_ = store.Save(KindPage, "Alpha", "contains keyword gypsum here")
+	_ = store.Save(KindPage, "Beta", "nothing relevant")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name":      "search_pages",
@@ -614,8 +614,8 @@ func TestMCPMissingRequiredArgs(t *testing.T) {
 
 func TestMCPPageLinks(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"Home", "See [[About]] and [[Contact]]")
-	_ = store.Save(KindPage,"About", "Back to [[Home]]")
+	_ = store.Save(KindPage, "Home", "See [[About]] and [[Contact]]")
+	_ = store.Save(KindPage, "About", "Back to [[Home]]")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name": "page_links", "arguments": map[string]any{"slug": "Home"},
@@ -673,8 +673,8 @@ func TestMCPPageLinksOrphaned(t *testing.T) {
 
 func TestMCPLinkGraph(t *testing.T) {
 	handler, store := newTestMCP(t)
-	_ = store.Save(KindPage,"Home", "See [[About]]")
-	_ = store.Save(KindPage,"About", "Back to [[Home]]")
+	_ = store.Save(KindPage, "Home", "See [[About]]")
+	_ = store.Save(KindPage, "About", "Back to [[Home]]")
 
 	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
 		"name": "link_graph", "arguments": map[string]any{},

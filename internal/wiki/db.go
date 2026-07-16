@@ -58,6 +58,13 @@ func OpenDB(dataDir string) (*DB, error) {
 			content,
 			tokenize='unicode61'
 		);
+		CREATE VIRTUAL TABLE IF NOT EXISTS fts_notes USING fts5(
+			slug UNINDEXED,
+			title,
+			content,
+			archived UNINDEXED,
+			tokenize='unicode61'
+		);
 	`); err != nil {
 		db.Close()
 		return nil, err
@@ -409,6 +416,120 @@ func (d *DB) SearchFTSSkills(query string) ([]FTSSearchResult, error) {
 			Slug:     slug,
 			Title:    title,
 			Snippets: snippets,
+		})
+	}
+	return results, rows.Err()
+}
+
+// ---------- Note FTS5 operations ----------
+
+// FTSNoteEntry holds the data needed to index a note.
+type FTSNoteEntry struct {
+	ID       string
+	Title    string
+	Content  string
+	Archived bool
+}
+
+// FTSNoteResult is a single search hit from the notes FTS index.
+type FTSNoteResult struct {
+	ID       string
+	Title    string
+	Snippets []string
+	Archived bool
+}
+
+// archivedFlag maps a bool to the text value stored in the UNINDEXED column.
+func archivedFlag(archived bool) string {
+	if archived {
+		return "1"
+	}
+	return "0"
+}
+
+// IndexNote inserts or replaces a note in the FTS index.
+func (d *DB) IndexNote(id, title, content string, archived bool) error {
+	d.db.Exec("DELETE FROM fts_notes WHERE slug = ?", id)
+	_, err := d.db.Exec(
+		"INSERT INTO fts_notes (slug, title, content, archived) VALUES (?, ?, ?, ?)",
+		id, title, content, archivedFlag(archived),
+	)
+	return err
+}
+
+// RemoveNote removes a note from the FTS index.
+func (d *DB) RemoveNote(id string) error {
+	_, err := d.db.Exec("DELETE FROM fts_notes WHERE slug = ?", id)
+	return err
+}
+
+// ReindexNotes replaces the entire note FTS index.
+func (d *DB) ReindexNotes(notes []FTSNoteEntry) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM fts_notes"); err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare("INSERT INTO fts_notes (slug, title, content, archived) VALUES (?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, n := range notes {
+		if _, err := stmt.Exec(n.ID, n.Title, n.Content, archivedFlag(n.Archived)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// SearchFTSNotes performs a full-text search across notes. Archived notes are
+// excluded unless includeArchived is true.
+func (d *DB) SearchFTSNotes(query string, includeArchived bool) ([]FTSNoteResult, error) {
+	ftsQuery := buildFTSQuery(query)
+	if ftsQuery == "" {
+		return nil, nil
+	}
+
+	sqlStr := `
+		SELECT
+			slug,
+			title,
+			archived,
+			snippet(fts_notes, 2, '<<', '>>', '…', 48) AS snip
+		FROM fts_notes
+		WHERE fts_notes MATCH ?`
+	if !includeArchived {
+		sqlStr += " AND archived = '0'"
+	}
+	sqlStr += " ORDER BY rank LIMIT 50"
+
+	rows, err := d.db.Query(sqlStr, ftsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []FTSNoteResult
+	for rows.Next() {
+		var slug, title, archived, contentSnip string
+		if err := rows.Scan(&slug, &title, &archived, &contentSnip); err != nil {
+			return nil, err
+		}
+		var snippets []string
+		if contentSnip != "" {
+			snippets = append(snippets, contentSnip)
+		}
+		results = append(results, FTSNoteResult{
+			ID:       slug,
+			Title:    title,
+			Snippets: snippets,
+			Archived: archived == "1",
 		})
 	}
 	return results, rows.Err()
