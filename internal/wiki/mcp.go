@@ -17,7 +17,6 @@ const wikiFormattingGuide = "Wiki formatting conventions: " +
 	"(3) Images: use ![alt text](/images/filename.ext) — optional size hints: ![alt|500](/images/f.png) for max-width 500px, ![alt|50%](/images/f.png) for 50%, ![alt|800x400](/images/f.png) for explicit dimensions. " +
 	"(4) Secure/encrypted fields: use {{secure:plaintext}} for inline secrets. For multiline secrets, put {{secure: and }} on their own lines. On save, these are encrypted to {{secure_aes:...}} — never modify secure_aes blocks directly."
 
-
 const wikiContentGuide = "Start with '# Page Title' as the first line to set the display title. " +
 	"Use [[Page Title]] for wiki links. " +
 	"Reference images as ![alt](/images/filename.ext). " +
@@ -65,6 +64,7 @@ const (
 	MCPSectionEdit   MCPSection = "edit"
 	MCPSectionDelete MCPSection = "delete"
 	MCPSectionSkills MCPSection = "skills"
+	MCPSectionNotes  MCPSection = "notes"
 )
 
 // AllMCPSections is the default set when no restriction is configured.
@@ -73,6 +73,7 @@ var AllMCPSections = map[MCPSection]bool{
 	MCPSectionEdit:   true,
 	MCPSectionDelete: true,
 	MCPSectionSkills: true,
+	MCPSectionNotes:  true,
 }
 
 // ParseMCPSections parses a comma-separated list of section names (e.g.
@@ -98,11 +99,11 @@ type mcpToolAnnotations struct {
 }
 
 type mcpTool struct {
-	Name        string               `json:"name"`
-	Description string               `json:"description"`
-	InputSchema any                  `json:"inputSchema"`
-	Annotations *mcpToolAnnotations  `json:"annotations,omitempty"`
-	Section     MCPSection           `json:"-"` // not exposed in JSON
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	InputSchema any                 `json:"inputSchema"`
+	Annotations *mcpToolAnnotations `json:"annotations,omitempty"`
+	Section     MCPSection          `json:"-"` // not exposed in JSON
 }
 
 func boolPtr(b bool) *bool { return &b }
@@ -117,7 +118,7 @@ func sectionAnnotations(section MCPSection, name string) *mcpToolAnnotations {
 		return &mcpToolAnnotations{DestructiveHint: boolPtr(true)}
 	case MCPSectionEdit:
 		return &mcpToolAnnotations{DestructiveHint: boolPtr(false)}
-	case MCPSectionSkills:
+	case MCPSectionSkills, MCPSectionNotes:
 		switch {
 		case strings.HasPrefix(name, "list_"), strings.HasPrefix(name, "get_"), strings.HasPrefix(name, "search_"):
 			return &mcpToolAnnotations{ReadOnlyHint: boolPtr(true)}
@@ -330,4 +331,3 @@ func (m *MCPHandler) newSession() string {
 	m.sessions.Store(sid, true)
 	return sid
 }
-

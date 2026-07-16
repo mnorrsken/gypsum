@@ -18,6 +18,9 @@ var toolSectionMap = map[string]MCPSection{
 	"list_skills": MCPSectionSkills, "get_skill": MCPSectionSkills,
 	"create_skill": MCPSectionSkills, "edit_skill": MCPSectionSkills,
 	"delete_skill": MCPSectionSkills, "search_skills": MCPSectionSkills,
+	"list_notes": MCPSectionNotes, "get_note": MCPSectionNotes,
+	"create_note": MCPSectionNotes, "edit_note": MCPSectionNotes,
+	"archive_note": MCPSectionNotes, "delete_note": MCPSectionNotes,
 }
 
 // ── Tool dispatch ───────────────────────────────────────────────────────
@@ -65,6 +68,18 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 		return m.toolDeleteSkill(params.Arguments)
 	case "search_skills":
 		return m.toolSearchSkills(params.Arguments)
+	case "list_notes":
+		return m.toolListNotes(params.Arguments)
+	case "get_note":
+		return m.toolGetNote(params.Arguments)
+	case "create_note":
+		return m.toolCreateNote(params.Arguments)
+	case "edit_note":
+		return m.toolEditNote(params.Arguments)
+	case "archive_note":
+		return m.toolArchiveNote(params.Arguments)
+	case "delete_note":
+		return m.toolDeleteNote(params.Arguments)
 	default:
 		return mcpError("unknown tool: " + params.Name)
 	}
@@ -667,6 +682,151 @@ func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
 
 	text, _ := m.runMultiSearch(KindSkill, queries, nil, limit)
 	return mcpText(text)
+}
+
+// ── Note tool implementations ──────────────────────────────────────────
+
+func (m *MCPHandler) toolListNotes(args map[string]any) mcpCallToolResult {
+	includeArchived, _ := mcpArgBool(args, "include_archived")
+	limit := 0
+	if n, ok := mcpArgNumber(args, "limit"); ok && n > 0 {
+		limit = int(n)
+	}
+
+	var notes []NoteEntry
+	if queries, ok := mcpArgStringArray(args, "query"); ok {
+		seen := map[string]bool{}
+		for _, q := range queries {
+			results, err := m.store.SearchNotes(q, includeArchived)
+			if err != nil {
+				continue
+			}
+			for _, n := range results {
+				if !seen[n.ID] {
+					seen[n.ID] = true
+					notes = append(notes, n)
+				}
+			}
+		}
+	} else {
+		active, err := m.store.ListNotes(false)
+		if err != nil {
+			return mcpError("failed to list notes: " + err.Error())
+		}
+		notes = active
+		if includeArchived {
+			arch, err := m.store.ListNotes(true)
+			if err != nil {
+				return mcpError("failed to list archived notes: " + err.Error())
+			}
+			notes = append(notes, arch...)
+		}
+	}
+
+	if len(notes) == 0 {
+		return mcpText("No notes found.")
+	}
+	if limit > 0 && len(notes) > limit {
+		notes = notes[:limit]
+	}
+	// List responses omit the (short) body; use get_note for full content.
+	for i := range notes {
+		notes[i].Content = ""
+	}
+	return mcpJSON(notes)
+}
+
+func (m *MCPHandler) toolGetNote(args map[string]any) mcpCallToolResult {
+	id, ok := mcpArgString(args, "id")
+	if !ok {
+		return mcpError("missing required argument: id")
+	}
+	note, err := m.store.LoadNote(id)
+	if err != nil {
+		return mcpError("note not found: " + id)
+	}
+	return mcpJSON(note)
+}
+
+func (m *MCPHandler) toolCreateNote(args map[string]any) mcpCallToolResult {
+	content, ok := mcpArgString(args, "content")
+	if !ok {
+		return mcpError("missing required argument: content")
+	}
+	if strings.TrimSpace(content) == "" {
+		return mcpError("note content must not be empty")
+	}
+	id, err := m.store.CreateNote(content)
+	if err != nil {
+		return mcpError("failed to create note: " + err.Error())
+	}
+	_ = m.autoCommit.CommitNoteSave(id, false, "")
+	return mcpText(fmt.Sprintf("Created note '%s' (id: %s)", NoteTitle(content), id))
+}
+
+func (m *MCPHandler) toolEditNote(args map[string]any) mcpCallToolResult {
+	id, ok := mcpArgString(args, "id")
+	if !ok {
+		return mcpError("missing required argument: id")
+	}
+	note, err := m.store.LoadNote(id)
+	if err != nil {
+		return mcpError("note not found: " + id)
+	}
+	finalContent, res := applyEditMode(note.Content, args)
+	if res != nil {
+		return *res
+	}
+	if err := m.store.SaveNote(id, finalContent); err != nil {
+		return mcpError("failed to save note: " + err.Error())
+	}
+	_ = m.autoCommit.CommitNoteSave(id, note.Archived, "")
+	return mcpText(fmt.Sprintf("Updated note '%s'", id))
+}
+
+func (m *MCPHandler) toolArchiveNote(args map[string]any) mcpCallToolResult {
+	id, ok := mcpArgString(args, "id")
+	if !ok {
+		return mcpError("missing required argument: id")
+	}
+	note, err := m.store.LoadNote(id)
+	if err != nil {
+		return mcpError("note not found: " + id)
+	}
+	if restore, _ := mcpArgBool(args, "restore"); restore {
+		if !note.Archived {
+			return mcpText(fmt.Sprintf("Note '%s' is already on the board", id))
+		}
+		if err := m.store.RestoreNote(id); err != nil {
+			return mcpError("failed to restore note: " + err.Error())
+		}
+		_ = m.autoCommit.CommitNoteMove(id, false, "")
+		return mcpText(fmt.Sprintf("Restored note '%s' to the board", id))
+	}
+	if note.Archived {
+		return mcpText(fmt.Sprintf("Note '%s' is already archived", id))
+	}
+	if err := m.store.ArchiveNote(id); err != nil {
+		return mcpError("failed to archive note: " + err.Error())
+	}
+	_ = m.autoCommit.CommitNoteMove(id, true, "")
+	return mcpText(fmt.Sprintf("Archived note '%s'", id))
+}
+
+func (m *MCPHandler) toolDeleteNote(args map[string]any) mcpCallToolResult {
+	id, ok := mcpArgString(args, "id")
+	if !ok {
+		return mcpError("missing required argument: id")
+	}
+	note, err := m.store.LoadNote(id)
+	if err != nil {
+		return mcpError("note not found: " + id)
+	}
+	if err := m.store.DeleteNote(id); err != nil {
+		return mcpError("failed to delete note: " + err.Error())
+	}
+	_ = m.autoCommit.CommitNoteDelete(id, note.Archived, "")
+	return mcpText(fmt.Sprintf("Deleted note '%s'", id))
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────

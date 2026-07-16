@@ -36,6 +36,16 @@
   --color-secure-hover: #666;
   --color-secure-unlocked-bg: #f5f5f5;
   --color-overlay: rgba(0, 0, 0, 0.3);
+  /* Quick-notes card palette (title-hashed). Pastels for light mode. */
+  --note-ink: #1a1a1a;
+  --note-color-0: #fff8c5;
+  --note-color-1: #dbeafe;
+  --note-color-2: #dcfce7;
+  --note-color-3: #fce7f3;
+  --note-color-4: #ffedd5;
+  --note-color-5: #ede9fe;
+  --note-color-6: #cffafe;
+  --note-color-7: #eceff1;
 }
 
 [data-theme="dark"] {
@@ -72,6 +82,16 @@
   --color-secure-hover: #aaa;
   --color-secure-unlocked-bg: #252525;
   --color-overlay: rgba(0, 0, 0, 0.6);
+  /* Quick-notes card palette — muted, dark-tinted for dark mode. */
+  --note-ink: #ececec;
+  --note-color-0: #3a3410;
+  --note-color-1: #14243d;
+  --note-color-2: #14301c;
+  --note-color-3: #35172a;
+  --note-color-4: #3a2410;
+  --note-color-5: #241a3d;
+  --note-color-6: #103035;
+  --note-color-7: #262a2e;
 }
 
 * {
@@ -1793,4 +1813,122 @@ textarea {
     background: white;
     color: black;
   }
+}
+
+/* --- Quick Notes board --- */
+
+.notes-page .page-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  align-items: start;
+}
+
+.note-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--note-color-7);
+  color: var(--note-ink);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: background 0.2s ease;
+}
+
+.note-card.note-color-0 { background: var(--note-color-0); }
+.note-card.note-color-1 { background: var(--note-color-1); }
+.note-card.note-color-2 { background: var(--note-color-2); }
+.note-card.note-color-3 { background: var(--note-color-3); }
+.note-card.note-color-4 { background: var(--note-color-4); }
+.note-card.note-color-5 { background: var(--note-color-5); }
+.note-card.note-color-6 { background: var(--note-color-6); }
+.note-card.note-color-7 { background: var(--note-color-7); }
+
+.note-text {
+  width: 100%;
+  min-height: 4.5rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.45;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+}
+
+.note-text::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* Make the first line read like a title. */
+.note-text:first-line {
+  font-weight: 600;
+}
+
+.note-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.note-updated {
+  white-space: nowrap;
+}
+
+.note-actions {
+  display: flex;
+  gap: 0.4rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.note-card:hover .note-actions,
+.note-card:focus-within .note-actions {
+  opacity: 1;
+}
+
+.note-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+.note-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--note-ink);
+}
+
+.note-delete:hover {
+  color: var(--color-error-text);
+}
+
+/* Ghost "new note" card. */
+.note-card.note-new {
+  background: transparent;
+  border: 1px dashed var(--color-input-border);
+  box-shadow: none;
+}
+
+.note-card.note-new .note-text {
+  min-height: 3rem;
 }

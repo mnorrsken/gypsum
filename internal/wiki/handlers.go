@@ -39,32 +39,34 @@ type ImageInfo struct {
 }
 
 type TemplateData struct {
-	Title        string
-	Sidebar      []PageLink
-	Favorites    []PageLink
-	RecentPages  []PageLink
-	AllPages     []PageLink
-	Page         *Page
-	RenderedHTML template.HTML
-	RawContent   string
-	Query        string
-	Results      []SearchResult
-	Images       []ImageInfo
-	History      []HistoryEntry
-	GlobalEdits  []GlobalHistoryEntry
-	CurrentPage  int
-	TotalPages   int
-	IsNew        bool
-	DiffHTML     template.HTML
-	GraphJSON    template.JS
-	ShareToken   string           // non-empty if page has an active share link
-	ShareURL     string           // full public URL for the share link
-	ShareCreated string           // human-readable creation time
-	DocPages     []PageLink       // documentation pages from docs/
-	Skills       []SkillListEntry // skill pages with tags
-	SkillTags    []string         // tags for the current skill being viewed
-	SecureSalt   string           // base64 PBKDF2 salt for {{secure_aes2}}
-	SecureIters  int              // PBKDF2 iteration count
+	Title         string
+	Sidebar       []PageLink
+	Favorites     []PageLink
+	RecentPages   []PageLink
+	AllPages      []PageLink
+	Page          *Page
+	RenderedHTML  template.HTML
+	RawContent    string
+	Query         string
+	Results       []SearchResult
+	Images        []ImageInfo
+	History       []HistoryEntry
+	GlobalEdits   []GlobalHistoryEntry
+	CurrentPage   int
+	TotalPages    int
+	IsNew         bool
+	DiffHTML      template.HTML
+	GraphJSON     template.JS
+	ShareToken    string           // non-empty if page has an active share link
+	ShareURL      string           // full public URL for the share link
+	ShareCreated  string           // human-readable creation time
+	DocPages      []PageLink       // documentation pages from docs/
+	Skills        []SkillListEntry // skill pages with tags
+	SkillTags     []string         // tags for the current skill being viewed
+	Notes         []NoteEntry      // quick notes for the notes board
+	NotesArchived bool             // true when rendering the archived notes board
+	SecureSalt    string           // base64 PBKDF2 salt for {{secure_aes2}}
+	SecureIters   int              // PBKDF2 iteration count
 }
 
 func NewHandler(store *PageStore, renderer *MarkdownRenderer, templates fs.FS, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
@@ -116,6 +118,7 @@ func (h *Handler) parseTemplates() {
 		"history_diff", "images", "diff", "graph", "recent_edits", "share",
 		"doc", "docs",
 		"skills", "skill_view", "skill_edit",
+		"notes",
 	}
 	for _, name := range names {
 		pagePath := name + ".html"
@@ -181,6 +184,13 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/edit-skill/", h.handleEditSkill)
 	mux.HandleFunc("/delete-skill/", h.handleDeleteSkill)
 	mux.HandleFunc("/skill-history/", h.handleSkillHistory)
+	mux.HandleFunc("GET /notes", h.handleNotesBoard)
+	mux.HandleFunc("GET /notes/archived", h.handleNotesBoard)
+	mux.HandleFunc("POST /notes/create", h.handleNoteCreate)
+	mux.HandleFunc("POST /notes/save/{id}", h.handleNoteSave)
+	mux.HandleFunc("POST /notes/archive/{id}", h.handleNoteArchive)
+	mux.HandleFunc("POST /notes/restore/{id}", h.handleNoteRestore)
+	mux.HandleFunc("POST /notes/delete/{id}", h.handleNoteDelete)
 	if h.docsDir != "" {
 		mux.HandleFunc("/docs", h.handleDocsList)
 		mux.HandleFunc("/docs/", h.handleDocs)

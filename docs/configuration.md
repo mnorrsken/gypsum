@@ -10,7 +10,7 @@
 | `GYPSUM_AUTH_GROUP_HEADER` | `Remote-Group` | Header containing comma-separated group names. Only used when `GYPSUM_AUTH_USER_HEADER` is set. |
 | `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | If set, the group header must contain this group or the request is rejected with 403. |
 | `GYPSUM_PROBE_PORT` | `:9091` | Listen address for the health-probe server (`/healthz`, `/readyz`). |
-| `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills` | Comma-separated list of MCP tool sections to enable. Omit a section to hide those tools from AI assistants. |
+| `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills,notes` | Comma-separated list of MCP tool sections to enable. Omit a section to hide those tools from AI assistants. |
 | `GYPSUM_METRICS_PORT` | `:9090` | Listen address for the Prometheus metrics server (`/metrics`). Exposes per-tool MCP call counters. |
 | `GYPSUM_SECURE_SALT` | _(auto-generated)_ | Base64-encoded PBKDF2 salt for `{{secure:...}}` fields. If unset, a random salt is generated on first run and persisted in `gypsum.db`. The salt is not secret, but it must stay stable — see [Encryption](#encryption). |
 

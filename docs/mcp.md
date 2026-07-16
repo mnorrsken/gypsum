@@ -70,7 +70,7 @@ Tokens expire after 24 hours. Re-run `mcp-proxy auth` to get a fresh token and u
 
 ## Available Tools
 
-Tools are grouped into sections (read, edit, delete, skills) that can be enabled independently. Several tools were consolidated in v0.47.0 — see the notes below the table.
+Tools are grouped into sections (read, edit, delete, skills, notes) that can be enabled independently. Several tools were consolidated in v0.47.0 — see the notes below the table.
 
 ### Page tools
 
@@ -103,11 +103,24 @@ Tools are grouped into sections (read, edit, delete, skills) that can be enabled
 
 See [Skills](skills.md) for how to create and use skills with LLMs.
 
-**Consolidations (v0.47.0):** `list_pages` absorbed the former `get_recent_pages` and `get_favorites` (now `sort: recent` / `favorites_only: true`); `page_links` absorbed `what_links_here` (now `direction: in`); and `create_page`/`edit_page` absorbed the standalone MediaWiki tools (now `format: mediawiki`). The MCP surface is 19 tools.
+### Note tools
 
-## Edit Modes for `edit_page` and `edit_skill`
+Quick notes are short, sticky-note-style jottings — a middle ground between a wiki page and a to-do item. They are stored as plain markdown under `notes/` in the git repo, with the first line acting as the title. See [Quick Notes](notes.md).
 
-Both tools support four edit modes to minimise the amount of content sent over the wire:
+| Tool | Section | Description |
+|---|---|---|
+| `list_notes` | notes | List quick notes (id, title, created, updated). `query` full-text searches instead of listing; `include_archived: true` also returns archived notes; `limit` caps results. |
+| `get_note` | notes | Read a single note (full content, title, timestamps, archived state) by id. |
+| `create_note` | notes | Create a note. The first line becomes the title; returns the new id. |
+| `edit_note` | notes | Update a note (same edit modes as `edit_page`). |
+| `archive_note` | notes | Archive a note (off the board, kept in git & searchable), or `restore: true` to move it back. |
+| `delete_note` | notes | Delete a note permanently (prefer `archive_note`). |
+
+**Consolidations (v0.47.0):** `list_pages` absorbed the former `get_recent_pages` and `get_favorites` (now `sort: recent` / `favorites_only: true`); `page_links` absorbed `what_links_here` (now `direction: in`); and `create_page`/`edit_page` absorbed the standalone MediaWiki tools (now `format: mediawiki`). The MCP surface is 25 tools.
+
+## Edit Modes for `edit_page`, `edit_skill`, and `edit_note`
+
+These tools support four edit modes to minimise the amount of content sent over the wire:
 
 | Mode | Parameters | When to use |
 |---|---|---|

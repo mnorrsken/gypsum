@@ -259,6 +259,76 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"limit": map[string]any{"type": "number", "description": "Maximum number of results to return when multiple match (default 10)."},
 			}, []string{"query"}),
 		},
+
+		// ── Note tools ───────────────────────────────────────────────
+		{
+			Name:    "list_notes",
+			Section: MCPSectionNotes,
+			Description: "List quick notes — short, sticky-note-style jottings that sit between a wiki page and a to-do (a middle ground between 'jiras and post-its'). " +
+				"Returns each note's id, title (the first line), created and updated timestamps. " +
+				"Pass 'query' to full-text search note titles and bodies instead of listing everything. " +
+				"By default only active (non-archived) notes are returned; pass 'include_archived: true' to also include archived notes.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"query":            mcpPropStringArray("Optional search queries — each split into terms and prefix-matched. Omit to list all notes."),
+				"include_archived": map[string]any{"type": "boolean", "description": "If true, include archived notes as well as active ones."},
+				"limit":            map[string]any{"type": "number", "description": "Maximum number of notes to return (0/omitted = all)."},
+			}, nil),
+		},
+		{
+			Name:        "get_note",
+			Section:     MCPSectionNotes,
+			Description: "Get a single quick note by its id (as returned by list_notes), including its full content, title, color, timestamps, and archived state.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"id": mcpPropString("Note id, e.g. '20260716-153042'. Get it from list_notes."),
+			}, []string{"id"}),
+		},
+		{
+			Name:    "create_note",
+			Section: MCPSectionNotes,
+			Description: "Create a new quick note. Use this for short, sticky-note-style jottings — reminders, ideas, snippets. " +
+				"Do NOT use for substantial documentation (use create_page) or procedural instructions (use create_skill). " +
+				"The FIRST LINE of the content becomes the note's title. " +
+				"Returns the new note id.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"content": mcpPropString("The note text. The first line is treated as the title."),
+			}, []string{"content"}),
+		},
+		{
+			Name:    "edit_note",
+			Section: MCPSectionNotes,
+			Description: "Update an existing quick note. Supports the same edit modes as edit_page:\n" +
+				"(1) SEARCH-AND-REPLACE: pass 'old_text' and 'new_text'.\n" +
+				"(2) SECTION EDIT: pass 'section' and 'content'.\n" +
+				"(3) APPEND: pass 'append: true' and 'content'.\n" +
+				"(4) FULL REPLACE: pass only 'content'.\n" +
+				"Changing the first line changes the note's title (and its color).",
+			InputSchema: mcpSchema("object", map[string]any{
+				"id":       mcpPropString("Note id to edit, e.g. '20260716-153042'. Use list_notes if unsure."),
+				"content":  mcpPropString("New content. For full replace: entire note. For section edit: section body. For append: text to add at end."),
+				"old_text": mcpPropString("Text to find (search-and-replace mode). Must match exactly one location. Provide with new_text."),
+				"new_text": mcpPropString("Replacement text (search-and-replace mode). Provide with old_text."),
+				"section":  mcpPropString("Heading name of the section to replace (case-insensitive, any level). Use with 'content'."),
+				"append":   map[string]any{"type": "boolean", "description": "If true, append 'content' to the end of the note."},
+			}, []string{"id"}),
+		},
+		{
+			Name:    "archive_note",
+			Section: MCPSectionNotes,
+			Description: "Archive a quick note (move it off the active board) or, with 'restore: true', move an archived note back onto the board. " +
+				"Archived notes are kept in git history and remain searchable via list_notes with include_archived. Prefer this over delete_note for notes that are simply done.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"id":      mcpPropString("Note id to archive or restore."),
+				"restore": map[string]any{"type": "boolean", "description": "If true, restore an archived note back to the active board instead of archiving."},
+			}, []string{"id"}),
+		},
+		{
+			Name:        "delete_note",
+			Section:     MCPSectionNotes,
+			Description: "Delete a quick note permanently. This cannot be undone — prefer archive_note for notes that are merely done.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"id": mcpPropString("Note id to delete."),
+			}, []string{"id"}),
+		},
 	}
 
 	var tools []mcpTool

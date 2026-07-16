@@ -2,6 +2,17 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.48.0
+
+### Added
+- **Quick Notes board** — a new whiteboard-style `/notes` view of short, sticky-note jottings (a middle ground between a wiki page and a to-do). Every note is always editable: open the page and start typing. Notes flow into a responsive card grid, and each card's color is derived by hashing its title so a note keeps a stable color. Linked from the sidebar as **Quick Notes**. See [Quick Notes](docs/notes.md).
+- **Autosave with git history** — note edits save automatically ~2s after you stop typing (and immediately on blur / tab switch), each committed to git as `wiki: update note <id>`. Notes are stored as plain markdown under `notes/` (active) and `notes/archive/` (archived), so they stay readable and diffable in the repo. The first line of a note is its title; the id is a creation timestamp, so autosave never renames a file.
+- **Archive lifecycle** — notes can be archived (moved off the board but kept in git and searchable) and restored, in addition to permanent delete.
+- **`notes` MCP section (6 tools)** — `list_notes` (with optional full-text `query` and `include_archived`), `get_note`, `create_note`, `edit_note` (same edit modes as `edit_page`), `archive_note` (with `restore`), and `delete_note`. Notes are full-text indexed via FTS5 alongside pages and skills.
+
+### Notes
+- The MCP tool surface grows from 19 to 25 tools with the new `notes` section. Existing tools are unchanged. The `notes` section is enabled by default; add or omit it via `GYPSUM_MCP_SECTIONS` (default is now `read,edit,delete,skills,notes`).
+
 ## v0.47.1
 
 ### Changed
