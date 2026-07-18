@@ -141,3 +141,68 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	}
 	return string(output)
 }
+
+func TestSyncStatusNoRemote(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dataDir := t.TempDir()
+	committer := NewGitAutoCommitter(dataDir, nil)
+	st := committer.SyncStatus()
+	if st.Enabled {
+		t.Fatalf("expected Enabled=false when no remote is configured")
+	}
+}
+
+func TestSyncStatusRecordsFetchFailure(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dataDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dataDir, "pages"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "pages", "Home.md"), []byte("# Home"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Point at a non-existent local repo so the initial fetch fails fast
+	// without touching the network.
+	bogus := filepath.Join(t.TempDir(), "does-not-exist.git")
+	committer := NewGitAutoCommitter(dataDir, &GitRemoteConfig{
+		RemoteName: "origin",
+		RemoteURL:  "file://" + bogus,
+	})
+	// Create a commit so a branch exists, then attempt a sync.
+	if err := committer.CommitSave(KindPage, "Home", ""); err != nil {
+		t.Fatalf("CommitSave: %v", err)
+	}
+	committer.mu.Lock()
+	committer.pullRebase()
+	committer.mu.Unlock()
+
+	st := committer.SyncStatus()
+	if !st.Enabled {
+		t.Fatalf("expected Enabled=true with remote configured")
+	}
+	if st.OK {
+		t.Fatalf("expected OK=false after a failed fetch, got status %+v", st)
+	}
+	if st.Error == "" {
+		t.Fatalf("expected a non-empty error message after failed fetch")
+	}
+	if st.Syncing {
+		t.Fatalf("expected Syncing=false once the fetch attempt returned")
+	}
+}
+
+func TestSanitizeGitError(t *testing.T) {
+	in := "fetch failed: git [fetch origin] failed: https://user:secret@example.com/repo.git not found"
+	got := sanitizeGitError(in)
+	if strings.Contains(got, "secret") {
+		t.Fatalf("sanitizeGitError leaked credentials: %q", got)
+	}
+	if !strings.Contains(got, "://***@") {
+		t.Fatalf("expected masked credentials, got %q", got)
+	}
+}

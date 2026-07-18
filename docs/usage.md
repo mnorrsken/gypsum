@@ -94,6 +94,23 @@ Supported formats: PNG, JPG, JPEG, GIF, WEBP, SVG (max 10 MB).
 
 Click the **History** tab to view the git commit log for a page. Select two revisions using the **Old** and **New** radio buttons, then click **Compare Selected** to see a colorized unified diff.
 
+## Git Sync Status
+
+When a git remote is configured (`GYPSUM_GIT_REMOTE_URL`), a status dot appears
+in the top bar next to the 🔒 icon:
+
+- **Green** — the last fetch/push to the remote succeeded. Hover to see when it
+  last synced.
+- **Amber (pulsing)** — a fetch or push is in progress.
+- **Red** — the last fetch or push failed (e.g. the remote is unreachable or
+  credentials are wrong). A red warning banner also appears under the top bar
+  with the (credential-sanitized) error message, so you know changes may not
+  have reached the remote.
+
+The indicator is hidden entirely when no remote is configured. It refreshes
+every 15 seconds by polling the `GET /git-status` endpoint, which returns the
+current sync health as JSON.
+
 ## Diff Preview
 
 Tick "Show diff" in the editor before saving to see a colorized unified diff of changes. The diff shows raw on-disk content including encrypted tags. The preference is remembered across sessions. Click **Confirm Save** to commit or **Back to Editor** to continue editing.

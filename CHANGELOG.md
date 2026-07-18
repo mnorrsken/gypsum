@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.49.0
+
+### Added
+- **Git sync status indicator** — when a git remote is configured, the top bar now shows a colored status dot next to the 🔒 icon: **green** when the last fetch/push succeeded, **amber (pulsing)** while a sync is in flight, and **red** when a fetch or push is failing. On failure a red warning banner also drops under the top bar with the error message, so unreachable-remote / bad-credential problems (e.g. `git fetch failed`) are visible in the UI instead of only the logs. The indicator is hidden when no remote is configured. Backed by a new `GET /git-status` JSON endpoint the page polls every 15s; error messages are credential-sanitized. See [Usage → Git Sync Status](docs/usage.md).
+
 ## v0.48.0
 
 ### Added

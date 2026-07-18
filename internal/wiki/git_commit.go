@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +54,24 @@ type GitAutoCommitter struct {
 	pushDelay time.Duration // copy of remote.PushDelay for fast access
 	pushWG    sync.WaitGroup
 	afterPull func(kind DocKind, changedSlugs []string) // optional; called after pull per doc kind
+
+	// Sync-health tracking, exposed via SyncStatus for the UI status indicator.
+	statusMu    sync.Mutex
+	syncing     bool      // a network op (fetch/push) is currently in flight
+	lastErr     string    // last network error (empty when healthy)
+	lastErrTime time.Time // when lastErr was recorded
+	lastSyncOK  time.Time // when the last network op last succeeded
+}
+
+// GitSyncStatus is a snapshot of the committer's remote-sync health, returned
+// to the UI so it can show a green/red indicator in the top bar.
+type GitSyncStatus struct {
+	Enabled     bool      `json:"enabled"`               // remote sync is configured
+	Syncing     bool      `json:"syncing"`               // a fetch/push is in flight right now
+	OK          bool      `json:"ok"`                    // last network op succeeded (true before first attempt)
+	Error       string    `json:"error,omitempty"`       // last network error, sanitized
+	LastSuccess time.Time `json:"lastSuccess,omitempty"` // last successful sync
+	LastError   time.Time `json:"lastError,omitempty"`   // when the last error occurred
 }
 
 func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommitter {
@@ -351,10 +370,15 @@ func (c *GitAutoCommitter) pullRebase() {
 	}
 
 	// Fetch latest
-	if err := c.runGit("fetch", remoteName); err != nil {
+	c.setSyncing(true)
+	err := c.runGit("fetch", remoteName)
+	c.setSyncing(false)
+	if err != nil {
 		log.Printf("git: fetch failed: %v", err)
+		c.recordSyncErr("fetch", err)
 		return
 	}
+	c.recordSyncOK()
 
 	// Check if the remote branch exists
 	remoteRef := remoteName + "/" + branch
@@ -375,7 +399,7 @@ func (c *GitAutoCommitter) pullRebase() {
 	}
 
 	// Try rebase on top of remote
-	err := c.runGit("rebase", remoteRef)
+	err = c.runGit("rebase", remoteRef)
 	if err != nil {
 		log.Printf("git: rebase failed, aborting and keeping local state: %v", err)
 		_ = c.runGit("rebase", "--abort")
@@ -447,10 +471,18 @@ func (c *GitAutoCommitter) push() {
 		return
 	}
 	remoteName := c.remoteName()
-	if err := c.runGit("push", remoteName, branch); err != nil {
+	c.setSyncing(true)
+	err := c.runGit("push", remoteName, branch)
+	c.setSyncing(false)
+	if err != nil {
+		// A rejection here (non-fast-forward) is expected under the ours-wins
+		// strategy and does not by itself mean the remote is unreachable; let
+		// forcePush record the final health of the sync.
 		log.Printf("git: push rejected, force-pushing: %v", err)
 		c.forcePush()
+		return
 	}
+	c.recordSyncOK()
 }
 
 // forcePush force-pushes the current branch (ours-wins strategy).
@@ -459,13 +491,69 @@ func (c *GitAutoCommitter) forcePush() {
 	if branch == "" {
 		return
 	}
-	if err := c.runGit("push", "--force", c.remoteName(), branch); err != nil {
+	c.setSyncing(true)
+	err := c.runGit("push", "--force", c.remoteName(), branch)
+	c.setSyncing(false)
+	if err != nil {
 		log.Printf("git: force-push failed: %v", err)
+		c.recordSyncErr("push", err)
+		return
 	}
+	c.recordSyncOK()
 }
 
 func (c *GitAutoCommitter) hasRemote() bool {
 	return c != nil && c.remote != nil && c.remote.RemoteURL != "" && c.isOwnRepo()
+}
+
+// SyncStatus returns a snapshot of remote-sync health for the UI indicator.
+// When no remote is configured it reports Enabled=false so the indicator hides.
+func (c *GitAutoCommitter) SyncStatus() GitSyncStatus {
+	if !c.hasRemote() {
+		return GitSyncStatus{}
+	}
+	c.statusMu.Lock()
+	defer c.statusMu.Unlock()
+	return GitSyncStatus{
+		Enabled:     true,
+		Syncing:     c.syncing,
+		OK:          c.lastErr == "",
+		Error:       c.lastErr,
+		LastSuccess: c.lastSyncOK,
+		LastError:   c.lastErrTime,
+	}
+}
+
+func (c *GitAutoCommitter) setSyncing(v bool) {
+	c.statusMu.Lock()
+	c.syncing = v
+	c.statusMu.Unlock()
+}
+
+// recordSyncOK marks the last network op as successful and clears any error.
+func (c *GitAutoCommitter) recordSyncOK() {
+	c.statusMu.Lock()
+	c.lastErr = ""
+	c.lastSyncOK = time.Now()
+	c.statusMu.Unlock()
+}
+
+// recordSyncErr records a failed network op. The message is sanitized so that
+// any credentials baked into the remote URL are never surfaced to the UI.
+func (c *GitAutoCommitter) recordSyncErr(op string, err error) {
+	c.statusMu.Lock()
+	c.lastErr = sanitizeGitError(fmt.Sprintf("%s failed: %v", op, err))
+	c.lastErrTime = time.Now()
+	c.statusMu.Unlock()
+}
+
+// credInURLRe matches the "user:pass@" (or "token@") credential portion of a
+// URL so it can be masked before an error string reaches the UI or logs.
+var credInURLRe = regexp.MustCompile(`://[^/@\s]+@`)
+
+func sanitizeGitError(s string) string {
+	s = credInURLRe.ReplaceAllString(s, "://***@")
+	return strings.TrimSpace(s)
 }
 
 func (c *GitAutoCommitter) remoteName() string {

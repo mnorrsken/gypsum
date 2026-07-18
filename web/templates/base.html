@@ -36,6 +36,10 @@
                  hx-target="#search-results" hx-push-url="true" />
           <button type="submit">Search</button>
         </form>
+        <a id="git-status" class="git-status" href="/recent-edits" hidden
+           role="status" aria-live="polite" title="Git sync status">
+          <span class="git-status-dot"></span>
+        </a>
         <button id="secure-lock-btn" class="lock-toggle" type="button" aria-label="Encryption" title="Encryption locked">
           <span class="lock-icon">&#128274;</span>
         </button>
@@ -47,6 +51,10 @@
     </div>
     <div class="topbar-rules">
       <div class="rule-red"></div>
+    </div>
+    <div id="git-status-banner" class="git-status-banner" role="alert" hidden>
+      <span class="git-status-banner-icon">&#9888;&#65039;</span>
+      <span id="git-status-banner-msg">Git sync is failing.</span>
     </div>
   </header>
 
@@ -223,6 +231,64 @@
       window.gypsumSecure.ready.then(refreshIcon, refreshIcon);
     }
     refreshIcon();
+  })();
+  </script>
+
+  <script>
+  // Poll git sync health and reflect it in the top-bar indicator + banner.
+  (function () {
+    var el = document.getElementById("git-status");
+    var dot = el && el.querySelector(".git-status-dot");
+    var banner = document.getElementById("git-status-banner");
+    var bannerMsg = document.getElementById("git-status-banner-msg");
+    if (!el || !dot || !banner) return;
+
+    function fmtAge(iso) {
+      if (!iso) return "";
+      var then = new Date(iso).getTime();
+      if (isNaN(then)) return "";
+      var secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+      if (secs < 60) return secs + "s ago";
+      if (secs < 3600) return Math.round(secs / 60) + "m ago";
+      if (secs < 86400) return Math.round(secs / 3600) + "h ago";
+      return Math.round(secs / 86400) + "d ago";
+    }
+
+    function apply(s) {
+      if (!s || !s.enabled) {
+        el.hidden = true;
+        banner.hidden = true;
+        return;
+      }
+      el.hidden = false;
+      var state = s.ok ? (s.syncing ? "syncing" : "ok") : "error";
+      el.dataset.state = state;
+      el.classList.toggle("git-status-error", state === "error");
+      el.classList.toggle("git-status-syncing", state === "syncing");
+
+      if (state === "error") {
+        el.title = "Git sync failing: " + (s.error || "unknown error");
+        banner.hidden = false;
+        bannerMsg.textContent = "Git sync is failing — changes may not be saved to the remote. "
+          + (s.error || "");
+      } else {
+        var last = fmtAge(s.lastSuccess);
+        el.title = state === "syncing"
+          ? "Git syncing…"
+          : "Git sync healthy" + (last ? " (last synced " + last + ")" : "");
+        banner.hidden = true;
+      }
+    }
+
+    function poll() {
+      fetch("/git-status", { headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(apply)
+        .catch(function () { /* transient; keep last known state */ });
+    }
+
+    poll();
+    setInterval(poll, 15000);
   })();
   </script>
 </body>

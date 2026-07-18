@@ -177,6 +177,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/public/", h.handlePublic)
 	mux.HandleFunc("/graph", h.handleGraph)
 	mux.HandleFunc("/recent-edits", h.handleRecentEdits)
+	mux.HandleFunc("GET /git-status", h.handleGitStatus)
 	mux.HandleFunc("/convert/mediawiki", h.handleConvertMediaWiki)
 	mux.HandleFunc("/skills", h.handleSkillsList)
 	mux.HandleFunc("/skills/", h.handleSkillView)
@@ -225,6 +226,14 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/wiki/Home", http.StatusFound)
+}
+
+// handleGitStatus reports remote git-sync health as JSON so the top-bar
+// indicator can show whether syncing is healthy (green) or failing (red).
+func (h *Handler) handleGitStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(h.autoCommit.SyncStatus())
 }
 
 func (h *Handler) writeJSON(w http.ResponseWriter, status int, payload map[string]any) {
