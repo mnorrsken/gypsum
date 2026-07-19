@@ -52,10 +52,6 @@
     <div class="topbar-rules">
       <div class="rule-red"></div>
     </div>
-    <div id="git-status-banner" class="git-status-banner" role="alert" hidden>
-      <span class="git-status-banner-icon">&#9888;&#65039;</span>
-      <span id="git-status-banner-msg">Git sync is failing.</span>
-    </div>
   </header>
 
   <div class="layout">
@@ -235,13 +231,12 @@
   </script>
 
   <script>
-  // Poll git sync health and reflect it in the top-bar indicator + banner.
+  // Poll git sync health and reflect it in the top-bar indicator. The full
+  // status (including any error message) is shown as the dot's hover text.
   (function () {
     var el = document.getElementById("git-status");
     var dot = el && el.querySelector(".git-status-dot");
-    var banner = document.getElementById("git-status-banner");
-    var bannerMsg = document.getElementById("git-status-banner-msg");
-    if (!el || !dot || !banner) return;
+    if (!el || !dot) return;
 
     function fmtAge(iso) {
       if (!iso) return "";
@@ -257,7 +252,6 @@
     function apply(s) {
       if (!s || !s.enabled) {
         el.hidden = true;
-        banner.hidden = true;
         return;
       }
       el.hidden = false;
@@ -267,16 +261,13 @@
       el.classList.toggle("git-status-syncing", state === "syncing");
 
       if (state === "error") {
-        el.title = "Git sync failing: " + (s.error || "unknown error");
-        banner.hidden = false;
-        bannerMsg.textContent = "Git sync is failing — changes may not be saved to the remote. "
-          + (s.error || "");
+        el.title = "Git sync failing — changes may not be saved to the remote. "
+          + (s.error || "unknown error");
       } else {
         var last = fmtAge(s.lastSuccess);
         el.title = state === "syncing"
           ? "Git syncing…"
           : "Git sync healthy" + (last ? " (last synced " + last + ")" : "");
-        banner.hidden = true;
       }
     }
 

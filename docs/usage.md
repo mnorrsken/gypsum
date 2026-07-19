@@ -99,13 +99,14 @@ Click the **History** tab to view the git commit log for a page. Select two revi
 When a git remote is configured (`GYPSUM_GIT_REMOTE_URL`), a status dot appears
 in the top bar next to the 🔒 icon:
 
-- **Green** — the last fetch/push to the remote succeeded. Hover to see when it
-  last synced.
+- **Green** — the last fetch/push to the remote succeeded.
 - **Amber (pulsing)** — a fetch or push is in progress.
 - **Red** — the last fetch or push failed (e.g. the remote is unreachable or
-  credentials are wrong). A red warning banner also appears under the top bar
-  with the (credential-sanitized) error message, so you know changes may not
-  have reached the remote.
+  credentials are wrong).
+
+Hover over the dot to see the details: how long ago it last synced when healthy,
+or the (credential-sanitized) error message when failing, so you know changes
+may not have reached the remote.
 
 The indicator is hidden entirely when no remote is configured. It refreshes
 every 15 seconds by polling the `GET /git-status` endpoint, which returns the

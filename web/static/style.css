@@ -194,19 +194,6 @@ a:hover {
   50% { opacity: 0.35; }
 }
 
-.git-status-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 20px;
-  font-size: 14px;
-  color: #fff;
-  background: #b5292d;
-}
-.git-status-banner-icon {
-  flex: none;
-}
-
 .brand a {
   font-size: 20px;
   font-weight: 700;

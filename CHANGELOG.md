@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.49.2
+
+### Fixed
+- **Git sync banner shown on every page** — the red "Git sync is failing" banner introduced in v0.49.0 had a CSS specificity bug (`.git-status-banner { display: flex }` overrode its `hidden` attribute), so it appeared under the top bar at all times, not just on sync failure. The banner is removed; the git sync status (including the sanitized error message on failure, or the last-synced time when healthy) is now conveyed entirely by the top-bar status dot's hover text. See [Usage → Git Sync Status](docs/usage.md).
+
 ## v0.49.1
 
 ### Changed
