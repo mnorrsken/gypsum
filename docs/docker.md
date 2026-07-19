@@ -28,6 +28,18 @@ docker compose up -d
 
 Adjust environment variables in the file to set your encryption key and optional git remote sync.
 
+## Debugging
+
+The runtime image bundles a few basic tools so you can exec into a running
+container and poke around: `bash` (shell), `curl` (HTTP client), `nano` (editor),
+and `git`.
+
+```bash
+docker exec -it <container> bash
+# then, e.g.
+curl -s localhost:8080/git-status
+```
+
 ## Environment Variables
 
 All [application variables](configuration.md) apply inside the container. The Docker entrypoint script also supports these additional variables:

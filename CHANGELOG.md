@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.49.1
+
+### Changed
+- **Debug tooling in the runtime container image** — the Docker image now installs `bash`, `curl`, and `nano` alongside the existing `git` and `ca-certificates`, so you can `docker exec -it <container> bash` into a running container for basic troubleshooting (shell, HTTP client, editor). See [Docker → Debugging](docs/docker.md).
+
 ## v0.49.0
 
 ### Added

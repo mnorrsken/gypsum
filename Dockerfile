@@ -18,7 +18,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 
 FROM alpine:3.23
 
-RUN apk add --no-cache git ca-certificates \
+# git + ca-certificates are required at runtime; bash, curl and nano are added so
+# the container can be exec'd into for basic debugging (a shell, an HTTP client,
+# and an editor).
+RUN apk add --no-cache git ca-certificates bash curl nano \
     && addgroup -g 1000 -S app \
     && adduser -u 1000 -S app -G app
 WORKDIR /app
