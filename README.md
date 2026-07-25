@@ -42,7 +42,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Visual table editor
 - MediaWiki import
 - Public page sharing via secret links — shared pages are HTML-sanitized for anonymous viewers
-- Git-backed storage with optional remote sync and a top-bar status indicator (green/amber/red) that surfaces fetch/push failures
+- Git-backed storage with optional remote sync and a top-bar status indicator (green/amber/red) that surfaces fetch/push failures; git runs non-interactively with bounded timeouts and process-group cleanup (see [Git Execution](docs/configuration.md))
 - Dark/light theme, responsive layout, print-friendly pages
 
 ## Quick Start

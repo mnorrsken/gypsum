@@ -18,10 +18,11 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 
 FROM alpine:3.23
 
-# git + ca-certificates are required at runtime; bash, curl and nano are added so
-# the container can be exec'd into for basic debugging (a shell, an HTTP client,
-# and an editor).
-RUN apk add --no-cache git ca-certificates bash curl nano \
+# git + ca-certificates are required at runtime; tini reaps orphaned processes
+# (see ENTRYPOINT); bash, curl and nano are added so the container can be
+# exec'd into for basic debugging (a shell, an HTTP client, and an editor).
+RUN apk add --no-cache git ca-certificates tini bash curl nano \
+    && test -x /sbin/tini \
     && addgroup -g 1000 -S app \
     && adduser -u 1000 -S app -G app
 WORKDIR /app
@@ -39,4 +40,10 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
 USER app
 EXPOSE 8080 9091
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# tini runs as PID 1 so that orphaned processes get reaped. git spawns helpers
+# (git-remote-https, ssh, credential helpers) that can outlive their parent git
+# process; once orphaned they are reparented to PID 1, and a Go binary as PID 1
+# never wait()s for them — they accumulate as zombies until the container hits
+# its PID limit and git can no longer fork. tini also forwards signals, so
+# graceful shutdown is unaffected.
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]

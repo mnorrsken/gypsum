@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.49.3
+
+### Fixed
+- **Git processes accumulating until `cannot fork()`** — three remaining leaks after v0.41.1. (1) When a git command hit its timeout, only the `git` process itself was killed; the helpers it forked (`git-remote-https`, `ssh`, credential helpers) kept running, were reparented to PID 1, and never exited. Git commands now run in their own process group and the whole group is killed on timeout and swept after every run. (2) The server runs as PID 1 in the container image and, being a plain Go binary, never reaped those orphans — so each one lingered as a zombie forever. The image now runs [tini](https://github.com/krallin/tini) as PID 1. (3) Read-only git commands behind the history, diff and revision endpoints (HTTP and MCP) had no timeout and no concurrency limit, so a burst of requests forked an unbounded number of `git log` / `git show` processes; they are now capped at 4 concurrent processes with a 30s timeout. Git is additionally forced non-interactive (`GIT_TERMINAL_PROMPT=0`, no askpass, batch-mode SSH, HTTP low-speed abort) so it fails fast instead of hanging until a timeout kills it. See [Configuration → Git Execution](docs/configuration.md) and [Docker → Process Model](docs/docker.md).
+
 ## v0.49.2
 
 ### Fixed

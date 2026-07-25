@@ -29,6 +29,31 @@ Example — read-only wiki for AI assistants:
 GYPSUM_MCP_SECTIONS=read
 ```
 
+## Git Execution
+
+Gypsum drives git by running the `git` binary. Every invocation is made
+non-interactive and bounded so a wedged git process can never accumulate:
+
+- **No prompts.** `GIT_TERMINAL_PROMPT=0` is forced and any `GIT_ASKPASS` /
+  `SSH_ASKPASS` in the environment is stripped, so git fails fast on missing or
+  bad credentials instead of blocking on a prompt.
+- **Batch-mode SSH.** If you don't set `GIT_SSH_COMMAND` yourself, Gypsum uses
+  `ssh -o BatchMode=yes -o ConnectTimeout=10`. Set your own `GIT_SSH_COMMAND`
+  (e.g. to point at a deploy key) and it is used unchanged.
+- **Stalled HTTP transfers abort.** `GIT_HTTP_LOW_SPEED_LIMIT=1000` /
+  `GIT_HTTP_LOW_SPEED_TIME=30` — a transfer stuck below 1 KB/s for 30s fails.
+- **Timeouts.** Network operations (fetch, push) are capped at 2 minutes, local
+  ones (status, log, show, commit) at 30 seconds. On timeout the whole git
+  process group is killed, including helpers such as `git-remote-https` and
+  `ssh`, so nothing survives the command that started it.
+- **Bounded concurrency.** Read-only commands behind history, diff and revision
+  requests (HTTP and MCP) are limited to 4 concurrent git processes; write
+  operations are serialized. A request burst can no longer fork an unbounded
+  number of processes.
+
+See also [Docker → Process Model](docker.md) for why the container image runs an
+init process as PID 1.
+
 ## Encryption
 
 Secure fields (`{{secure:...}}`) are encrypted and decrypted entirely in the

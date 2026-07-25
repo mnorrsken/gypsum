@@ -1,6 +1,7 @@
 package wiki
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -16,7 +17,26 @@ import (
 // gitTimeout is the maximum time allowed for any single git operation.
 // Network operations (fetch, push) can legitimately take a while on slow
 // connections, but should never block for hours if the server is unreachable.
-const gitTimeout = 2 * time.Minute
+// Vars rather than consts so tests can shrink them.
+var gitTimeout = 2 * time.Minute
+
+// gitLocalTimeout applies to purely local commands (status, log, show,
+// rev-parse). These touch no network, so anything beyond this means the
+// process is wedged and must be killed rather than waited on.
+var gitLocalTimeout = 30 * time.Second
+
+// gitWaitDelay is how long Go waits, after the git process has exited, for
+// inherited stdout/stderr pipes to be closed before force-closing them. A
+// lingering grandchild holding the pipe would otherwise block Wait() forever
+// and leave the git process unreaped.
+var gitWaitDelay = 5 * time.Second
+
+// gitReadSem bounds the number of concurrent read-only git subprocesses.
+// Every history, diff and revision request from HTTP or MCP forks a git
+// process, and unlike the write path those calls do not hold c.mu — so a burst
+// of requests could otherwise fork an unbounded number of processes and
+// exhaust the container's PID limit ("git: cannot fork").
+var gitReadSem = make(chan struct{}, 4)
 
 type HistoryEntry struct {
 	Hash    string
@@ -243,8 +263,16 @@ func (c *GitAutoCommitter) ensureRepo() {
 		return
 	}
 	// Initialize a new repo inside dataDir
-	cmd := exec.Command("git", "init", c.dataDir)
-	_ = cmd.Run()
+	_ = runGitBare("init", c.dataDir)
+}
+
+// runGitBare runs a git command that is not scoped to the repo (init, global
+// config). It gets the same process-group, timeout and environment treatment
+// as every other git invocation.
+func runGitBare(args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), gitLocalTimeout)
+	defer cancel()
+	return runGitProcess(ctx, newGitCmd(ctx, args...))
 }
 
 // configureRemote sets (or resets) the git remote URL on every startup so that
@@ -587,8 +615,7 @@ func (c *GitAutoCommitter) commitEmail() string {
 }
 
 func (c *GitAutoCommitter) currentBranch() string {
-	cmd := exec.Command("git", "-C", c.dataDir, "rev-parse", "--abbrev-ref", "HEAD")
-	out, err := cmd.Output()
+	out, err := c.runGitLocal("rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return ""
 	}
@@ -618,8 +645,7 @@ func (c *GitAutoCommitter) markSafeDirectory() {
 	if err != nil {
 		return
 	}
-	cmd := exec.Command("git", "config", "--global", "--add", "safe.directory", absPath)
-	_ = cmd.Run()
+	_ = runGitBare("config", "--global", "--add", "safe.directory", absPath)
 }
 
 // isOwnRepo checks whether dataDir itself contains a .git directory
@@ -632,8 +658,7 @@ func (c *GitAutoCommitter) isOwnRepo() bool {
 // hasUncommittedChanges returns true if the working tree has any staged,
 // unstaged, or untracked changes.
 func (c *GitAutoCommitter) hasUncommittedChanges() bool {
-	cmd := exec.Command("git", "-C", c.dataDir, "status", "--porcelain")
-	out, err := cmd.Output()
+	out, err := c.runGitLocal("status", "--porcelain")
 	if err != nil {
 		return false
 	}
@@ -641,8 +666,7 @@ func (c *GitAutoCommitter) hasUncommittedChanges() bool {
 }
 
 func (c *GitAutoCommitter) hasStagedChanges(relativeFilePath string) (bool, error) {
-	cmd := exec.Command("git", "-C", c.dataDir, "diff", "--cached", "--quiet", "--", relativeFilePath)
-	err := cmd.Run()
+	_, err := c.runGitLocal("diff", "--cached", "--quiet", "--", relativeFilePath)
 	if err == nil {
 		return false, nil
 	}
@@ -667,15 +691,83 @@ func (c *GitAutoCommitter) runGit(args ...string) error {
 func (c *GitAutoCommitter) runGitOnce(args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
-	fullArgs := make([]string, 0, len(args)+2)
-	fullArgs = append(fullArgs, "-C", c.dataDir)
-	fullArgs = append(fullArgs, args...)
-	cmd := exec.CommandContext(ctx, "git", fullArgs...)
-	cmd.WaitDelay = 5 * time.Second
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git %v failed: %v (%s)", args, err, string(out))
+	cmd := newGitCmd(ctx, c.repoArgs(args)...)
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := runGitProcess(ctx, cmd); err != nil {
+		return fmt.Errorf("git %v failed: %v (%s)", args, err, buf.String())
 	}
 	return nil
+}
+
+// repoArgs prefixes args with "-C <dataDir>" so every command runs against the
+// wiki repo regardless of the server's working directory.
+func (c *GitAutoCommitter) repoArgs(args []string) []string {
+	full := make([]string, 0, len(args)+2)
+	full = append(full, "-C", c.dataDir)
+	return append(full, args...)
+}
+
+// newGitCmd builds a git command that cannot outlive its context: it runs in
+// its own process group, cancellation kills that entire group (not just git
+// itself), and WaitDelay guarantees Wait() returns even if a helper process
+// still holds the output pipes.
+func newGitCmd(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Env = gitEnv()
+	configureProcessGroup(cmd)
+	cmd.Cancel = func() error {
+		killProcessGroup(cmd)
+		return nil
+	}
+	cmd.WaitDelay = gitWaitDelay
+	return cmd
+}
+
+// runGitProcess runs cmd to completion and then kills anything left in its
+// process group. git exits as soon as its own work is done, but helpers like
+// git-remote-https or ssh can outlive it; once git is gone they are reparented
+// to PID 1 and — since the server is PID 1 in the container image — would never
+// be cleaned up. Sweeping the group here keeps that from accumulating.
+func runGitProcess(ctx context.Context, cmd *exec.Cmd) error {
+	err := cmd.Run()
+	killProcessGroup(cmd)
+	if err != nil && ctx.Err() != nil {
+		// The process group was killed by the deadline; report that rather
+		// than the "signal: killed" this surfaces as.
+		return fmt.Errorf("%w (git killed after deadline)", ctx.Err())
+	}
+	return err
+}
+
+// gitEnv returns the environment for git subprocesses. Anything that could
+// make git block waiting for a human (credential prompts, askpass helpers,
+// interactive host-key confirmation) is disabled, and stalled HTTP transfers
+// are aborted, so git fails fast instead of sitting in the process table until
+// the timeout kills it.
+func gitEnv() []string {
+	base := os.Environ()
+	env := make([]string, 0, len(base)+6)
+	for _, kv := range base {
+		switch {
+		case strings.HasPrefix(kv, "GIT_ASKPASS="),
+			strings.HasPrefix(kv, "SSH_ASKPASS="),
+			strings.HasPrefix(kv, "GIT_TERMINAL_PROMPT="):
+			continue // replaced below
+		}
+		env = append(env, kv)
+	}
+	env = append(env,
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_PAGER=cat",
+		"GIT_HTTP_LOW_SPEED_LIMIT=1000", // abort transfers stuck under 1 KB/s...
+		"GIT_HTTP_LOW_SPEED_TIME=30",    // ...for 30 seconds
+	)
+	if os.Getenv("GIT_SSH_COMMAND") == "" {
+		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=10")
+	}
+	return env
 }
 
 // clearStaleLock removes a stale .git/index.lock when err indicates a git
@@ -698,15 +790,26 @@ func (c *GitAutoCommitter) clearStaleLock(err error) bool {
 }
 
 func (c *GitAutoCommitter) runGitOutput(args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
-	defer cancel()
-	fullArgs := make([]string, 0, len(args)+2)
-	fullArgs = append(fullArgs, "-C", c.dataDir)
-	fullArgs = append(fullArgs, args...)
-	cmd := exec.CommandContext(ctx, "git", fullArgs...)
-	cmd.WaitDelay = 5 * time.Second
-	out, err := cmd.Output()
+	out, err := c.runGitLocal(args...)
 	return strings.TrimSpace(string(out)), err
+}
+
+// runGitLocal runs a read-only git command against the repo and returns its
+// stdout. Concurrency is capped by gitReadSem and the shorter local timeout
+// applies, so request bursts on the history/diff endpoints can never pile up
+// unbounded git processes. The returned error is the raw one from exec, so
+// callers can still inspect *exec.ExitError exit codes.
+func (c *GitAutoCommitter) runGitLocal(args ...string) ([]byte, error) {
+	gitReadSem <- struct{}{}
+	defer func() { <-gitReadSem }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), gitLocalTimeout)
+	defer cancel()
+	cmd := newGitCmd(ctx, c.repoArgs(args)...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := runGitProcess(ctx, cmd)
+	return out.Bytes(), err
 }
 
 // revParseHEAD returns the current HEAD commit hash, or "" on error.
@@ -754,12 +857,11 @@ func (c *GitAutoCommitter) DocHistory(kind DocKind, slug string, maxEntries int)
 	relPath := filepath.Join(string(kind), MarkdownFilename(slug))
 	format := "%H%n%an%n%aI%n%s%n---" // hash, author, ISO date, subject, separator
 
-	cmd := exec.Command("git", "-C", c.dataDir,
+	out, err := c.runGitLocal(
 		"log", fmt.Sprintf("--max-count=%d", maxEntries),
 		fmt.Sprintf("--format=%s", format),
 		"--", relPath,
 	)
-	out, err := cmd.Output()
 	if err != nil {
 		return nil, nil // no history or file not tracked
 	}
@@ -789,8 +891,7 @@ func (c *GitAutoCommitter) DocContentAtRevision(kind DocKind, slug, hash string)
 	}
 
 	relPath := filepath.Join(string(kind), MarkdownFilename(slug))
-	cmd := exec.Command("git", "-C", c.dataDir, "show", hash+":"+relPath)
-	out, err := cmd.Output()
+	out, err := c.runGitLocal("show", hash+":"+relPath)
 	if err != nil {
 		return "", fmt.Errorf("revision not found")
 	}
@@ -809,7 +910,7 @@ func (c *GitAutoCommitter) GlobalHistory(skip, limit int) ([]GlobalHistoryEntry,
 	// filename lines that git appends after each formatted record).
 	const sep = "===COMMIT==="
 	format := sep + "%n%H%n%an%n%aI%n%s"
-	cmd := exec.Command("git", "-C", c.dataDir,
+	out, err := c.runGitLocal(
 		"log",
 		fmt.Sprintf("--skip=%d", skip),
 		fmt.Sprintf("--max-count=%d", limit),
@@ -817,7 +918,6 @@ func (c *GitAutoCommitter) GlobalHistory(skip, limit int) ([]GlobalHistoryEntry,
 		"--name-only",
 		"--", "pages/",
 	)
-	out, err := cmd.Output()
 	if err != nil {
 		return nil, nil
 	}

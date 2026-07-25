@@ -28,6 +28,20 @@ docker compose up -d
 
 Adjust environment variables in the file to set your encryption key and optional git remote sync.
 
+## Process Model
+
+The image runs [tini](https://github.com/krallin/tini) as PID 1, which starts
+the entrypoint script and forwards signals to it. tini's job is to reap orphaned
+processes: git forks helpers (`git-remote-https`, `ssh`, credential helpers) that
+can outlive the `git` process that started them, and once orphaned they are
+reparented to PID 1. Without an init that reaps them, they pile up as zombies
+until the container hits its PID limit and git starts failing with
+`cannot fork()`.
+
+If you run the `gypsum` binary directly as PID 1 in a custom image, run it under
+an init (`docker run --init`, tini, or `shareProcessNamespace`/an init container
+in Kubernetes) for the same reason.
+
 ## Debugging
 
 The runtime image bundles a few basic tools so you can exec into a running
@@ -38,6 +52,11 @@ and `git`.
 docker exec -it <container> bash
 # then, e.g.
 curl -s localhost:8080/git-status
+
+# count processes; a healthy container has a handful, and no long-lived
+# <defunct> entries
+ps -eo pid,ppid,stat,args | grep -c ''
+ps -eo pid,ppid,stat,args | grep -E 'defunct|git'
 ```
 
 ## Environment Variables
