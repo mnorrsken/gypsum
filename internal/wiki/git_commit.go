@@ -14,22 +14,21 @@ import (
 	"time"
 )
 
-// gitTimeout is the maximum time allowed for any single git operation.
+// defaultGitTimeout is the maximum time allowed for any single git operation.
 // Network operations (fetch, push) can legitimately take a while on slow
 // connections, but should never block for hours if the server is unreachable.
-// Vars rather than consts so tests can shrink them.
-var gitTimeout = 2 * time.Minute
+const defaultGitTimeout = 2 * time.Minute
 
-// gitLocalTimeout applies to purely local commands (status, log, show,
+// defaultGitLocalTimeout applies to purely local commands (status, log, show,
 // rev-parse). These touch no network, so anything beyond this means the
 // process is wedged and must be killed rather than waited on.
-var gitLocalTimeout = 30 * time.Second
+const defaultGitLocalTimeout = 30 * time.Second
 
-// gitWaitDelay is how long Go waits, after the git process has exited, for
+// defaultGitWaitDelay is how long Go waits, after the git process has exited, for
 // inherited stdout/stderr pipes to be closed before force-closing them. A
 // lingering grandchild holding the pipe would otherwise block Wait() forever
 // and leave the git process unreaped.
-var gitWaitDelay = 5 * time.Second
+const defaultGitWaitDelay = 5 * time.Second
 
 // gitReadSem bounds the number of concurrent read-only git subprocesses.
 // Every history, diff and revision request from HTTP or MCP forks a git
@@ -72,8 +71,14 @@ type GitAutoCommitter struct {
 	pushMu    sync.Mutex    // guards pushTimer
 	pushTimer *time.Timer   // active debounce timer (nil if none pending)
 	pushDelay time.Duration // copy of remote.PushDelay for fast access
-	pushWG    sync.WaitGroup
-	afterPull func(kind DocKind, changedSlugs []string) // optional; called after pull per doc kind
+
+	// Subprocess deadlines, seeded from the defaults above. Fields rather than
+	// globals so tests can shrink them without racing other committers.
+	gitTimeout      time.Duration // network ops (fetch, push)
+	gitLocalTimeout time.Duration // local ops (status, log, show, commit)
+	gitWaitDelay    time.Duration // grace period for pipes held by helpers
+	pushWG          sync.WaitGroup
+	afterPull       func(kind DocKind, changedSlugs []string) // optional; called after pull per doc kind
 
 	// Sync-health tracking, exposed via SyncStatus for the UI status indicator.
 	statusMu    sync.Mutex
@@ -107,6 +112,10 @@ func NewGitAutoCommitter(dataDir string, remote *GitRemoteConfig) *GitAutoCommit
 		remote:    remote,
 		stopCh:    make(chan struct{}),
 		pushDelay: delay,
+
+		gitTimeout:      defaultGitTimeout,
+		gitLocalTimeout: defaultGitLocalTimeout,
+		gitWaitDelay:    defaultGitWaitDelay,
 	}
 	c.markSafeDirectory()
 	c.ensureRepo()
@@ -270,9 +279,9 @@ func (c *GitAutoCommitter) ensureRepo() {
 // config). It gets the same process-group, timeout and environment treatment
 // as every other git invocation.
 func runGitBare(args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), gitLocalTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultGitLocalTimeout)
 	defer cancel()
-	return runGitProcess(ctx, newGitCmd(ctx, args...))
+	return runGitProcess(ctx, newGitCmd(ctx, defaultGitWaitDelay, args...))
 }
 
 // configureRemote sets (or resets) the git remote URL on every startup so that
@@ -689,9 +698,9 @@ func (c *GitAutoCommitter) runGit(args ...string) error {
 }
 
 func (c *GitAutoCommitter) runGitOnce(args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), c.gitTimeout)
 	defer cancel()
-	cmd := newGitCmd(ctx, c.repoArgs(args)...)
+	cmd := newGitCmd(ctx, c.gitWaitDelay, c.repoArgs(args)...)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
@@ -713,7 +722,7 @@ func (c *GitAutoCommitter) repoArgs(args []string) []string {
 // its own process group, cancellation kills that entire group (not just git
 // itself), and WaitDelay guarantees Wait() returns even if a helper process
 // still holds the output pipes.
-func newGitCmd(ctx context.Context, args ...string) *exec.Cmd {
+func newGitCmd(ctx context.Context, waitDelay time.Duration, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = gitEnv()
 	configureProcessGroup(cmd)
@@ -721,7 +730,7 @@ func newGitCmd(ctx context.Context, args ...string) *exec.Cmd {
 		killProcessGroup(cmd)
 		return nil
 	}
-	cmd.WaitDelay = gitWaitDelay
+	cmd.WaitDelay = waitDelay
 	return cmd
 }
 
@@ -803,9 +812,9 @@ func (c *GitAutoCommitter) runGitLocal(args ...string) ([]byte, error) {
 	gitReadSem <- struct{}{}
 	defer func() { <-gitReadSem }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), gitLocalTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), c.gitLocalTimeout)
 	defer cancel()
-	cmd := newGitCmd(ctx, c.repoArgs(args)...)
+	cmd := newGitCmd(ctx, c.gitWaitDelay, c.repoArgs(args)...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := runGitProcess(ctx, cmd)

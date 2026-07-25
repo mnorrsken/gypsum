@@ -4,6 +4,7 @@ package wiki
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -52,11 +53,11 @@ func TestTimedOutGitLeavesNoHelperProcess(t *testing.T) {
 	dataDir := t.TempDir()
 	pidFile := filepath.Join(t.TempDir(), "helper.pid")
 
-	// Shrink the deadlines so the test does not wait two minutes.
-	restore := shrinkGitTimeouts(t, 2*time.Second, 200*time.Millisecond)
-	defer restore()
-
 	c := NewGitAutoCommitter(dataDir, nil)
+	// Shrink this committer's deadlines so the test does not wait two minutes.
+	c.gitTimeout = 2 * time.Second
+	c.gitLocalTimeout = 2 * time.Second
+	c.gitWaitDelay = 200 * time.Millisecond
 
 	// git's ext:: transport runs an arbitrary command as the remote helper.
 	// This one records its own pid and then hangs, standing in for a wedged
@@ -83,12 +84,43 @@ func TestTimedOutGitLeavesNoHelperProcess(t *testing.T) {
 	if pid == 0 {
 		t.Skip("git did not start the ext:: helper; nothing to assert")
 	}
-	// Signal 0 only checks for existence. The helper must already be gone:
-	// killing git alone would have left it sleeping for another minute.
-	if err := syscall.Kill(pid, 0); err == nil {
+	// The helper must be dead: killing git alone would have left it sleeping
+	// for another minute. Allow a moment for it to disappear — once its parent
+	// git is gone it is reparented to init, and between the SIGKILL and init
+	// reaping it, it lingers as a zombie (which signal 0 still reports as
+	// existing). A zombie is already dead, so that counts as killed.
+	if !waitProcessDead(pid, 10*time.Second) {
 		_ = syscall.Kill(pid, syscall.SIGKILL) // don't leak it out of the test
 		t.Fatalf("helper process %d survived the killed git command", pid)
 	}
+}
+
+// waitProcessDead reports whether pid is gone (or a zombie awaiting reaping)
+// within timeout.
+func waitProcessDead(pid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if err := syscall.Kill(pid, 0); err != nil {
+			return true // no such process
+		}
+		if isZombie(pid) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// isZombie reports whether pid is in the zombie state, i.e. it has exited but
+// has not been reaped yet.
+func isZombie(pid int) bool {
+	out, err := exec.Command("ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(string(out)), "Z")
 }
 
 // TestReadOnlyGitIsBounded verifies the concurrency cap on read-only git
@@ -119,15 +151,6 @@ func TestReadOnlyGitIsBounded(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("read-only git command deadlocked on the semaphore")
-	}
-}
-
-func shrinkGitTimeouts(t *testing.T, timeout, waitDelay time.Duration) func() {
-	t.Helper()
-	oldTimeout, oldLocal, oldDelay := gitTimeout, gitLocalTimeout, gitWaitDelay
-	gitTimeout, gitLocalTimeout, gitWaitDelay = timeout, timeout, waitDelay
-	return func() {
-		gitTimeout, gitLocalTimeout, gitWaitDelay = oldTimeout, oldLocal, oldDelay
 	}
 }
 
