@@ -104,6 +104,24 @@ oauth:
   # The secret must contain a key named "oauth-password".
   existingSecret: ""
 
+# MCP endpoint settings.
+mcp:
+  # Tool sections to expose to AI assistants: read, edit, delete, skills, notes.
+  # Empty enables all of them. Omit a section to hide those tools entirely — e.g.
+  # [read] serves a wiki that assistants can search and read but never modify.
+  # Accepts a list or a comma-separated string.
+  sections: []
+
+  # Extra browser origins allowed to call /mcp. The MCP transport spec requires
+  # Origin validation to prevent DNS rebinding, so requests carrying a
+  # disallowed Origin header are rejected with HTTP 403.
+  #
+  # oauth.externalUrl and loopback are always allowed, and requests without an
+  # Origin header (Claude's remote connector, mcp-proxy, curl) are unaffected —
+  # only browser-based MCP clients served from another origin need listing here.
+  # Accepts a list or a comma-separated string; ["*"] disables the check.
+  allowedOrigins: []
+
 # Per-deployment PBKDF2 salt for encrypted {{secure_aes2}} fields. The salt is
 # not secret, but it must stay stable: changing it makes existing secure_aes2
 # blocks undecryptable. If both value and existingSecret are empty, a pre-install

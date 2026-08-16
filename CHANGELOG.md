@@ -2,6 +2,25 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.50.0
+
+### Added
+- **MCP protocol revision 2026-07-28** — Gypsum now implements the current, stateless revision of the Model Context Protocol alongside the older handshake-based ones, on the same endpoint. Modern clients send their protocol version and capabilities in per-request `_meta` (no `initialize`, no session); the mandatory `server/discover` RPC reports supported versions and capabilities in one call; results carry `resultType`, a server-identifying `_meta` block, and `ttlMs`/`cacheScope` caching hints on `server/discover` and `tools/list`. The `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` request headers are validated against the request body (including the `=?base64?…?=` sentinel encoding), and modern protocol errors are returned with the required HTTP status and error codes — `-32020` header mismatch, `-32022` unsupported version, `-32601` unknown method on 404. See [MCP Server → Protocol Versions](docs/mcp.md).
+- **Tool titles** — every MCP tool now advertises a human-readable `title` alongside its programmatic `name`, so connector UIs can display "Search Pages" rather than `search_pages`.
+- **`GYPSUM_MCP_ALLOWED_ORIGINS`** — additional browser origins permitted to call `/mcp`. See [Configuration → Origin validation](docs/configuration.md).
+- **Helm chart MCP settings** — a new `mcp` values block exposes `mcp.sections` (`GYPSUM_MCP_SECTIONS`, previously not settable through the chart at all, so restricting the tool surface required a manual env override) and `mcp.allowedOrigins` (`GYPSUM_MCP_ALLOWED_ORIGINS`). Both accept a YAML list or a comma-separated string, and both default to unset, preserving current behavior. See [Helm Chart → MCP](docs/helm.md).
+
+### Changed
+- **Origin validation on `/mcp`** — the endpoint no longer answers every origin with `Access-Control-Allow-Origin: *`. Requests carrying a disallowed `Origin` header are rejected with HTTP 403, as the MCP transport spec requires to prevent DNS rebinding; permitted cross-origin requests get their own origin echoed back. `GYPSUM_EXTERNAL_URL` and loopback are allowed by default, and requests without an `Origin` header — Claude's remote connector, `mcp-proxy`, curl — are unaffected. Browser-based clients served from another origin must now be listed in `GYPSUM_MCP_ALLOWED_ORIGINS`, or set it to `*` to restore the previous behavior.
+- **Legacy protocol version negotiation** — `initialize` now echoes back the revision the client requested when it is one Gypsum supports (`2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`) instead of always answering `2025-03-26`.
+- **Parameterless tool schemas** — tools that take no arguments now declare `{"type":"object","additionalProperties":false}`, the form the spec recommends, so stray arguments are rejected rather than silently ignored.
+- **`mcp-proxy`** — derives and sends the request metadata headers required by the 2026-07-28 transport from each JSON-RPC message, sends the required `Accept` header, and relays JSON-RPC error responses that arrive with a 4xx status to the client instead of dropping them to stderr, so stdio clients can negotiate protocol versions through the proxy.
+- **Git subprocess deadlines are per-committer** — the fetch/push, local-command and pipe-close timeouts introduced in v0.49.3 moved from mutable package-level variables onto `GitAutoCommitter`, so a test shrinking them can no longer race another committer. No change to the timeout values or to runtime behavior.
+- **Dependencies** — `github.com/yuin/goldmark` 1.8.4 → 1.8.5, `modernc.org/sqlite` 1.53.0 → 1.55.0, and `actions/setup-go` 6 → 7 in CI.
+
+### Fixed
+- **Stale MCP section documentation** — the tool-section table in [Configuration](docs/configuration.md) still listed the tools consolidated away in v0.47.0 (`get_recent_pages`, `get_favorites`, `what_links_here`, `create_page_from_mediawiki`, `edit_page_from_mediawiki`) and omitted the `notes` section entirely.
+
 ## v0.49.3
 
 ### Fixed

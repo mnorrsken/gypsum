@@ -21,7 +21,14 @@ type Handler struct {
 	mcpSections map[MCPSection]bool // enabled MCP tool sections
 	mcpMetrics  *MCPMetrics         // shared across all MCP handlers
 	tmplCache   map[string]*template.Template
-	secureSalt  string // base64 PBKDF2 salt served to the browser for {{secure_aes2}}
+	secureSalt  string   // base64 PBKDF2 salt served to the browser for {{secure_aes2}}
+	mcpOrigins  []string // Origin allowlist for the MCP endpoint
+}
+
+// SetMCPAllowedOrigins sets the Origin allowlist enforced on /mcp. Build it
+// with ParseMCPOrigins; loopback origins are always permitted.
+func (h *Handler) SetMCPAllowedOrigins(origins []string) {
+	h.mcpOrigins = origins
 }
 
 // SetSecureSalt sets the base64-encoded per-deployment PBKDF2 salt that is
@@ -213,6 +220,7 @@ func (h *Handler) Routes() http.Handler {
 		// /mcp/external is kept as a backwards-compatible alias.
 		mcpOAuth := NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth, h.mcpSections)
 		mcpOAuth.SetMetrics(h.mcpMetrics)
+		mcpOAuth.SetAllowedOrigins(h.mcpOrigins)
 		mux.Handle("/mcp", RateLimit(mcpRL, mcpOAuth))
 		mux.Handle("/mcp/external", RateLimit(mcpRL, mcpOAuth))
 	}

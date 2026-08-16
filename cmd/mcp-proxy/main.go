@@ -84,12 +84,17 @@ func runProxy() {
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
 		if sessionID != "" {
 			req.Header.Set("Mcp-Session-Id", sessionID)
 		}
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
+		// Protocol revision 2026-07-28 requires the request metadata headers to
+		// mirror the body, and the server rejects any mismatch. stdio carries no
+		// headers, so the proxy derives them here.
+		setMetadataHeaders(req, line)
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -108,11 +113,18 @@ func runProxy() {
 			continue
 		}
 
-		// Non-OK responses (e.g. 401 Unauthorized) are not valid JSON-RPC.
-		// Log to stderr and skip to keep the stdout stream clean.
+		// Non-OK responses may still be valid JSON-RPC: since 2026-07-28 the
+		// server reports unsupported protocol versions, header mismatches and
+		// unknown methods as JSON-RPC errors on 400/404, and the client needs to
+		// see them to negotiate. Anything else (e.g. 401) goes to stderr so the
+		// stdout stream stays clean.
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
+			if isJSONRPCError(body) {
+				writeLine(body)
+				continue
+			}
 			log.Printf("server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 			if resp.StatusCode == http.StatusUnauthorized {
 				log.Printf("hint: run 'mcp-proxy auth <wiki-url>' to obtain a fresh token")
@@ -127,17 +139,89 @@ func runProxy() {
 			continue
 		}
 
-		// The server's json.Encoder already appends a newline, so write
-		// the body as-is. Add a trailing newline only if missing.
-		os.Stdout.Write(body)
-		if len(body) > 0 && body[len(body)-1] != '\n' {
-			os.Stdout.Write([]byte{'\n'})
-		}
+		writeLine(body)
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Fatalf("stdin read error: %v", err)
 	}
+}
+
+// writeLine relays one JSON-RPC message to stdout. The server's json.Encoder
+// already appends a newline, so add one only if it is missing.
+func writeLine(body []byte) {
+	os.Stdout.Write(body)
+	if len(body) > 0 && body[len(body)-1] != '\n' {
+		os.Stdout.Write([]byte{'\n'})
+	}
+}
+
+// isJSONRPCError reports whether body is a JSON-RPC error response, which the
+// client must see even when it arrives with a 4xx status.
+func isJSONRPCError(body []byte) bool {
+	var msg struct {
+		JSONRPC string          `json:"jsonrpc"`
+		Error   json.RawMessage `json:"error"`
+	}
+	return json.Unmarshal(body, &msg) == nil && msg.JSONRPC == "2.0" && len(msg.Error) > 0
+}
+
+// setMetadataHeaders mirrors the request body's method, tool name and protocol
+// version into the HTTP headers required by the Streamable HTTP transport.
+// Legacy requests carry no per-request _meta and get only the method header,
+// which older servers ignore.
+func setMetadataHeaders(req *http.Request, line []byte) {
+	var msg struct {
+		Method string `json:"method"`
+		Params struct {
+			Name string                     `json:"name"`
+			URI  string                     `json:"uri"`
+			Meta map[string]json.RawMessage `json:"_meta"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(line, &msg); err != nil || msg.Method == "" {
+		return
+	}
+	req.Header.Set("Mcp-Method", msg.Method)
+
+	var version string
+	if raw, ok := msg.Params.Meta["io.modelcontextprotocol/protocolVersion"]; ok {
+		_ = json.Unmarshal(raw, &version)
+	}
+	if version != "" {
+		req.Header.Set("MCP-Protocol-Version", version)
+	}
+
+	// Mcp-Name mirrors params.name (tools/call, prompts/get) or params.uri
+	// (resources/read).
+	name := msg.Params.Name
+	if name == "" {
+		name = msg.Params.URI
+	}
+	if name != "" {
+		req.Header.Set("Mcp-Name", encodeHeaderValue(name))
+	}
+}
+
+// encodeHeaderValue wraps a value in the "=?base64?...?=" sentinel when it
+// cannot be sent as a plain ASCII header field value.
+func encodeHeaderValue(v string) string {
+	const sentinelPrefix, sentinelSuffix = "=?base64?", "?="
+	safe := v != "" &&
+		v == strings.TrimSpace(v) &&
+		!(strings.HasPrefix(v, sentinelPrefix) && strings.HasSuffix(v, sentinelSuffix))
+	if safe {
+		for _, c := range []byte(v) {
+			if c < 0x20 || c > 0x7E {
+				safe = false
+				break
+			}
+		}
+	}
+	if safe {
+		return v
+	}
+	return sentinelPrefix + base64.StdEncoding.EncodeToString([]byte(v)) + sentinelSuffix
 }
 
 // ── Auth mode ───────────────────────────────────────────────────────────────

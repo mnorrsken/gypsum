@@ -138,6 +138,14 @@ spec:
               value: {{ .Values.oauth.tokenTtl | quote }}
             {{- end }}
             {{- end }}
+            {{- with (.Values.mcp).sections }}
+            - name: GYPSUM_MCP_SECTIONS
+              value: {{ if kindIs "slice" . }}{{ join "," . | quote }}{{ else }}{{ . | quote }}{{ end }}
+            {{- end }}
+            {{- with (.Values.mcp).allowedOrigins }}
+            - name: GYPSUM_MCP_ALLOWED_ORIGINS
+              value: {{ if kindIs "slice" . }}{{ join "," . | quote }}{{ else }}{{ . | quote }}{{ end }}
+            {{- end }}
             {{- if .Values.auth.userHeader }}
             - name: GYPSUM_AUTH_USER_HEADER
               value: {{ .Values.auth.userHeader | quote }}

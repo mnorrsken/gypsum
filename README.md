@@ -14,6 +14,8 @@ The most useful thing you can do with an LLM isn't generating text — it's buil
 
 Gypsum has a built-in [MCP](https://modelcontextprotocol.io/) endpoint (Streamable HTTP). AI assistants like Claude can create pages, edit them, search across the wiki, follow backlinks, and traverse the link graph — no separate binary or plugin needed.
 
+The endpoint is dual-era: it serves the current stateless `2026-07-28` revision and the older handshake-based revisions (`2025-11-25` back to `2024-11-05`) side by side, picking the era from how each client connects. Nothing to configure.
+
 Both `/mcp` and `/mcp/external` require OAuth 2.0 (PKCE) when OAuth is configured — if OAuth is not configured, the endpoints are not exposed. For Claude Desktop or CI use, the `mcp-proxy` binary bridges stdio to the HTTP endpoint; run `mcp-proxy auth <url>` to obtain a token non-interactively.
 
 Available tools: `list_pages`, `get_page`, `create_page`, `edit_page`, `delete_page`, `search_pages`, `suggest_page_location`, `page_links`, `link_graph`, `page_history`, `get_page_revision`, `list_images`, `delete_image`, and more. Editing tools support search-and-replace, section-scoped edits, and append mode for token-efficient updates. See [MCP Server](docs/mcp.md) for setup.
@@ -66,6 +68,7 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 | `GYPSUM_METRICS_PORT` | `:9090` | Prometheus metrics server listen address |
 | `GYPSUM_PROBE_PORT` | `:9091` | Health probe listen address |
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills,notes` | Comma-separated MCP tool sections to enable |
+| `GYPSUM_MCP_ALLOWED_ORIGINS` | _(empty)_ | Extra browser origins allowed to call `/mcp`; external URL and loopback always allowed, `*` disables the check |
 | `GYPSUM_SECURE_SALT` | _(auto-generated)_ | Base64 PBKDF2 salt for `{{secure:...}}` fields; auto-generated and persisted if unset |
 
 OAuth, auth, and Docker-specific variables are documented in [Configuration](docs/configuration.md).

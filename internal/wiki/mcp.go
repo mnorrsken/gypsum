@@ -41,6 +41,7 @@ type jsonRPCResponse struct {
 type jsonRPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // ── MCP protocol types ─────────────────────────────────────────────────
@@ -55,6 +56,11 @@ type mcpServerInfo struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 }
+
+const (
+	mcpServerName    = "gypsum-wiki"
+	mcpServerVersion = "0.1.0"
+)
 
 // MCPSection identifies a group of MCP tools that can be enabled/disabled.
 type MCPSection string
@@ -100,6 +106,7 @@ type mcpToolAnnotations struct {
 
 type mcpTool struct {
 	Name        string              `json:"name"`
+	Title       string              `json:"title,omitempty"` // human-readable display name
 	Description string              `json:"description"`
 	InputSchema any                 `json:"inputSchema"`
 	Annotations *mcpToolAnnotations `json:"annotations,omitempty"`
@@ -131,8 +138,15 @@ func sectionAnnotations(section MCPSection, name string) *mcpToolAnnotations {
 	return nil
 }
 
+// mcpToolsListResult answers tools/list. resultType, ttlMs, cacheScope and
+// _meta are required by revision 2026-07-28 and omitted for legacy clients,
+// which reject unknown fields in some implementations.
 type mcpToolsListResult struct {
-	Tools []mcpTool `json:"tools"`
+	ResultType string         `json:"resultType,omitempty"`
+	Tools      []mcpTool      `json:"tools"`
+	TTLMs      int64          `json:"ttlMs,omitempty"`
+	CacheScope string         `json:"cacheScope,omitempty"`
+	Meta       map[string]any `json:"_meta,omitempty"`
 }
 
 type mcpToolCallParams struct {
@@ -146,21 +160,34 @@ type mcpContent struct {
 }
 
 type mcpCallToolResult struct {
-	Content []mcpContent `json:"content"`
-	IsError bool         `json:"isError,omitempty"`
+	ResultType string         `json:"resultType,omitempty"` // "complete" on the modern era only
+	Content    []mcpContent   `json:"content"`
+	IsError    bool           `json:"isError,omitempty"`
+	Meta       map[string]any `json:"_meta,omitempty"`
 }
 
 // ── MCP Handler ─────────────────────────────────────────────────────────
 
 // MCPHandler serves the MCP Streamable HTTP transport at a single endpoint.
 // Claude's custom connector POSTs JSON-RPC messages here.
+//
+// The handler is dual-era: requests carrying per-request _meta are served
+// statelessly under revision 2026-07-28 (see mcp_modern.go), while clients that
+// open with initialize get the legacy session-based semantics below.
 type MCPHandler struct {
-	store      *PageStore
-	autoCommit *GitAutoCommitter
-	sessions   sync.Map            // sessionID → true
-	oauth      *OAuthServer        // non-nil → Bearer token required
-	sections   map[MCPSection]bool // enabled tool sections
-	metrics    *MCPMetrics         // optional; nil = no metrics
+	store          *PageStore
+	autoCommit     *GitAutoCommitter
+	sessions       sync.Map            // sessionID → true (legacy era only)
+	oauth          *OAuthServer        // non-nil → Bearer token required
+	sections       map[MCPSection]bool // enabled tool sections
+	metrics        *MCPMetrics         // optional; nil = no metrics
+	allowedOrigins []string            // Origin allowlist; loopback always permitted
+}
+
+// SetAllowedOrigins sets the Origin allowlist enforced on the MCP endpoint.
+// Build it with ParseMCPOrigins.
+func (m *MCPHandler) SetAllowedOrigins(origins []string) {
+	m.allowedOrigins = origins
 }
 
 // NewMCPHandler creates an internal (unauthenticated) MCP handler.
@@ -186,10 +213,28 @@ func NewMCPHandlerExternal(store *PageStore, autoCommitter *GitAutoCommitter, oa
 }
 
 func (m *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Origin validation guards against DNS rebinding: a browser page on an
+	// unrelated origin must not be able to drive the wiki's MCP endpoint.
+	// Non-browser clients send no Origin at all and are unaffected.
+	origin := r.Header.Get("Origin")
+	if !m.originAllowed(origin) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(jsonRPCResponse{
+			JSONRPC: "2.0",
+			Error:   &jsonRPCError{Code: errCodeInvalidRequest, Message: "origin not allowed: " + origin},
+		})
+		return
+	}
+
 	// CORS headers — required for Claude's remote MCP connector
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Add("Vary", "Origin")
+	}
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id, Authorization")
+	w.Header().Set("Access-Control-Allow-Headers",
+		"Content-Type, Authorization, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name")
 	w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id")
 
 	// OAuth bearer token check (external endpoint only)
@@ -238,6 +283,17 @@ func (m *MCPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Era selection: a request carrying per-request _meta is stateless and
+	// served under 2026-07-28; an initialize request selects legacy semantics.
+	meta, metaFound := parseRequestMeta(req.Params)
+	if isModernRequest(r, req, metaFound) {
+		resp, status := m.handleModernRPC(r, req, meta)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
+
 	resp := m.HandleRPC(req, func(k, v string) { w.Header().Set(k, v) })
 	if resp == nil {
 		w.WriteHeader(http.StatusAccepted)
@@ -248,9 +304,12 @@ func (m *MCPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// HandleRPC processes a single JSON-RPC request and returns a response.
-// Returns nil for notifications that need no response.
+// HandleRPC processes a single legacy-era (initialize/session) JSON-RPC request
+// and returns a response. Returns nil for notifications that need no response.
 // The optional headerFn is called to set HTTP headers (ignored for stdio).
+//
+// Modern (2026-07-28) requests are routed to handleModernRPC instead; see
+// mcp_modern.go.
 func (m *MCPHandler) HandleRPC(req jsonRPCRequest, headerFn func(key, value string)) *jsonRPCResponse {
 	switch req.Method {
 	case "initialize":
@@ -262,13 +321,13 @@ func (m *MCPHandler) HandleRPC(req jsonRPCRequest, headerFn func(key, value stri
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Result: mcpInitializeResult{
-				ProtocolVersion: "2025-03-26",
+				ProtocolVersion: negotiateLegacyVersion(req.Params),
 				Capabilities: map[string]any{
 					"tools": map[string]any{},
 				},
 				ServerInfo: mcpServerInfo{
-					Name:    "gypsum-wiki",
-					Version: "0.1.0",
+					Name:    mcpServerName,
+					Version: mcpServerVersion,
 				},
 			},
 		}
@@ -293,14 +352,7 @@ func (m *MCPHandler) HandleRPC(req jsonRPCRequest, headerFn func(key, value stri
 			}
 		}
 		result := m.callTool(params)
-		if m.metrics != nil {
-			sent := len(req.Params)
-			received := 0
-			for _, c := range result.Content {
-				received += len(c.Text)
-			}
-			m.metrics.Record(params.Name, sent, received, result.IsError)
-		}
+		m.recordToolMetrics(params.Name, req.Params, result)
 		return &jsonRPCResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
@@ -322,6 +374,33 @@ func (m *MCPHandler) HandleRPC(req jsonRPCRequest, headerFn func(key, value stri
 // SetMetrics enables Prometheus metrics collection for MCP tool calls.
 func (m *MCPHandler) SetMetrics(metrics *MCPMetrics) {
 	m.metrics = metrics
+}
+
+// recordToolMetrics reports one tools/call to Prometheus, sizing the exchange
+// by the raw request params and the text returned.
+func (m *MCPHandler) recordToolMetrics(name string, params json.RawMessage, result mcpCallToolResult) {
+	if m.metrics == nil {
+		return
+	}
+	received := 0
+	for _, c := range result.Content {
+		received += len(c.Text)
+	}
+	m.metrics.Record(name, len(params), received, result.IsError)
+}
+
+// negotiateLegacyVersion echoes back the protocol version a legacy client asked
+// for when Gypsum supports it, so 2025-06-18 and 2025-11-25 clients are not
+// silently downgraded. Unknown versions fall back to the oldest revision that
+// uses the Streamable HTTP transport.
+func negotiateLegacyVersion(params json.RawMessage) string {
+	var p struct {
+		ProtocolVersion string `json:"protocolVersion"`
+	}
+	if err := json.Unmarshal(params, &p); err == nil && isSupportedLegacyVersion(p.ProtocolVersion) {
+		return p.ProtocolVersion
+	}
+	return protocolVersionLegacyFallback
 }
 
 func (m *MCPHandler) newSession() string {

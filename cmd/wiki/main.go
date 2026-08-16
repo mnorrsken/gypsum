@@ -133,6 +133,13 @@ func main() {
 		log.Fatalf("failed to resolve secure salt: %v", err)
 	}
 	handler.SetSecureSalt(secureSalt)
+
+	// Origin allowlist for the MCP endpoint (DNS-rebinding protection). The
+	// deployment's own external URL and loopback are always allowed; browser
+	// clients served from other origins must be listed explicitly.
+	handler.SetMCPAllowedOrigins(wiki.ParseMCPOrigins(
+		os.Getenv("GYPSUM_MCP_ALLOWED_ORIGINS"), os.Getenv("GYPSUM_EXTERNAL_URL")))
+
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServerFS(web.Static())))

@@ -65,6 +65,59 @@ helm show values oci://ghcr.io/mnorrsken/charts/gypsum
 | `oauth.tokenTtl` | `24h` | Access token lifetime |
 | `oauth.existingSecret` | `""` | Existing Secret with an `oauth-password` key |
 
+### MCP
+
+| Parameter | Default | Description |
+|---|---|---|
+| `mcp.sections` | `[]` (all) | Tool sections to expose: `read`, `edit`, `delete`, `skills`, `notes`. Accepts a list or a comma-separated string |
+| `mcp.allowedOrigins` | `[]` | Extra browser origins allowed to call `/mcp`. `oauth.externalUrl` and loopback are always allowed. Accepts a list or a comma-separated string; `["*"]` disables Origin checking |
+
+#### Tool sections
+
+Omitting a section hides those tools from AI assistants entirely — they are not
+advertised in `tools/list` and are refused if called anyway.
+
+| Section | Tools |
+|---|---|
+| `read` | `list_pages`, `get_page`, `search_pages`, `suggest_page_location`, `list_images`, `page_history`, `get_page_revision`, `page_links`, `link_graph` |
+| `edit` | `create_page`, `edit_page` |
+| `delete` | `delete_page`, `delete_image` |
+| `skills` | `list_skills`, `get_skill`, `search_skills`, `create_skill`, `edit_skill`, `delete_skill` |
+| `notes` | `list_notes`, `get_note`, `create_note`, `edit_note`, `archive_note`, `delete_note` |
+
+A wiki assistants may search and read but never modify:
+
+```bash
+helm upgrade gypsum oci://ghcr.io/mnorrsken/charts/gypsum \
+  --set 'mcp.sections={read,skills}'
+```
+
+Read and write, but nothing destructive:
+
+```bash
+helm upgrade gypsum oci://ghcr.io/mnorrsken/charts/gypsum \
+  --set 'mcp.sections={read,edit,skills,notes}'
+```
+
+See [MCP Server → Available Tools](mcp.md#available-tools) for what each tool does.
+
+#### Origin validation
+
+The MCP endpoint validates the `Origin` header to prevent DNS rebinding and
+rejects disallowed origins with HTTP 403. Requests without an `Origin` header —
+Claude's remote connector, `mcp-proxy`, curl — are unaffected, so this only
+matters for browser-based MCP clients served from another origin:
+
+```bash
+helm upgrade gypsum oci://ghcr.io/mnorrsken/charts/gypsum \
+  --set 'mcp.allowedOrigins={https://app.example.com}'
+```
+
+See [MCP Server → Protocol Versions](mcp.md#protocol-versions) for the protocol
+revisions the endpoint speaks, and [Configuration](configuration.md) for the
+underlying `GYPSUM_MCP_SECTIONS` and `GYPSUM_MCP_ALLOWED_ORIGINS` environment
+variables.
+
 ### Secure fields (PBKDF2 salt)
 
 | Parameter | Default | Description |

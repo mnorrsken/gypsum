@@ -11,6 +11,7 @@
 | `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | If set, the group header must contain this group or the request is rejected with 403. |
 | `GYPSUM_PROBE_PORT` | `:9091` | Listen address for the health-probe server (`/healthz`, `/readyz`). |
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills,notes` | Comma-separated list of MCP tool sections to enable. Omit a section to hide those tools from AI assistants. |
+| `GYPSUM_MCP_ALLOWED_ORIGINS` | _(empty)_ | Extra browser origins permitted to call `/mcp`, comma-separated (e.g. `https://app.example.com`). `GYPSUM_EXTERNAL_URL` and loopback are always allowed. Set to `*` to disable Origin checking. See [Origin validation](#origin-validation). |
 | `GYPSUM_METRICS_PORT` | `:9090` | Listen address for the Prometheus metrics server (`/metrics`). Exposes per-tool MCP call counters. |
 | `GYPSUM_SECURE_SALT` | _(auto-generated)_ | Base64-encoded PBKDF2 salt for `{{secure:...}}` fields. If unset, a random salt is generated on first run and persisted in `gypsum.db`. The salt is not secret, but it must stay stable — see [Encryption](#encryption). |
 
@@ -18,16 +19,43 @@
 
 | Section | Tools |
 |---|---|
-| `read` | list_pages, get_page, search_pages, list_images, get_recent_pages, get_favorites, page_history, get_page_revision, page_links, what_links_here, link_graph |
-| `edit` | create_page, edit_page, create_page_from_mediawiki, edit_page_from_mediawiki |
+| `read` | list_pages, get_page, search_pages, suggest_page_location, list_images, page_history, get_page_revision, page_links, link_graph |
+| `edit` | create_page, edit_page |
 | `delete` | delete_page, delete_image |
-| `skills` | list_skills, get_skill, create_skill, edit_skill, delete_skill, search_skills |
+| `skills` | list_skills, get_skill, search_skills, create_skill, edit_skill, delete_skill |
+| `notes` | list_notes, get_note, create_note, edit_note, archive_note, delete_note |
 
 Example — read-only wiki for AI assistants:
 
 ```bash
 GYPSUM_MCP_SECTIONS=read
 ```
+
+### Origin validation
+
+The MCP transport spec requires servers to validate the `Origin` header to
+prevent DNS rebinding — without it, any web page your browser visits could drive
+your wiki's MCP endpoint from inside your network. Gypsum rejects a request
+carrying a disallowed `Origin` with HTTP 403.
+
+Allowed by default:
+
+- the origin of `GYPSUM_EXTERNAL_URL`
+- loopback (`localhost`, `127.0.0.1`, `::1`) on any port and scheme
+
+Requests with **no** `Origin` header are always allowed. Non-browser clients —
+Claude's remote connector, `mcp-proxy`, curl — do not send one, so this check is
+invisible to them.
+
+Only browser-based MCP clients served from some other origin need widening:
+
+```bash
+GYPSUM_MCP_ALLOWED_ORIGINS=https://app.example.com,https://staging.example.com
+```
+
+Setting `GYPSUM_MCP_ALLOWED_ORIGINS=*` disables the check entirely and restores
+the earlier permissive behavior. This is not recommended on a publicly reachable
+wiki.
 
 ## Git Execution
 

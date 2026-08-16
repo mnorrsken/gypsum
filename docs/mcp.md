@@ -13,6 +13,83 @@ Both endpoints are identical. `{{secure_aes:...}}` ciphertext is passed through 
 
 MCP is only exposed when OAuth is configured — if `GYPSUM_OAUTH_ENABLED` is not set, the `/mcp` endpoint is not registered.
 
+## Protocol Versions
+
+Gypsum is a **dual-era** MCP server: one endpoint serves both the current stateless revision and the older handshake-based ones, so new and old clients can connect at the same time without configuration.
+
+| Revision | Era | How a client selects it |
+|---|---|---|
+| `2026-07-28` | Modern (stateless) | Send per-request `_meta` — no handshake |
+| `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05` | Legacy (session) | Send `initialize` |
+
+The server picks the era from how the client opens the conversation, exactly as the [spec's compatibility matrix](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning) prescribes. You do not need to configure anything.
+
+### Modern clients (2026-07-28)
+
+There is no `initialize` handshake and no session. Every request carries its own protocol version and client capabilities in `params._meta`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "get_page",
+    "arguments": { "slug": "Home" },
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientInfo": { "name": "ExampleClient", "version": "1.0.0" },
+      "io.modelcontextprotocol/clientCapabilities": {}
+    }
+  }
+}
+```
+
+Each POST must also mirror those body values into HTTP headers, which Gypsum validates against the body:
+
+| Header | Mirrors | Required on |
+|---|---|---|
+| `MCP-Protocol-Version` | `_meta` protocol version | Every request |
+| `Mcp-Method` | `method` | Every request |
+| `Mcp-Name` | `params.name` | `tools/call` |
+
+`Mcp-Name` values that are not plain ASCII use the `=?base64?<data>?=` sentinel, which Gypsum decodes before comparing.
+
+`server/discover` reports what the server speaks, and needs no prior request:
+
+```bash
+curl -sX POST https://wiki.example.com/mcp \
+  -H 'Authorization: Bearer $GYPSUM_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{
+        "io.modelcontextprotocol/protocolVersion":"2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities":{}}}}'
+```
+
+Modern responses carry `resultType: "complete"`, a `_meta` block identifying the server, and — on `server/discover` and `tools/list` — the `ttlMs` / `cacheScope` caching hints. Modern **errors** arrive with an HTTP error status rather than 200:
+
+| Situation | Status | JSON-RPC code |
+|---|---|---|
+| Header does not match the body, or a required header is missing | 400 | `-32020` |
+| Protocol version not supported (response lists `data.supported`) | 400 | `-32022` |
+| Required `_meta` field missing | 400 | `-32602` |
+| Unknown method | 404 | `-32601` |
+| Disallowed `Origin` | 403 | — |
+
+### Legacy clients
+
+Clients that open with `initialize` keep the session semantics they expect: Gypsum mints an `Mcp-Session-Id`, honours `DELETE` for session teardown, keeps the `GET` SSE endpoint, and echoes back the protocol version the client asked for when it is one of the supported legacy revisions. Legacy responses do not include the modern-only fields.
+
+### Origin validation
+
+Requests carrying a disallowed `Origin` header are rejected with HTTP 403. The deployment's own `GYPSUM_EXTERNAL_URL` and loopback are allowed by default, and requests with no `Origin` at all (Claude's connector, `mcp-proxy`, curl) are unaffected. See [Configuration → Origin validation](configuration.md#origin-validation) to allow additional browser origins.
+
+### Not implemented
+
+Gypsum exposes tools only. `subscriptions/listen`, resources, prompts, sampling, elicitation, multi round-trip requests (MRTR), `structuredContent`, and `outputSchema` are not implemented — no Gypsum tool needs them today.
+
 ## Setup
 
 Enable OAuth by setting the required environment variables (see [Configuration](configuration.md)):

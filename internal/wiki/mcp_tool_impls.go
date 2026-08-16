@@ -971,10 +971,17 @@ func mcpError(msg string) mcpCallToolResult {
 	}
 }
 
+// mcpSchema builds a tool input schema. Schemas carry no $schema field and so
+// default to JSON Schema 2020-12, the dialect MCP requires implementations to
+// support. Parameterless tools get the spec's recommended
+// {"type":"object","additionalProperties":false} form, which accepts only an
+// empty object rather than silently swallowing arguments.
 func mcpSchema(typ string, properties map[string]any, required []string) map[string]any {
 	schema := map[string]any{"type": typ}
 	if properties != nil {
 		schema["properties"] = properties
+	} else {
+		schema["additionalProperties"] = false
 	}
 	if required != nil {
 		schema["required"] = required

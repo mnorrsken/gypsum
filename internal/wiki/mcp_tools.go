@@ -8,6 +8,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		// ── Read tools ───────────────────────────────────────────────
 		{
 			Name:    "list_pages",
+			Title:   "List Pages",
 			Section: MCPSectionRead,
 			Description: "List wiki pages. By default returns every page (slug + title) sorted alphabetically. " +
 				"Pass 'sort: recent' to order by last-modified (each entry then includes a 'modified' timestamp), " +
@@ -22,6 +23,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "get_page",
+			Title:   "Get Page",
 			Section: MCPSectionRead,
 			Description: "Get the raw markdown content of a wiki page by its exact slug. " +
 				"ONLY use this when you already know the exact slug. " +
@@ -39,6 +41,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "search_pages",
+			Title:       "Search Pages",
 			Section:     MCPSectionRead,
 			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. Each query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets and each page's outgoing/backlink counts (so you can spot hub pages). Multiple queries can be provided to search for different topics at once.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -48,6 +51,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "suggest_page_location",
+			Title:   "Suggest Page Location",
 			Section: MCPSectionRead,
 			Description: "Suggest where a NEW page should live: returns a ranked list of existing pages that would make good parents to link it from. " +
 				"Use this before create_page to decide the 'link_from' target, instead of manually listing and reading candidate pages. " +
@@ -61,12 +65,14 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "list_images",
+			Title:       "List Images",
 			Section:     MCPSectionRead,
 			Description: "List all uploaded images with metadata (name, size, modification time, which pages use them).",
 			InputSchema: mcpSchema("object", nil, nil),
 		},
 		{
 			Name:        "page_history",
+			Title:       "Page History",
 			Section:     MCPSectionRead,
 			Description: "Get the git revision history for a wiki page.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -76,6 +82,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "get_page_revision",
+			Title:       "Get Page Revision",
 			Section:     MCPSectionRead,
 			Description: "Get the content of a wiki page at a specific git revision.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -85,6 +92,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "page_links",
+			Title:   "Page Links",
 			Section: MCPSectionRead,
 			Description: "Inspect the [[wiki links]] connected to a page. " +
 				"By default returns both outgoing links (pages this page links to) and incoming links/backlinks (pages that link here). " +
@@ -97,6 +105,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "link_graph",
+			Title:   "Link Graph",
 			Section: MCPSectionRead,
 			Description: "Explore the wiki link structure. Modes:\n" +
 				"(1) Default: returns the full map of every page slug to the slugs it links to.\n" +
@@ -115,6 +124,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		// ── Edit tools ───────────────────────────────────────────────
 		{
 			Name:    "create_page",
+			Title:   "Create Page",
 			Section: MCPSectionEdit,
 			Description: "Create a new wiki page. Use this when the user says things like 'document on my wiki', 'add a note to my wiki', 'save this to the wiki', or 'create a wiki page'. " +
 				"Fails if the page already exists. " +
@@ -132,6 +142,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "edit_page",
+			Title:   "Edit Page",
 			Section: MCPSectionEdit,
 			Description: "Update the content of an existing wiki page. Supports several modes:\n" +
 				"(1) SEARCH-AND-REPLACE (preferred for small edits): pass 'old_text' and 'new_text' to find and replace text. old_text must match exactly one location.\n" +
@@ -156,6 +167,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		// ── Delete tools ─────────────────────────────────────────────
 		{
 			Name:        "delete_page",
+			Title:       "Delete Page",
 			Section:     MCPSectionDelete,
 			Description: "Delete a wiki page permanently.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -164,6 +176,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "delete_image",
+			Title:       "Delete Image",
 			Section:     MCPSectionDelete,
 			Description: "Delete an uploaded image by filename.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -174,6 +187,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		// ── Skill tools ──────────────────────────────────────────────
 		{
 			Name:    "list_skills",
+			Title:   "List Skills",
 			Section: MCPSectionSkills,
 			Description: "List all skills (procedural knowledge pages for AI retrieval). " +
 				"Returns each skill's slug, title, and tags. " +
@@ -184,6 +198,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "get_skill",
+			Title:   "Get Skill",
 			Section: MCPSectionSkills,
 			Description: "Get the raw markdown content of a skill by its exact slug. " +
 				"ONLY use this when you already know the exact slug. " +
@@ -199,6 +214,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "create_skill",
+			Title:   "Create Skill",
 			Section: MCPSectionSkills,
 			Description: "Create a new skill (procedural knowledge for AI retrieval). " +
 				"ONLY use this tool when the user explicitly mentions 'skill' (e.g. 'add a skill', 'create a skill', 'save this as a skill'). " +
@@ -217,6 +233,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "edit_skill",
+			Title:   "Edit Skill",
 			Section: MCPSectionSkills,
 			Description: "Update the content of an existing skill. " +
 				"ONLY use this tool when the user explicitly mentions 'skill'. " +
@@ -238,6 +255,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "delete_skill",
+			Title:       "Delete Skill",
 			Section:     MCPSectionSkills,
 			Description: "Delete a skill permanently. ONLY use when the user explicitly asks to delete a skill.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -246,6 +264,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "search_skills",
+			Title:   "Search Skills",
 			Section: MCPSectionSkills,
 			Description: "Search for procedural skills/instructions by keyword. " +
 				"Searches across skill titles, tags, and content with tag matches ranked highest. " +
@@ -263,6 +282,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		// ── Note tools ───────────────────────────────────────────────
 		{
 			Name:    "list_notes",
+			Title:   "List Notes",
 			Section: MCPSectionNotes,
 			Description: "List quick notes — short, sticky-note-style jottings that sit between a wiki page and a to-do (a middle ground between 'jiras and post-its'). " +
 				"Returns each note's id, title (the first line), created and updated timestamps. " +
@@ -276,6 +296,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "get_note",
+			Title:       "Get Note",
 			Section:     MCPSectionNotes,
 			Description: "Get a single quick note by its id (as returned by list_notes), including its full content, title, color, timestamps, and archived state.",
 			InputSchema: mcpSchema("object", map[string]any{
@@ -284,6 +305,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "create_note",
+			Title:   "Create Note",
 			Section: MCPSectionNotes,
 			Description: "Create a new quick note. Use this for short, sticky-note-style jottings — reminders, ideas, snippets. " +
 				"Do NOT use for substantial documentation (use create_page) or procedural instructions (use create_skill). " +
@@ -295,6 +317,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "edit_note",
+			Title:   "Edit Note",
 			Section: MCPSectionNotes,
 			Description: "Update an existing quick note. Supports the same edit modes as edit_page:\n" +
 				"(1) SEARCH-AND-REPLACE: pass 'old_text' and 'new_text'.\n" +
@@ -313,6 +336,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:    "archive_note",
+			Title:   "Archive Note",
 			Section: MCPSectionNotes,
 			Description: "Archive a quick note (move it off the active board) or, with 'restore: true', move an archived note back onto the board. " +
 				"Archived notes are kept in git history and remain searchable via list_notes with include_archived. Prefer this over delete_note for notes that are simply done.",
@@ -323,6 +347,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "delete_note",
+			Title:       "Delete Note",
 			Section:     MCPSectionNotes,
 			Description: "Delete a quick note permanently. This cannot be undone — prefer archive_note for notes that are merely done.",
 			InputSchema: mcpSchema("object", map[string]any{
