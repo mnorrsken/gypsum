@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## Unreleased
+
+### Added
+- **Secrets vault** — a new opinionated view at `/secrets` for credentials: a list of cards, each with a title, a preformatted secret, and optional description, link and picture. The filter box narrows the list as you type (in the browser — no query leaves the page); the eye reveals a secret in place for 60 seconds, the same hold as a secure field on a page, and the clipboard button copies it without showing it. Encryption is the existing browser-side AES-256-GCM/PBKDF2 used by `{{secure:...}}` blocks, so the server stores only ciphertext and never holds the key. Each card's tile is the image you name, else the picture the linked site nominates for itself (`og:image` → `twitter:image` → `apple-touch-icon` → its icon → `/favicon.ico`, fetched by the server and stored in the image library), else a two-letter mnemonic from the title on a title-hashed background. Secrets are plain markdown files in `data/repo/secrets/` (headers plus one encrypted block, mode `0600`) committed to git like any other content, and are deliberately not exposed over MCP. See [Secrets](docs/secrets.md).
+
 ## v0.50.0
 
 ### Added

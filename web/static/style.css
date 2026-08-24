@@ -46,6 +46,20 @@
   --note-color-5: #ede9fe;
   --note-color-6: #cffafe;
   --note-color-7: #eceff1;
+  /* Secret tile palette (title-hashed). */
+  --secret-ink: #10233b;
+  --secret-color-0: #7fc7f5;
+  --secret-color-1: #ffd28a;
+  --secret-color-2: #a5d6a7;
+  --secret-color-3: #f3a8c0;
+  --secret-color-4: #b39ddb;
+  --secret-color-5: #80deea;
+  --secret-color-6: #ffab91;
+  --secret-color-7: #c5e1a5;
+  --secret-color-8: #9fa8da;
+  --secret-color-9: #f0e18a;
+  --secret-color-10: #80cbc4;
+  --secret-color-11: #d7b8e8;
 }
 
 [data-theme="dark"] {
@@ -92,6 +106,20 @@
   --note-color-5: #241a3d;
   --note-color-6: #103035;
   --note-color-7: #262a2e;
+  /* Secret tiles keep their hue in dark mode but drop in luminance. */
+  --secret-ink: #0d1117;
+  --secret-color-0: #5aa7d4;
+  --secret-color-1: #d4a95f;
+  --secret-color-2: #79ac7c;
+  --secret-color-3: #c67f97;
+  --secret-color-4: #8b76b3;
+  --secret-color-5: #57b0bd;
+  --secret-color-6: #cf8268;
+  --secret-color-7: #9cb87c;
+  --secret-color-8: #7a83b5;
+  --secret-color-9: #c2b45f;
+  --secret-color-10: #57a29b;
+  --secret-color-11: #ac8dbe;
 }
 
 * {
@@ -1965,4 +1993,264 @@ textarea {
 
 .note-card.note-new .note-text {
   min-height: 3rem;
+}
+
+/* --- Secrets vault --- */
+
+.secrets-page .page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.secret-filter-row {
+  margin: 0.75rem 0 1rem;
+}
+
+.secret-filter {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.95rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-input-border);
+  border-radius: 6px;
+}
+
+.secret-filter:focus {
+  outline: none;
+  border-color: var(--color-link);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+.secrets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.secret-card {
+  display: flex;
+  gap: 1rem;
+  padding: 0.9rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.secret-card[hidden] {
+  display: none;
+}
+
+.secret-tile {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--secret-color-0);
+  color: var(--secret-ink);
+}
+
+.secret-tile.secret-color-0 { background: var(--secret-color-0); }
+.secret-tile.secret-color-1 { background: var(--secret-color-1); }
+.secret-tile.secret-color-2 { background: var(--secret-color-2); }
+.secret-tile.secret-color-3 { background: var(--secret-color-3); }
+.secret-tile.secret-color-4 { background: var(--secret-color-4); }
+.secret-tile.secret-color-5 { background: var(--secret-color-5); }
+.secret-tile.secret-color-6 { background: var(--secret-color-6); }
+.secret-tile.secret-color-7 { background: var(--secret-color-7); }
+.secret-tile.secret-color-8 { background: var(--secret-color-8); }
+.secret-tile.secret-color-9 { background: var(--secret-color-9); }
+.secret-tile.secret-color-10 { background: var(--secret-color-10); }
+.secret-tile.secret-color-11 { background: var(--secret-color-11); }
+
+.secret-mnemonic {
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  user-select: none;
+}
+
+.secret-tile-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.secret-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.secret-head {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.secret-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secret-link {
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.secret-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+  opacity: 0.35;
+  transition: opacity 0.15s ease;
+}
+
+.secret-card:hover .secret-actions,
+.secret-card:focus-within .secret-actions {
+  opacity: 1;
+}
+
+.secret-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0.3rem 0.35rem;
+  border-radius: 5px;
+}
+
+.secret-btn:hover {
+  background: var(--color-hover-bg);
+}
+
+.secret-value {
+  margin: 0;
+  min-height: 3.4rem;
+  padding: 0.6rem 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+  max-height: 14rem;
+  cursor: pointer;
+}
+
+.secret-value:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 1px;
+}
+
+.secret-value.revealed {
+  color: var(--color-text);
+  background: var(--color-secure-unlocked-bg);
+  cursor: text;
+  user-select: all;
+}
+
+.secret-desc {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.secrets-empty {
+  margin-top: 1rem;
+}
+
+/* Add / edit dialog (reuses the encryption dialog's chrome). */
+.secret-dialog {
+  max-width: 34rem;
+  width: 100%;
+}
+
+.secret-dialog label {
+  display: block;
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.secret-dialog input[type="text"],
+.secret-dialog input[type="url"],
+.secret-textarea {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.6rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-input-border);
+  border-radius: 5px;
+  font-size: 0.9rem;
+}
+
+.secret-textarea {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.secret-optional {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.secret-form-hint {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+}
+
+.secret-image-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.secret-image-row input[type="text"] {
+  flex: 1 1 auto;
+  margin-top: 0;
+}
+
+.secret-image-preview img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .secret-card {
+    flex-direction: column;
+  }
+
+  .secret-tile {
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+  }
+
+  .secret-mnemonic {
+    font-size: 1.6rem;
+  }
 }

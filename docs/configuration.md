@@ -118,6 +118,12 @@ gypsum re-encrypt -dir data/repo/pages \
 Pass `-old-salt` when the directory already contains `secure_aes2` blocks that
 must be decrypted; omit it when migrating only legacy `secure_aes` blocks.
 
+`-dir` takes one directory of markdown files, so run it once per content
+directory that holds secure fields — `data/repo/pages`, `data/repo/skills`,
+`data/repo/notes`, and `data/repo/secrets` (the [Secrets](secrets.md) vault
+stores each entry's value as a `secure_aes2` block, so a passphrase rotation
+must include it).
+
 ## OAuth Variables
 
 These are required when enabling the OAuth-protected external MCP endpoint.

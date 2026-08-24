@@ -97,3 +97,59 @@ func TestRunReencryptRejectsBadSalt(t *testing.T) {
 		t.Fatal("expected non-zero exit for invalid -new-salt base64")
 	}
 }
+
+// TestReencryptSecretsDirectory covers rotating the Secrets vault: a secret
+// file is a header block plus one secure macro, so re-encryption must rewrite
+// the macro, leave the headers alone, and keep the file's 0600 mode.
+func TestReencryptSecretsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	oldSalt := []byte("old-salt-16bytes")
+	newSalt := []byte("new-salt-16bytes")
+	const iters = 1000
+
+	oldAes2 := mustPBKDF2(t, "old-pass", oldSalt, iters)
+	body, err := oldAes2.EncryptForSave("{{secure:hunter2-token}}")
+	if err != nil {
+		t.Fatalf("EncryptForSave: %v", err)
+	}
+	entry := SecretEntry{Title: "Big Secret thing", URL: "https://example.com", Description: "creds"}
+	path := filepath.Join(dir, "20260824-120000.md")
+	if err := os.WriteFile(path, []byte(entry.Marshal(body)), 0o600); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := reencryptDir(dir, "old-pass", "new-pass", oldSalt, newSalt, iters, false, &stdout, &stderr); code != 0 {
+		t.Fatalf("reencryptDir exit %d, stderr: %s", code, stderr.String())
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read secret: %v", err)
+	}
+	rotated := ParseSecret("20260824-120000", string(raw))
+	if rotated.Title != entry.Title || rotated.URL != entry.URL || rotated.Description != entry.Description {
+		t.Fatalf("headers changed by rotation: %+v", rotated)
+	}
+	if !rotated.Encrypted || rotated.Variant != "2" {
+		t.Fatalf("body is no longer a secure_aes2 macro: %+v", rotated)
+	}
+
+	newAes2 := mustPBKDF2(t, "new-pass", newSalt, iters)
+	plain, err := newAes2.Decrypt(rotated.Ciphertext)
+	if err != nil {
+		t.Fatalf("decrypt with new key: %v", err)
+	}
+	if plain != "hunter2-token" {
+		t.Errorf("plaintext = %q, want hunter2-token", plain)
+	}
+	if info, err := os.Stat(path); err != nil {
+		t.Fatalf("stat: %v", err)
+	} else if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("file mode after rotation = %v, want 0600", perm)
+	}
+
+	if !strings.Contains(string(raw), "title: Big Secret thing") {
+		t.Errorf("header line lost:\n%s", raw)
+	}
+}

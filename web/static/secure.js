@@ -400,6 +400,7 @@
   window.gypsumSecure = {
     ready: ready,
     isUnlocked: isUnlocked,
+    activeMacro: activeMacro,
     unlock: unlock,
     lock: lock,
     encrypt: encrypt,

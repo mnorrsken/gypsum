@@ -37,6 +37,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Markdown with GFM tables, syntax highlighting, `[[wiki links]]`, and interactive task-list checkboxes
 - Full-text search with FTS5 indexing, BM25 ranking, and highlighted snippets
 - Quick Notes — a whiteboard-style board of always-editable sticky notes with autosave, title-hashed colors, and archive; stored as plain markdown in git
+- Secrets vault — a searchable list of credentials with click-to-reveal (60s) and copy-without-showing; tiles use the linked site's own picture or a title-hashed two-letter mnemonic. Encrypted in the browser, stored as markdown in git, never exposed over MCP
 - Interactive link graph
 - Page history with revision diffs
 - Image uploads (paste, drag-and-drop, or picker) with size hints

@@ -195,6 +195,22 @@ func (c *GitAutoCommitter) CommitNoteMove(id string, toArchive bool, author stri
 	return nil
 }
 
+// secretRelPath returns the repo-relative path for a secret file.
+func secretRelPath(id string) string {
+	return filepath.Join("secrets", MarkdownFilename(id))
+}
+
+// CommitSecretSave commits a secret file. Only ciphertext and metadata are
+// stored, so a secret is safe to keep in the wiki's git history.
+func (c *GitAutoCommitter) CommitSecretSave(id, author string) error {
+	return c.commitFile(secretRelPath(id), fmt.Sprintf("wiki: update secret %s", id), author)
+}
+
+// CommitSecretDelete commits the deletion of a secret.
+func (c *GitAutoCommitter) CommitSecretDelete(id, author string) error {
+	return c.commitDelete(secretRelPath(id), fmt.Sprintf("wiki: delete secret %s", id), author)
+}
+
 func (c *GitAutoCommitter) CommitImageSave(filename, author string) error {
 	return c.commitFile(filepath.Join("images", filename), fmt.Sprintf("wiki: upload image %s", filename), author)
 }

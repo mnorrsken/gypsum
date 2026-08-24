@@ -21,8 +21,9 @@ type Handler struct {
 	mcpSections map[MCPSection]bool // enabled MCP tool sections
 	mcpMetrics  *MCPMetrics         // shared across all MCP handlers
 	tmplCache   map[string]*template.Template
-	secureSalt  string   // base64 PBKDF2 salt served to the browser for {{secure_aes2}}
-	mcpOrigins  []string // Origin allowlist for the MCP endpoint
+	secureSalt  string       // base64 PBKDF2 salt served to the browser for {{secure_aes2}}
+	mcpOrigins  []string     // Origin allowlist for the MCP endpoint
+	siteImages  *http.Client // HTTP client for secret site-image fetches (nil = default)
 }
 
 // SetMCPAllowedOrigins sets the Origin allowlist enforced on /mcp. Build it
@@ -72,6 +73,9 @@ type TemplateData struct {
 	SkillTags     []string         // tags for the current skill being viewed
 	Notes         []NoteEntry      // quick notes for the notes board
 	NotesArchived bool             // true when rendering the archived notes board
+	Secrets       []SecretEntry    // vault entries for the secrets view
+	SecretHold    int              // seconds a revealed secret stays visible
+	SecretHues    int              // number of mnemonic tile colors
 	SecureSalt    string           // base64 PBKDF2 salt for {{secure_aes2}}
 	SecureIters   int              // PBKDF2 iteration count
 }
@@ -126,6 +130,7 @@ func (h *Handler) parseTemplates() {
 		"doc", "docs",
 		"skills", "skill_view", "skill_edit",
 		"notes",
+		"secrets",
 	}
 	for _, name := range names {
 		pagePath := name + ".html"
@@ -199,6 +204,11 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /notes/archive/{id}", h.handleNoteArchive)
 	mux.HandleFunc("POST /notes/restore/{id}", h.handleNoteRestore)
 	mux.HandleFunc("POST /notes/delete/{id}", h.handleNoteDelete)
+	mux.HandleFunc("GET /secrets", h.handleSecretsVault)
+	mux.HandleFunc("POST /secrets/create", h.handleSecretCreate)
+	mux.HandleFunc("POST /secrets/save/{id}", h.handleSecretSave)
+	mux.HandleFunc("POST /secrets/delete/{id}", h.handleSecretDelete)
+	mux.HandleFunc("POST /secrets/image/{id}", h.handleSecretImage)
 	if h.docsDir != "" {
 		mux.HandleFunc("/docs", h.handleDocsList)
 		mux.HandleFunc("/docs/", h.handleDocs)

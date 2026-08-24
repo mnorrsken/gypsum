@@ -12,11 +12,12 @@ import (
 var ErrPageNotFound = errors.New("page not found")
 
 type PageStore struct {
-	pagesDir  string
-	imagesDir string
-	skillsDir string
-	notesDir  string
-	db        *DB // optional; enables FTS5 search when non-nil
+	pagesDir   string
+	imagesDir  string
+	skillsDir  string
+	notesDir   string
+	secretsDir string
+	db         *DB // optional; enables FTS5 search when non-nil
 }
 
 // docDir returns the filesystem directory for the given document kind.
@@ -36,10 +37,12 @@ func NewPageStore(pagesDir string) *PageStore {
 	imagesDir := filepath.Join(parent, "images")
 	skillsDir := filepath.Join(parent, "skills")
 	notesDir := filepath.Join(parent, "notes")
+	secretsDir := filepath.Join(parent, "secrets")
 	_ = os.MkdirAll(imagesDir, 0o755)
 	_ = os.MkdirAll(skillsDir, 0o755)
 	_ = os.MkdirAll(filepath.Join(notesDir, "archive"), 0o755)
-	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir, skillsDir: skillsDir, notesDir: notesDir}
+	_ = os.MkdirAll(secretsDir, 0o755)
+	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir, skillsDir: skillsDir, notesDir: notesDir, secretsDir: secretsDir}
 }
 
 // SetDB attaches a database for FTS5 full-text search and triggers a full reindex.
