@@ -82,6 +82,7 @@ OAuth, auth, and Docker-specific variables are documented in [Configuration](doc
 - [MCP Server](docs/mcp.md) — connecting AI assistants to your wiki
 - [Skills](docs/skills.md) — procedural knowledge for LLMs
 - [Quick Notes](docs/notes.md) — the sticky-note board
+- [Secrets](docs/secrets.md) — the credential vault
 - [Docker](docs/docker.md) — container build, run, and compose
 - [Helm Chart](docs/helm.md) — Kubernetes deployment
 
@@ -93,6 +94,8 @@ data/
 └── repo/               # git working directory
     ├── pages/           # markdown files
     ├── skills/          # procedural knowledge for LLMs
+    ├── notes/           # quick notes
+    ├── secrets/         # encrypted secrets vault
     └── images/          # uploaded images
 ```
 
