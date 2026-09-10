@@ -7,7 +7,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/yuin/goldmark v1.8.6
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
-	golang.org/x/net v0.55.0
+	golang.org/x/net v0.58.0
 	modernc.org/sqlite v1.58.0
 )
 
