@@ -33,6 +33,16 @@ var imageSizePattern = regexp.MustCompile(`!\[([^\]]*)\|(\d+(?:%|x\d+)?)\]\(([^)
 // group 3 is the base64 payload.
 var secureAesMacroRenderRe = regexp.MustCompile(`(\\?)\{\{secure_aes(2?):([\w+/=]+)\}\}`)
 
+// mermaidPlaceholderPrefix is the token standing in for a ```mermaid fenced
+// block while goldmark renders the document. The real <pre class="mermaid">
+// element is substituted back afterwards so the diagram source reaches the
+// browser verbatim instead of as a syntax-highlighted code block.
+const mermaidPlaceholderPrefix = "MERMAID_PLACEHOLDER_"
+
+// fenceOpenRe matches a fenced code block opening: leading indent, three or
+// more backticks or tildes, then the info string naming the language.
+var fenceOpenRe = regexp.MustCompile("^([ \t]*)(`{3,}|~{3,})[ \t]*(\\S*)")
+
 // codeSegmentRe matches fenced code blocks (3+ backticks or tildes) and inline
 // code spans. Used to protect code regions from Gypsum-specific substitutions.
 var codeSegmentRe = regexp.MustCompile(
@@ -87,6 +97,104 @@ func stripCustomEscapesInCode(source string) string {
 	}
 	b.WriteString(source[pos:])
 	return b.String()
+}
+
+// extractMermaidBlocks replaces every ```mermaid fenced block with a
+// placeholder token and returns the diagram sources in the order found. Fences
+// are tracked by delimiter and length, so a mermaid example nested inside a
+// longer fence stays a literal code block and a page can document the syntax
+// without the example turning into a diagram.
+func extractMermaidBlocks(source string) (string, []string) {
+	// Most pages have no fenced blocks at all; skip the line scan for those.
+	if !strings.Contains(source, "```") && !strings.Contains(source, "~~~") {
+		return source, nil
+	}
+	var (
+		out       []string
+		diagrams  []string
+		body      []string
+		inFence   bool
+		isMermaid bool
+		fenceChar byte
+		fenceLen  int
+		indent    string
+	)
+	for _, line := range strings.Split(source, "\n") {
+		if !inFence {
+			m := fenceOpenRe.FindStringSubmatch(line)
+			if m == nil {
+				out = append(out, line)
+				continue
+			}
+			inFence, indent, fenceChar, fenceLen = true, m[1], m[2][0], len(m[2])
+			isMermaid = strings.EqualFold(m[3], "mermaid")
+			body = body[:0]
+			if !isMermaid {
+				out = append(out, line)
+			}
+			continue
+		}
+		if closesFence(line, fenceChar, fenceLen) {
+			inFence = false
+			if !isMermaid {
+				out = append(out, line)
+				continue
+			}
+			diagrams = append(diagrams, strings.Join(body, "\n"))
+			out = append(out, mermaidPlaceholderLine(indent, len(diagrams)-1))
+			continue
+		}
+		if isMermaid {
+			body = append(body, strings.TrimPrefix(line, indent))
+		} else {
+			out = append(out, line)
+		}
+	}
+	// CommonMark lets an unclosed fence run to the end of the document.
+	if inFence && isMermaid {
+		diagrams = append(diagrams, strings.Join(body, "\n"))
+		out = append(out, mermaidPlaceholderLine(indent, len(diagrams)-1))
+	}
+	return strings.Join(out, "\n"), diagrams
+}
+
+// closesFence reports whether line closes a block opened with fenceLen or more
+// repetitions of char: only the same delimiter, at least as long, then blanks.
+func closesFence(line string, char byte, fenceLen int) bool {
+	rest := strings.TrimLeft(line, " \t")
+	n := 0
+	for n < len(rest) && rest[n] == char {
+		n++
+	}
+	return n >= fenceLen && strings.TrimSpace(rest[n:]) == ""
+}
+
+// mermaidPlaceholderLine emits the token for diagram i, keeping the block's
+// original indent only when it is too shallow to become an indented code block.
+func mermaidPlaceholderLine(indent string, i int) string {
+	if len(strings.ReplaceAll(indent, "\t", "    ")) > 3 {
+		indent = ""
+	}
+	return fmt.Sprintf("%s%s%d", indent, mermaidPlaceholderPrefix, i)
+}
+
+// restoreMermaidBlocks swaps placeholder tokens in rendered HTML for the
+// <pre class="mermaid"> elements the browser-side renderer picks up. It runs
+// after sanitizing: the source is escaped here, and the SVG mermaid builds from
+// it never passes through the server.
+func restoreMermaidBlocks(rendered string, diagrams []string) string {
+	for i, src := range diagrams {
+		token := fmt.Sprintf("%s%d", mermaidPlaceholderPrefix, i)
+		el := fmt.Sprintf(`<pre class="mermaid">%s</pre>`, stdhtml.EscapeString(src))
+		// goldmark wraps a lone token in its own paragraph; replace the whole
+		// paragraph so the <pre> is not nested inside a <p>.
+		if wrapped := "<p>" + token + "</p>"; strings.Contains(rendered, wrapped) {
+			rendered = strings.Replace(rendered, wrapped, el, 1)
+			continue
+		}
+		rendered = strings.Replace(rendered, token, el, 1)
+	}
+	return rendered
 }
 
 type MarkdownRenderer struct {
@@ -163,6 +271,9 @@ func ExtractH1Title(source string) (title, rest string) {
 }
 
 func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
+	// Pull mermaid diagrams out first so no later substitution touches them.
+	source, mermaidDiagrams := extractMermaidBlocks(source)
+
 	// Apply wiki link substitution outside code spans and fenced code blocks.
 	// A leading backslash (\[[Page]]) escapes the link and renders it literally.
 	withLinks := applyOutsideCode(source, func(s string) string {
@@ -235,13 +346,15 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 		result = strings.Replace(result, placeholder, replacement, 1)
 	}
 
-	return template.HTML(result), nil
+	return template.HTML(restoreMermaidBlocks(result, mermaidDiagrams)), nil
 }
 
 // RenderPublic renders markdown for public (shared) pages:
 // - Wiki links [[Page]] become plain text (not clickable)
 // - Secure macros {{secure_aes:...}} are stripped entirely
 func (r *MarkdownRenderer) RenderPublic(source string) (template.HTML, error) {
+	source, mermaidDiagrams := extractMermaidBlocks(source)
+
 	// Convert wiki links to plain text (no links), skipping code regions.
 	withLinks := applyOutsideCode(source, func(s string) string {
 		return wikiLinkPattern.ReplaceAllStringFunc(s, func(match string) string {
@@ -290,7 +403,8 @@ func (r *MarkdownRenderer) RenderPublic(source string) (template.HTML, error) {
 
 	// Anonymous viewers must not execute author-supplied HTML/JS: the engine
 	// renders raw HTML (html.WithUnsafe), so sanitize the public output.
-	return template.HTML(r.publicPolicy.SanitizeBytes(rendered.Bytes())), nil
+	sanitized := string(r.publicPolicy.SanitizeBytes(rendered.Bytes()))
+	return template.HTML(restoreMermaidBlocks(sanitized, mermaidDiagrams)), nil
 }
 
 // expandImageSizeMacros replaces ![alt|SIZE](url) with raw <img> tags.

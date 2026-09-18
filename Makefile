@@ -14,9 +14,10 @@ HELM_RELEASE := gypsum
 HELM_CHART   := ./charts/gypsum
 HELM_NS      := gypsum
 
-HTMX_VERSION   := 2.0.4
-ALPINE_VERSION := 3.14.9
-STATIC_DIR     := web/static
+HTMX_VERSION    := 2.0.4
+ALPINE_VERSION  := 3.14.9
+MERMAID_VERSION := 11.12.0
+STATIC_DIR      := web/static
 
 .PHONY: help fmt tidy vet test build run clean docker-build docker-run deploy vendor-js
 
@@ -32,7 +33,7 @@ help:
 	@echo "  make docker-build               - Build Docker image (REGISTRY=... TAG=...)"
 	@echo "  make docker-run                 - Run Docker container on :8080"
 	@echo "  make deploy [REGISTRY=...] [TAG=...] - Build, push, and helm upgrade"
-	@echo "  make vendor-js                  - Download htmx and Alpine.js"
+	@echo "  make vendor-js                  - Download htmx, Alpine.js and Mermaid"
 
 fmt:
 	gofmt -w ./cmd ./internal
@@ -68,6 +69,7 @@ docker-run:
 vendor-js:
 	curl -sL https://unpkg.com/htmx.org@$(HTMX_VERSION)/dist/htmx.min.js -o $(STATIC_DIR)/htmx.min.js
 	curl -sL https://unpkg.com/alpinejs@$(ALPINE_VERSION)/dist/cdn.min.js -o $(STATIC_DIR)/alpine.min.js
+	curl -sL https://unpkg.com/mermaid@$(MERMAID_VERSION)/dist/mermaid.min.js -o $(STATIC_DIR)/mermaid.min.js
 
 deploy:
 #	docker build -t $(IMAGE) .

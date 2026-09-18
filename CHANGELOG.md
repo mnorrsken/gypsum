@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.52.0
+
+### Added
+- **Mermaid diagrams** — a fenced code block tagged `mermaid` renders as a diagram instead of highlighted code, on wiki pages, public shared pages (`/public/<token>`), and in these docs. `internal/wiki/markdown.go` extracts the block before goldmark runs (tracking fence delimiter and length, so wrapping an example in a longer fence shows `mermaid` syntax literally) and emits `<pre class="mermaid">` with the source HTML-escaped; `web/static/mermaid-init.js` renders it client-side. All Mermaid diagram types work (flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, and more) — this is stock Mermaid 11.12.0. Diagrams follow the light/dark toggle and re-render when it is switched. The 2.7 MB bundle is vendored at `web/static/mermaid.min.js` and embedded in the binary like htmx and Alpine, but loaded lazily — only pages that actually contain a diagram fetch it. Mermaid runs with `securityLevel: "strict"`, so scripts and click handlers in labels are blocked; because rendering happens in the browser, the SVG never passes through the server's bluemonday sanitizer, so the public-page policy needed no SVG allowlist. A malformed diagram shows Mermaid's own error box in place without affecting other diagrams or the rest of the page. `make vendor-js` now also downloads Mermaid, pinned by `MERMAID_VERSION` in the Makefile. See [Usage → Diagrams](docs/usage.md).
+
+### Changed
+- **Dependencies** — `github.com/yuin/goldmark` 1.8.5 → 1.8.6, `modernc.org/sqlite` 1.55.0 → 1.58.0, `golang.org/x/net` 0.55.0 → 0.58.0, and the Docker builder image `golang:1.25-alpine` → `golang:1.27-alpine`.
+
 ## v0.51.0
 
 ### Added

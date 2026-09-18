@@ -64,6 +64,23 @@ Prefix any macro or wiki link with a backslash to display it literally without p
 
 Content inside backtick code spans (`` `[[like this]]` ``) and fenced code blocks is always displayed verbatim — macros and wiki links inside them are never processed.
 
+## Diagrams
+
+Fence a code block with `mermaid` to render it as a diagram instead of highlighted code:
+
+````
+```mermaid
+flowchart LR
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Done]
+    B -->|No| A
+```
+````
+
+All Mermaid diagram types work (flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, and more) — see [Mermaid's own docs](https://mermaid.js.org/) for syntax. Rendering happens in your browser and follows the light/dark theme toggle. A malformed diagram shows an error box in place without affecting the rest of the page. Works on wiki pages, public shared pages, and in these docs.
+
+To show `mermaid` syntax literally instead of rendering it, wrap the example in a longer fence, as done above.
+
 ## Images
 
 Three ways to upload images:

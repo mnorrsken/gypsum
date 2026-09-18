@@ -715,3 +715,160 @@ func TestRenderSecureAes2Placeholder(t *testing.T) {
 		}
 	})
 }
+
+func TestRenderMermaidBlock(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("Intro\n\n```mermaid\nflowchart TD\n    A --> B\n```\n\nOutro\n")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if !strings.Contains(html, `<pre class="mermaid">flowchart TD`) {
+		t.Errorf("mermaid block should render as a mermaid pre element, got: %s", html)
+	}
+	// The arrow must survive as escaped text, not as markup.
+	if !strings.Contains(html, "A --&gt; B</pre>") {
+		t.Errorf("diagram source should be HTML-escaped, got: %s", html)
+	}
+	if strings.Contains(html, "chroma") {
+		t.Errorf("mermaid block should not be syntax-highlighted, got: %s", html)
+	}
+	if strings.Contains(html, mermaidPlaceholderPrefix) {
+		t.Errorf("placeholder token leaked into output: %s", html)
+	}
+	if !strings.Contains(html, "Intro") || !strings.Contains(html, "Outro") {
+		t.Errorf("surrounding content should be preserved, got: %s", html)
+	}
+}
+
+func TestRenderPublicMermaidBlock(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.RenderPublic("```mermaid\nflowchart TD\n    A --> B\n```\n")
+	if err != nil {
+		t.Fatalf("RenderPublic failed: %v", err)
+	}
+	html := string(out)
+	// The sanitizer strips unknown elements, so the diagram must be restored
+	// after it runs.
+	if !strings.Contains(html, `<pre class="mermaid">flowchart TD`) {
+		t.Errorf("public render should keep the mermaid element, got: %s", html)
+	}
+}
+
+func TestMermaidBlockEscapesHTML(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("```mermaid\nflowchart TD\n    A[\"</pre><script>alert(1)</script>\"] --> B\n```\n")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if strings.Contains(html, "<script>") || strings.Contains(html, "</pre><") {
+		t.Errorf("diagram source must not break out of the pre element, got: %s", html)
+	}
+}
+
+func TestMermaidMacrosNotExpandedInDiagram(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("```mermaid\nflowchart TD\n    A[[[Page]]] --> B\n```\n")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if html := string(out); strings.Contains(html, "/wiki/") {
+		t.Errorf("wiki link inside a diagram should stay literal, got: %s", html)
+	}
+}
+
+func TestNestedMermaidFenceStaysLiteral(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("````\n```mermaid\nflowchart TD\n    A --> B\n```\n````\n")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if html := string(out); strings.Contains(html, `<pre class="mermaid">`) {
+		t.Errorf("mermaid example inside a longer fence should not render, got: %s", html)
+	}
+}
+
+func TestPlainFencedBlockUnaffectedByMermaid(t *testing.T) {
+	r := NewMarkdownRenderer()
+	out, err := r.Render("```go\nfmt.Println(\"mermaid\")\n```\n")
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := string(out)
+	if strings.Contains(html, `class="mermaid"`) {
+		t.Errorf("a go block mentioning mermaid must not become a diagram, got: %s", html)
+	}
+	if !strings.Contains(html, "chroma") {
+		t.Errorf("other languages should still be highlighted, got: %s", html)
+	}
+}
+
+func TestExtractMermaidBlocks(t *testing.T) {
+	tests := []struct {
+		name     string
+		source   string
+		wantSrc  string
+		wantDiag []string
+	}{
+		{
+			name:     "no mermaid block",
+			source:   "# Title\n\ntext\n",
+			wantSrc:  "# Title\n\ntext\n",
+			wantDiag: nil,
+		},
+		{
+			name:     "two diagrams",
+			source:   "```mermaid\nA\n```\n\n```mermaid\nB\n```\n",
+			wantSrc:  "MERMAID_PLACEHOLDER_0\n\nMERMAID_PLACEHOLDER_1\n",
+			wantDiag: []string{"A", "B"},
+		},
+		{
+			name:     "tilde fence",
+			source:   "~~~mermaid\nA\n~~~\n",
+			wantSrc:  "MERMAID_PLACEHOLDER_0\n",
+			wantDiag: []string{"A"},
+		},
+		{
+			name:     "indented fence is de-indented",
+			source:   "  ```mermaid\n  flowchart TD\n  ```\n",
+			wantSrc:  "  MERMAID_PLACEHOLDER_0\n",
+			wantDiag: []string{"flowchart TD"},
+		},
+		{
+			name:     "deep indent drops to column zero",
+			source:   "    ```mermaid\n    flowchart TD\n    ```\n",
+			wantSrc:  "MERMAID_PLACEHOLDER_0\n",
+			wantDiag: []string{"flowchart TD"},
+		},
+		{
+			name:     "unclosed fence runs to end of document",
+			source:   "```mermaid\nflowchart TD\n",
+			wantSrc:  "MERMAID_PLACEHOLDER_0",
+			wantDiag: []string{"flowchart TD\n"},
+		},
+		{
+			name:     "case insensitive info string",
+			source:   "```Mermaid\nA\n```\n",
+			wantSrc:  "MERMAID_PLACEHOLDER_0\n",
+			wantDiag: []string{"A"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotSrc, gotDiag := extractMermaidBlocks(tt.source)
+			if gotSrc != tt.wantSrc {
+				t.Errorf("source = %q, want %q", gotSrc, tt.wantSrc)
+			}
+			if len(gotDiag) != len(tt.wantDiag) {
+				t.Fatalf("diagrams = %q, want %q", gotDiag, tt.wantDiag)
+			}
+			for i := range gotDiag {
+				if gotDiag[i] != tt.wantDiag[i] {
+					t.Errorf("diagram %d = %q, want %q", i, gotDiag[i], tt.wantDiag[i])
+				}
+			}
+		})
+	}
+}
