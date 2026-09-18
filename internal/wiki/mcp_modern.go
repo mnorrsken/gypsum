@@ -81,7 +81,7 @@ const mcpServerInstructions = "Gypsum is a git-backed personal wiki. Pages are m
 	"(spaces become underscores) and linked with [[Page Title]]. Prefer search_pages over list_pages to find a " +
 	"page, and never guess a slug. Skills hold procedural knowledge for AI retrieval and are found with " +
 	"search_skills; notes are short sticky-note jottings. {{secure_aes:...}} blocks are encrypted and must be " +
-	"passed through unchanged."
+	"passed through unchanged. A code block fenced as mermaid renders as a diagram, so prefer one over ASCII art."
 
 // ── Per-request metadata ────────────────────────────────────────────────
 

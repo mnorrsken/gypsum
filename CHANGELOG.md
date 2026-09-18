@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.52.1
+
+### Changed
+- **MCP diagram guidance** — the `create_page`/`edit_page` tool descriptions and the `server/discover` server instructions now mention Mermaid diagrams (added in v0.52.0), so an MCP client knows to fence a `mermaid` block instead of drawing ASCII art.
+
 ## v0.52.0
 
 ### Added
