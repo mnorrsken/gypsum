@@ -91,6 +91,8 @@ Three ways to upload images:
 
 A markdown image reference is inserted at the cursor. Filenames are derived from the original file name where available.
 
+Click an image or a diagram on a page (including public shared pages and these docs) to show it full screen; click again or press Escape to close it. An image that is also a link opens the link instead.
+
 ### Size Hints
 
 Images automatically scale to fit the content area. Add an optional size hint to the alt text:

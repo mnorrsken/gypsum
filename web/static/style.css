@@ -1853,7 +1853,7 @@ textarea {
 }
 
 .public-header-inner {
-  max-width: 820px;
+  max-width: 1200px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -1862,7 +1862,7 @@ textarea {
 }
 
 .public-content {
-  max-width: 820px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
 }
@@ -1872,6 +1872,49 @@ textarea {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 2rem;
+}
+
+/* Clickable images and diagrams open full screen (lightbox.js). */
+.wiki-content img:not(a img),
+.wiki-content pre.mermaid[data-processed="true"] svg {
+  cursor: zoom-in;
+}
+
+.lightbox-open {
+  overflow: hidden;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2vh 2vw;
+  cursor: zoom-out;
+}
+
+.lightbox > img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.lightbox-panel {
+  width: 100%;
+  height: 100%;
+  background: var(--color-surface);
+  border-radius: 6px;
+  padding: 2vh 2vw;
+  box-sizing: border-box;
+}
+
+.lightbox-panel svg {
+  width: 100%;
+  height: 100%;
 }
 
 /* --- Print --- */
