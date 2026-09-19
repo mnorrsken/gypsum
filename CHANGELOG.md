@@ -8,7 +8,7 @@ All notable changes to Gypsum are documented in this file.
 - **Lightbox for images and diagrams** — clicking an image or a rendered Mermaid diagram inside a wiki page, a public shared page, or these docs shows it full screen; click anywhere or press Escape to close. An image that is also a link is left alone so the link still works. Diagrams are cloned with Mermaid's inline size removed and shown on a panel in the page surface colour so they read in dark mode. `web/static/lightbox.js`, loaded from `base.html` and `public.html`. See [Usage → Images](docs/usage.md).
 
 ### Changed
-- **Public page width** — `/public/<token>` pages now use the same 1200px max-width as the rest of the app, up from 820px.
+- **Public page width** — `/public/<token>` pages are wider: max-width 1200px, up from 820px.
 
 ## v0.52.1
 
