@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.53.1
+
+### Changed
+- **Dependency updates** — `golang.org/x/net` 0.58.0 → 0.59.0, `modernc.org/sqlite` 1.58.0 → 1.59.0.
+
 ## v0.53.0
 
 ### Added
