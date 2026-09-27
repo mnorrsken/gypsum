@@ -1,0 +1,117 @@
+{{- with (.Values.embed).server }}
+{{- if .enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gypsum.embed.fullname" $ }}
+  labels:
+    {{- include "gypsum.embed.labels" $ | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "gypsum.embed.selectorLabels" $ | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gypsum.embed.labels" $ | nindent 8 }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: embed
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy }}
+          args:
+            - --hf-repo
+            - {{ .model | quote }}
+            - --embeddings
+            - --host
+            - "0.0.0.0"
+            - --port
+            - {{ .port | quote }}
+            - --threads
+            - {{ .threads | quote }}
+            # Two 2048-token slots, so a search query does not wait behind an
+            # indexing batch. Gypsum's chunks are about 400-600 tokens.
+            - --parallel
+            - "2"
+            - --ctx-size
+            - "4096"
+            - --batch-size
+            - "2048"
+            - --ubatch-size
+            - "2048"
+          env:
+            - name: LLAMA_CACHE
+              value: /cache
+            - name: HOME
+              value: /cache
+          ports:
+            - name: http
+              containerPort: {{ .port }}
+              protocol: TCP
+          # /health answers 503 until the model is downloaded and loaded.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            failureThreshold: 5
+          volumeMounts:
+            - name: cache
+              mountPath: /cache
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: {{ .cacheSizeLimit }}
+      {{- with .nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gypsum.embed.fullname" $ }}
+  labels:
+    {{- include "gypsum.embed.labels" $ | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "gypsum.embed.selectorLabels" $ | nindent 4 }}
+{{- end }}
+{{- end }}

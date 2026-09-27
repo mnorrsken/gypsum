@@ -155,7 +155,7 @@ Tools are grouped into sections (read, edit, delete, skills, notes) that can be 
 |---|---|---|
 | `list_pages` | read | List wiki pages. `sort: recent` orders by last-modified (adds a `modified` timestamp), `favorites_only: true` returns just pinned pages, `limit` caps results. Prefer `search_pages` to find a specific page. |
 | `get_page` | read | Read a page's markdown by exact slug. Supports `section`, `sections_only`, and `include_links` (append outgoing links + backlinks). |
-| `search_pages` | read | Relevance-ranked (BM25) full-text search across pages. Accepts multiple `query` strings and a `limit`; results include snippets and link counts. |
+| `search_pages` | read | Relevance-ranked (BM25) full-text search across pages, blended with meaning-based matches when [semantic search](configuration.md#semantic-search) is enabled. Accepts multiple `query` strings and a `limit`; results include snippets and link counts. |
 | `suggest_page_location` | read | Suggest good parent pages to link a **new** page from — ranked by relevance and link-graph position. Use before `create_page` to pick `link_from`. |
 | `list_images` | read | List uploaded images with metadata (name, size, mtime, using pages). |
 | `page_history` | read | Git revision history for a page. |
@@ -172,7 +172,7 @@ Tools are grouped into sections (read, edit, delete, skills, notes) that can be 
 | Tool | Section | Description |
 |---|---|---|
 | `list_skills` | skills | List all skills with slug, title, and tags. |
-| `search_skills` | skills | Tag-boosted search across skills; accepts multiple `query` strings and a `limit`. |
+| `search_skills` | skills | Tag-boosted search across skills, plus meaning-based matches when [semantic search](configuration.md#semantic-search) is enabled; accepts multiple `query` strings and a `limit`. Returns the full skill when exactly one full-text match is found. |
 | `get_skill` | skills | Read a skill's markdown by exact slug (supports `section` and `sections_only`). |
 | `create_skill` | skills | Create a new skill. |
 | `edit_skill` | skills | Update an existing skill (same edit modes as `edit_page`). |
@@ -207,6 +207,10 @@ These tools support four edit modes to minimise the amount of content sent over 
 | **Full replace** | `content` only | Replace the entire page. Fetch the current content with `get_page` first. |
 
 Section names are matched case-insensitively and leading `#` markers are ignored, so `"## My Section"` and `"my section"` both work. If a heading appears more than once, the tool returns an error and suggests using search-and-replace instead.
+
+## Commit Authors
+
+Every MCP write is committed to git with the calling client as the author, taken from the `clientInfo` name the client reports: `initialize` params for legacy clients, per-request `_meta` for modern ones. A write from Claude Code shows up as `claude-code (MCP)` in page history. A client that sends no name, or a legacy request whose session is unknown (for example after a server restart), is committed as `MCP`. The commit email stays `GYPSUM_GIT_COMMIT_EMAIL`.
 
 ## Metrics
 

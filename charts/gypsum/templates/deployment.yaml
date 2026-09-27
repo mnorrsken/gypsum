@@ -146,6 +146,26 @@ spec:
             - name: GYPSUM_MCP_ALLOWED_ORIGINS
               value: {{ if kindIs "slice" . }}{{ join "," . | quote }}{{ else }}{{ . | quote }}{{ end }}
             {{- end }}
+            {{- with .Values.embed }}
+            {{- if (.server).enabled }}
+            - name: GYPSUM_EMBED_URL
+              value: "http://{{ include "gypsum.embed.fullname" $ }}:{{ .server.port }}/v1"
+            - name: GYPSUM_EMBED_MODEL
+              value: {{ .server.model | quote }}
+            {{- else if .url }}
+            - name: GYPSUM_EMBED_URL
+              value: {{ .url | quote }}
+            - name: GYPSUM_EMBED_MODEL
+              value: {{ required "embed.model is required when embed.url is set" .model | quote }}
+            {{- if .existingSecret }}
+            - name: GYPSUM_EMBED_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .existingSecret }}
+                  key: api-key
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.auth.userHeader }}
             - name: GYPSUM_AUTH_USER_HEADER
               value: {{ .Values.auth.userHeader | quote }}

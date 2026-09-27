@@ -1,6 +1,7 @@
 package wiki
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
@@ -10,12 +11,38 @@ import (
 	"unicode"
 )
 
+// Search runs a full-text search and, when a semantic index is attached,
+// blends in documents that match by meaning.
 func (s *PageStore) Search(kind DocKind, query string) ([]SearchResult, error) {
+	results, err := s.SearchFullText(kind, query)
+	if err != nil {
+		return nil, err
+	}
+	return s.blendSemantic(kind, query, results), nil
+}
+
+// SearchFullText is Search without the semantic blend.
+func (s *PageStore) SearchFullText(kind DocKind, query string) ([]SearchResult, error) {
 	// Use FTS5 when a database is available.
 	if s.db != nil {
 		return s.searchFTS(kind, query)
 	}
 	return s.searchFilesystem(kind, query)
+}
+
+// blendSemantic merges vector-search hits into FTS5 results when a semantic
+// index is attached. If the embeddings endpoint fails, the FTS5 results are
+// returned unchanged.
+func (s *PageStore) blendSemantic(kind DocKind, query string, fts []SearchResult) []SearchResult {
+	if s.semantic == nil || !isSemanticKind(kind) {
+		return fts
+	}
+	hits, err := s.semantic.Search(context.Background(), kind, query, semanticCandidates)
+	if err != nil {
+		log.Printf("embed: %s search failed, using full-text results only: %v", kind.Label(), err)
+		return fts
+	}
+	return blendRankings(fts, hits)
 }
 
 // searchFTS delegates to the FTS5 index in SQLite.

@@ -3,9 +3,11 @@ package wiki
 import (
 	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,6 +66,20 @@ func OpenDB(dataDir string) (*DB, error) {
 			content,
 			archived UNINDEXED,
 			tokenize='unicode61'
+		);
+		CREATE TABLE IF NOT EXISTS embed_docs (
+			kind TEXT NOT NULL,
+			slug TEXT NOT NULL,
+			hash TEXT NOT NULL,
+			PRIMARY KEY (kind, slug)
+		);
+		CREATE TABLE IF NOT EXISTS embed_chunks (
+			kind    TEXT NOT NULL,
+			slug    TEXT NOT NULL,
+			idx     INTEGER NOT NULL,
+			excerpt TEXT NOT NULL,
+			vec     BLOB NOT NULL,
+			PRIMARY KEY (kind, slug, idx)
 		);
 	`); err != nil {
 		db.Close()
@@ -564,4 +580,121 @@ func buildFTSQuery(query string) string {
 		terms[i] = `"` + t + `"` + "*"
 	}
 	return strings.Join(terms, " AND ")
+}
+
+// ---------- Embedding operations ----------
+
+// encodeVector packs a vector as little-endian float32s.
+func encodeVector(v []float32) []byte {
+	b := make([]byte, 4*len(v))
+	for i, x := range v {
+		binary.LittleEndian.PutUint32(b[4*i:], math.Float32bits(x))
+	}
+	return b
+}
+
+func decodeVector(b []byte) []float32 {
+	v := make([]float32, len(b)/4)
+	for i := range v {
+		v[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[4*i:]))
+	}
+	return v
+}
+
+// LoadEmbeddings returns every stored chunk of kind, grouped by slug in
+// chunk order.
+func (d *DB) LoadEmbeddings(kind DocKind) (map[string][]embedChunk, error) {
+	rows, err := d.db.Query(
+		"SELECT slug, excerpt, vec FROM embed_chunks WHERE kind = ? ORDER BY slug, idx", string(kind))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]embedChunk{}
+	for rows.Next() {
+		var slug, excerpt string
+		var vec []byte
+		if err := rows.Scan(&slug, &excerpt, &vec); err != nil {
+			return nil, err
+		}
+		out[slug] = append(out[slug], embedChunk{Excerpt: excerpt, Vec: decodeVector(vec)})
+	}
+	return out, rows.Err()
+}
+
+// EmbeddedSlugs lists the documents of kind that have stored embeddings.
+func (d *DB) EmbeddedSlugs(kind DocKind) ([]string, error) {
+	rows, err := d.db.Query("SELECT slug FROM embed_docs WHERE kind = ?", string(kind))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var slugs []string
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, err
+		}
+		slugs = append(slugs, slug)
+	}
+	return slugs, rows.Err()
+}
+
+// EmbeddingHash returns the hash a document's embeddings were built from.
+func (d *DB) EmbeddingHash(kind DocKind, slug string) (string, bool, error) {
+	var hash string
+	err := d.db.QueryRow(
+		"SELECT hash FROM embed_docs WHERE kind = ? AND slug = ?", string(kind), slug).Scan(&hash)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return hash, true, nil
+}
+
+// SaveEmbeddings replaces a document's chunks and records their hash.
+func (d *DB) SaveEmbeddings(kind DocKind, slug, hash string, chunks []embedChunk) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM embed_chunks WHERE kind = ? AND slug = ?", string(kind), slug); err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare("INSERT INTO embed_chunks (kind, slug, idx, excerpt, vec) VALUES (?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for i, c := range chunks {
+		if _, err := stmt.Exec(string(kind), slug, i, c.Excerpt, encodeVector(c.Vec)); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(
+		"INSERT INTO embed_docs (kind, slug, hash) VALUES (?, ?, ?) ON CONFLICT (kind, slug) DO UPDATE SET hash = excluded.hash",
+		string(kind), slug, hash); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeleteEmbeddings removes a document's chunks and hash.
+func (d *DB) DeleteEmbeddings(kind DocKind, slug string) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM embed_chunks WHERE kind = ? AND slug = ?", string(kind), slug); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM embed_docs WHERE kind = ? AND slug = ?", string(kind), slug); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

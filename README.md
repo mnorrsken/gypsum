@@ -28,6 +28,28 @@ The key idea: add a line to your project's `CLAUDE.md` (or any LLM's system prom
 
 Skills tools: `list_skills`, `search_skills`, `get_skill`, `create_skill`, `edit_skill`, `delete_skill`. See [Skills](docs/skills.md).
 
+### Semantic Search
+
+Optional search by meaning, next to full-text search: "how do I change the encryption password" finds a page about passphrase rotation, and a Swedish question finds an English page. Pages and skills are embedded through any OpenAI-compatible embeddings API (Ollama, OpenAI, llama.cpp, ...) and the vectors live in `gypsum.db`, never in git. The Helm chart can deploy a CPU-only embeddings server for you with `--set embed.server.enabled=true`. See [Configuration](docs/configuration.md#semantic-search) and [Helm](docs/helm.md#semantic-search).
+
+Suggested models for the chart's embeddings server (`embed.server.model`):
+
+| Size | Model | Download | RAM | Indexing speed | Notes |
+|---|---|---|---|---|---|
+| **Small** (default) | `ggml-org/embeddinggemma-300M-GGUF:Q8_0` | 334 MB | ~1.3 GiB | ~0.45 s/chunk | Google EmbeddingGemma. 100+ languages, 768 dimensions, reads up to 2,048 tokens. |
+| **Medium** | `Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0` | 639 MB | ~2.1 GiB | ~0.12 s/chunk | 100+ languages, 1024 dimensions. Fastest in our test. Set memory to 2Gi request / 3Gi limit. |
+| **Large** | `Qwen/Qwen3-Embedding-4B-GGUF:Q4_K_M` | 2.5 GB | ~4.2 GiB | ~1 s/chunk | Same family, 2560 dimensions, better on hard queries and big wikis. Set `cacheSizeLimit: 4Gi` and memory to 5Gi request / 6Gi limit. |
+
+RAM is measured with the chart's settings (two 2,048-token slots). Speed is per 1,500-character chunk with 2 threads on an Apple M5 under Docker; a typical server CPU may be slower. Only indexing pays this cost, once at first start and then for edited pages. A search query takes milliseconds.
+
+All three handle many languages, and a query in one language finds pages in another. In a small test with Swedish and English pages (13 queries, most across languages), all three put the right page first every time. The Qwen3 models do slightly better when the query carries an instruction prefix, which gypsum does not send yet (12 of 13 without it).
+
+Avoid, or use only with care:
+
+- `nomic-ai/nomic-embed-text-v1.5-GGUF:Q8_0` — English only. It found the right page first for just 4 of the 13 test queries.
+- `nomic-ai/nomic-embed-text-v2-moe-GGUF:Q8_0` — multilingual and accurate, but it reads only 512 tokens per input, so the end of long chunks is ignored.
+- `gpustack/bge-m3-GGUF:Q8_0` — multilingual and accurate, but the slowest of the medium-sized models (~1 s/chunk).
+
 ### Prometheus Metrics
 
 MCP tool usage is tracked via Prometheus — call counts, errors, and characters sent/received per tool. Useful for understanding how your LLM interacts with the wiki. Default endpoint: `:9090/metrics`.
@@ -37,10 +59,11 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Markdown with GFM tables, syntax highlighting, `[[wiki links]]`, interactive task-list checkboxes, and Mermaid diagrams (flowcharts, sequence/class/state/ER diagrams, Gantt charts, and more), rendered client-side and theme-aware
 - Click an image or a diagram to open it full screen (lightbox); click or press Escape to close
 - Full-text search with FTS5 indexing, BM25 ranking, and highlighted snippets
+- Optional [semantic search](#semantic-search) that also finds pages by meaning and across languages, via any OpenAI-compatible embeddings API or a CPU embeddings server deployed by the Helm chart
 - Quick Notes — a whiteboard-style board of always-editable sticky notes with autosave, title-hashed colors, and archive; stored as plain markdown in git
 - Secrets vault — a searchable list of credentials with click-to-reveal (60s) and copy-without-showing; tiles use the linked site's own picture or a title-hashed two-letter mnemonic. Encrypted in the browser, stored as markdown in git, never exposed over MCP
 - Interactive link graph
-- Page history with revision diffs
+- Page history with revision diffs; MCP edits are committed under the calling client's name (e.g. `claude-code (MCP)`)
 - Image uploads (paste, drag-and-drop, or picker) with size hints
 - Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM and PBKDF2 key derivation, encrypted and decrypted entirely in the browser — the server never sees plaintext or the key
 - Visual table editor
@@ -72,6 +95,9 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills,notes` | Comma-separated MCP tool sections to enable |
 | `GYPSUM_MCP_ALLOWED_ORIGINS` | _(empty)_ | Extra browser origins allowed to call `/mcp`; external URL and loopback always allowed, `*` disables the check |
 | `GYPSUM_SECURE_SALT` | _(auto-generated)_ | Base64 PBKDF2 salt for `{{secure:...}}` fields; auto-generated and persisted if unset |
+| `GYPSUM_EMBED_URL` | _(empty)_ | OpenAI-compatible embeddings API (e.g. `http://localhost:11434/v1`); turns on [semantic search](#semantic-search) |
+| `GYPSUM_EMBED_MODEL` | _(empty)_ | Embedding model name; required with `GYPSUM_EMBED_URL` |
+| `GYPSUM_EMBED_API_KEY` | _(empty)_ | Optional Bearer token for the embeddings API |
 
 OAuth, auth, and Docker-specific variables are documented in [Configuration](docs/configuration.md).
 
@@ -91,7 +117,7 @@ OAuth, auth, and Docker-specific variables are documented in [Configuration](doc
 
 ```
 data/
-├── gypsum.db           # SQLite database (shares, OAuth tokens, FTS search index)
+├── gypsum.db           # SQLite database (shares, OAuth tokens, FTS search index, embeddings)
 └── repo/               # git working directory
     ├── pages/           # markdown files
     ├── skills/          # procedural knowledge for LLMs

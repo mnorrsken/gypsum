@@ -14,6 +14,9 @@
 | `GYPSUM_MCP_ALLOWED_ORIGINS` | _(empty)_ | Extra browser origins permitted to call `/mcp`, comma-separated (e.g. `https://app.example.com`). `GYPSUM_EXTERNAL_URL` and loopback are always allowed. Set to `*` to disable Origin checking. See [Origin validation](#origin-validation). |
 | `GYPSUM_METRICS_PORT` | `:9090` | Listen address for the Prometheus metrics server (`/metrics`). Exposes per-tool MCP call counters. |
 | `GYPSUM_SECURE_SALT` | _(auto-generated)_ | Base64-encoded PBKDF2 salt for `{{secure:...}}` fields. If unset, a random salt is generated on first run and persisted in `gypsum.db`. The salt is not secret, but it must stay stable — see [Encryption](#encryption). |
+| `GYPSUM_EMBED_URL` | _(empty)_ | Base URL of an OpenAI-compatible embeddings API, e.g. `http://localhost:11434/v1` for Ollama. `/embeddings` is appended. Setting it turns on [semantic search](#semantic-search). |
+| `GYPSUM_EMBED_MODEL` | _(empty)_ | Embedding model name, e.g. `nomic-embed-text`. Required when `GYPSUM_EMBED_URL` is set. |
+| `GYPSUM_EMBED_API_KEY` | _(empty)_ | Optional API key, sent as a Bearer token. |
 
 ### MCP sections
 
@@ -56,6 +59,31 @@ GYPSUM_MCP_ALLOWED_ORIGINS=https://app.example.com,https://staging.example.com
 Setting `GYPSUM_MCP_ALLOWED_ORIGINS=*` disables the check entirely and restores
 the earlier permissive behavior. This is not recommended on a publicly reachable
 wiki.
+
+## Semantic Search
+
+Full-text search needs every word of the query to appear on the page. Semantic search also finds pages that match by meaning: "how do I change the encryption password" finds a page about passphrase rotation. It is off until `GYPSUM_EMBED_URL` and `GYPSUM_EMBED_MODEL` are set.
+
+It works with any OpenAI-compatible `/embeddings` endpoint: Ollama, OpenAI, llama.cpp, vLLM, LiteLLM and others. With Ollama:
+
+```bash
+ollama pull embeddinggemma
+GYPSUM_EMBED_URL=http://localhost:11434/v1
+GYPSUM_EMBED_MODEL=embeddinggemma
+```
+
+Pick a multilingual model if your pages are not all in English: `embeddinggemma` and `qwen3-embedding` are, `nomic-embed-text` is not. See [Helm Chart → Choosing a model](helm.md#choosing-a-model) for measured sizes and speeds.
+
+In Kubernetes, the Helm chart can deploy a CPU-only embeddings server and wire gypsum to it: set `embed.server.enabled=true` (see [Helm Chart → Semantic search](helm.md#semantic-search)).
+
+How it works:
+
+- **What is embedded.** Pages and skills, split into chunks at headings (at most about 1,500 characters each). Notes and the secrets vault are never embedded. `{{secure:...}}`, `{{secure_aes:...}}` and `{{secure_aes2:...}}` blocks are removed before any text is sent.
+- **Where vectors live.** In `gypsum.db`, next to the full-text index. Like that index, they are derived data and not stored in git.
+- **When it indexes.** In the background: all documents at startup, then each document when it is saved, deleted, or changed by a git pull. Unchanged documents are skipped, so a restart makes no embedding calls. Changing `GYPSUM_EMBED_MODEL` re-embeds everything.
+- **How results are ranked.** Web search, `search_pages`, `search_skills` and `suggest_page_location` blend the full-text ranking with the top 20 meaning-based matches (Reciprocal Rank Fusion). A page that both searches find ranks highest.
+- **When the endpoint is down.** Search falls back to full-text results only, and indexing retries with a growing delay (30 seconds up to 10 minutes). Gypsum itself keeps running.
+- **Privacy.** Page and skill text is sent to the embeddings endpoint. Use one you host (such as Ollama) if the wiki content is private.
 
 ## Git Execution
 

@@ -25,7 +25,7 @@ var toolSectionMap = map[string]MCPSection{
 
 // ── Tool dispatch ───────────────────────────────────────────────────────
 
-func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
+func (m *MCPHandler) callTool(params mcpToolCallParams, author string) mcpCallToolResult {
 	if sec, ok := toolSectionMap[params.Name]; ok && !m.sections[sec] {
 		return mcpError("tool not available: " + params.Name)
 	}
@@ -35,11 +35,11 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 	case "get_page":
 		return m.toolGetPage(params.Arguments)
 	case "create_page":
-		return m.toolCreatePage(params.Arguments)
+		return m.toolCreatePage(params.Arguments, author)
 	case "edit_page":
-		return m.toolEditPage(params.Arguments)
+		return m.toolEditPage(params.Arguments, author)
 	case "delete_page":
-		return m.toolDeletePage(params.Arguments)
+		return m.toolDeletePage(params.Arguments, author)
 	case "search_pages":
 		return m.toolSearchPages(params.Arguments)
 	case "suggest_page_location":
@@ -47,7 +47,7 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 	case "list_images":
 		return m.toolListImages()
 	case "delete_image":
-		return m.toolDeleteImage(params.Arguments)
+		return m.toolDeleteImage(params.Arguments, author)
 	case "page_history":
 		return m.toolPageHistory(params.Arguments)
 	case "get_page_revision":
@@ -61,11 +61,11 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 	case "get_skill":
 		return m.toolGetSkill(params.Arguments)
 	case "create_skill":
-		return m.toolCreateSkill(params.Arguments)
+		return m.toolCreateSkill(params.Arguments, author)
 	case "edit_skill":
-		return m.toolEditSkill(params.Arguments)
+		return m.toolEditSkill(params.Arguments, author)
 	case "delete_skill":
-		return m.toolDeleteSkill(params.Arguments)
+		return m.toolDeleteSkill(params.Arguments, author)
 	case "search_skills":
 		return m.toolSearchSkills(params.Arguments)
 	case "list_notes":
@@ -73,13 +73,13 @@ func (m *MCPHandler) callTool(params mcpToolCallParams) mcpCallToolResult {
 	case "get_note":
 		return m.toolGetNote(params.Arguments)
 	case "create_note":
-		return m.toolCreateNote(params.Arguments)
+		return m.toolCreateNote(params.Arguments, author)
 	case "edit_note":
-		return m.toolEditNote(params.Arguments)
+		return m.toolEditNote(params.Arguments, author)
 	case "archive_note":
-		return m.toolArchiveNote(params.Arguments)
+		return m.toolArchiveNote(params.Arguments, author)
 	case "delete_note":
-		return m.toolDeleteNote(params.Arguments)
+		return m.toolDeleteNote(params.Arguments, author)
 	default:
 		return mcpError("unknown tool: " + params.Name)
 	}
@@ -165,7 +165,7 @@ func (m *MCPHandler) toolGetPage(args map[string]any) mcpCallToolResult {
 	return getDocResult(page.Content, args)
 }
 
-func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolCreatePage(args map[string]any, author string) mcpCallToolResult {
 	title, ok := mcpArgString(args, "title")
 	if !ok {
 		return mcpError("missing required argument: title")
@@ -187,17 +187,17 @@ func (m *MCPHandler) toolCreatePage(args map[string]any) mcpCallToolResult {
 	if err := m.store.Save(KindPage, slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitSave(KindPage, slug, "")
+	_ = m.autoCommit.CommitSave(KindPage, slug, author)
 
 	msg := fmt.Sprintf("Created page '%s' (slug: %s)", title, slug)
 	if linkFrom, ok := mcpArgString(args, "link_from"); ok && strings.TrimSpace(linkFrom) != "" {
 		section, _ := mcpArgString(args, "link_section")
-		msg += " " + m.addWikiLink(linkFrom, title, section)
+		msg += " " + m.addWikiLink(linkFrom, title, section, author)
 	}
 	return mcpText(msg)
 }
 
-func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolEditPage(args map[string]any, author string) mcpCallToolResult {
 	slug, ok := mcpArgString(args, "slug")
 	if !ok {
 		return mcpError("missing required argument: slug")
@@ -225,14 +225,14 @@ func (m *MCPHandler) toolEditPage(args map[string]any) mcpCallToolResult {
 	if err := m.store.Save(KindPage, slug, finalContent); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitSave(KindPage, slug, "")
+	_ = m.autoCommit.CommitSave(KindPage, slug, author)
 	return mcpText(fmt.Sprintf("Updated page '%s'", slug))
 }
 
 // addWikiLink adds a [[childTitle]] link to the parent page identified by
 // parentRef (slug or title). It returns a human-readable note describing the
 // outcome; it never fails the caller — a missing parent is reported, not fatal.
-func (m *MCPHandler) addWikiLink(parentRef, childTitle, section string) string {
+func (m *MCPHandler) addWikiLink(parentRef, childTitle, section, author string) string {
 	parentSlug := parentRef
 	parent, err := m.store.Load(KindPage, parentSlug)
 	if err != nil {
@@ -277,11 +277,11 @@ func (m *MCPHandler) addWikiLink(parentRef, childTitle, section string) string {
 	if err := m.store.Save(KindPage, parentSlug, updated); err != nil {
 		return fmt.Sprintf("(note: failed to add link from '%s': %s)", parentSlug, err.Error())
 	}
-	_ = m.autoCommit.CommitSave(KindPage, parentSlug, "")
+	_ = m.autoCommit.CommitSave(KindPage, parentSlug, author)
 	return fmt.Sprintf("Linked from '%s'.", parentSlug)
 }
 
-func (m *MCPHandler) toolDeletePage(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolDeletePage(args map[string]any, author string) mcpCallToolResult {
 	slug, ok := mcpArgString(args, "slug")
 	if !ok {
 		return mcpError("missing required argument: slug")
@@ -294,7 +294,7 @@ func (m *MCPHandler) toolDeletePage(args map[string]any) mcpCallToolResult {
 	if err := m.store.Delete(KindPage, slug); err != nil {
 		return mcpError("failed to delete page: " + err.Error())
 	}
-	_ = m.autoCommit.CommitDelete(KindPage, slug, "")
+	_ = m.autoCommit.CommitDelete(KindPage, slug, author)
 	return mcpText(fmt.Sprintf("Deleted page '%s'", slug))
 }
 
@@ -336,7 +336,7 @@ func (m *MCPHandler) toolListImages() mcpCallToolResult {
 	return mcpJSON(images)
 }
 
-func (m *MCPHandler) toolDeleteImage(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolDeleteImage(args map[string]any, author string) mcpCallToolResult {
 	filename, ok := mcpArgString(args, "filename")
 	if !ok {
 		return mcpError("missing required argument: filename")
@@ -349,7 +349,7 @@ func (m *MCPHandler) toolDeleteImage(args map[string]any) mcpCallToolResult {
 	if err := os.Remove(imgPath); err != nil {
 		return mcpError("image not found: " + filename)
 	}
-	_ = m.autoCommit.CommitImageDelete(filename, "")
+	_ = m.autoCommit.CommitImageDelete(filename, author)
 	return mcpText(fmt.Sprintf("Deleted image '%s'", filename))
 }
 
@@ -582,7 +582,7 @@ func (m *MCPHandler) toolGetSkill(args map[string]any) mcpCallToolResult {
 	return getDocResult(skill.Content, args)
 }
 
-func (m *MCPHandler) toolCreateSkill(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolCreateSkill(args map[string]any, author string) mcpCallToolResult {
 	title, ok := mcpArgString(args, "title")
 	if !ok {
 		return mcpError("missing required argument: title")
@@ -600,11 +600,11 @@ func (m *MCPHandler) toolCreateSkill(args map[string]any) mcpCallToolResult {
 	if err := m.store.Save(KindSkill, slug, content); err != nil {
 		return mcpError("failed to save skill: " + err.Error())
 	}
-	_ = m.autoCommit.CommitSave(KindSkill, slug, "")
+	_ = m.autoCommit.CommitSave(KindSkill, slug, author)
 	return mcpText(fmt.Sprintf("Created skill '%s' (slug: %s)", title, slug))
 }
 
-func (m *MCPHandler) toolEditSkill(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolEditSkill(args map[string]any, author string) mcpCallToolResult {
 	slug, ok := mcpArgString(args, "slug")
 	if !ok {
 		return mcpError("missing required argument: slug")
@@ -620,11 +620,11 @@ func (m *MCPHandler) toolEditSkill(args map[string]any) mcpCallToolResult {
 	if err := m.store.Save(KindSkill, slug, finalContent); err != nil {
 		return mcpError("failed to save skill: " + err.Error())
 	}
-	_ = m.autoCommit.CommitSave(KindSkill, slug, "")
+	_ = m.autoCommit.CommitSave(KindSkill, slug, author)
 	return mcpText(fmt.Sprintf("Updated skill '%s'", slug))
 }
 
-func (m *MCPHandler) toolDeleteSkill(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolDeleteSkill(args map[string]any, author string) mcpCallToolResult {
 	slug, ok := mcpArgString(args, "slug")
 	if !ok {
 		return mcpError("missing required argument: slug")
@@ -637,7 +637,7 @@ func (m *MCPHandler) toolDeleteSkill(args map[string]any) mcpCallToolResult {
 	if err := m.store.Delete(KindSkill, slug); err != nil {
 		return mcpError("failed to delete skill: " + err.Error())
 	}
-	_ = m.autoCommit.CommitDelete(KindSkill, slug, "")
+	_ = m.autoCommit.CommitDelete(KindSkill, slug, author)
 	return mcpText(fmt.Sprintf("Deleted skill '%s'", slug))
 }
 
@@ -651,11 +651,13 @@ func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
 		limit = int(n)
 	}
 
-	// Collect unique slugs across all queries.
+	// Collect unique full-text matches across all queries. Semantic matches
+	// are left out here: they nearly always add candidates, which would hide
+	// a precise single match.
 	seen := map[string]struct{}{}
 	var uniqueSlugs []string
 	for _, q := range queries {
-		results, err := m.store.Search(KindSkill, q)
+		results, err := m.store.SearchFullText(KindSkill, q)
 		if err != nil {
 			continue
 		}
@@ -667,10 +669,6 @@ func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
 		}
 	}
 
-	if len(uniqueSlugs) == 0 {
-		return mcpText("No skills found for: " + strings.Join(queries, ", "))
-	}
-
 	// Single match — return the full skill content.
 	if len(uniqueSlugs) == 1 {
 		skill, err := m.store.Load(KindSkill, uniqueSlugs[0])
@@ -680,7 +678,10 @@ func (m *MCPHandler) toolSearchSkills(args map[string]any) mcpCallToolResult {
 		return mcpText(skill.Content)
 	}
 
-	text, _ := m.runMultiSearch(KindSkill, queries, nil, limit)
+	text, found := m.runMultiSearch(KindSkill, queries, nil, limit)
+	if !found {
+		return mcpText("No skills found for: " + strings.Join(queries, ", "))
+	}
 	return mcpText(text)
 }
 
@@ -748,7 +749,7 @@ func (m *MCPHandler) toolGetNote(args map[string]any) mcpCallToolResult {
 	return mcpJSON(note)
 }
 
-func (m *MCPHandler) toolCreateNote(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolCreateNote(args map[string]any, author string) mcpCallToolResult {
 	content, ok := mcpArgString(args, "content")
 	if !ok {
 		return mcpError("missing required argument: content")
@@ -760,11 +761,11 @@ func (m *MCPHandler) toolCreateNote(args map[string]any) mcpCallToolResult {
 	if err != nil {
 		return mcpError("failed to create note: " + err.Error())
 	}
-	_ = m.autoCommit.CommitNoteSave(id, false, "")
+	_ = m.autoCommit.CommitNoteSave(id, false, author)
 	return mcpText(fmt.Sprintf("Created note '%s' (id: %s)", NoteTitle(content), id))
 }
 
-func (m *MCPHandler) toolEditNote(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolEditNote(args map[string]any, author string) mcpCallToolResult {
 	id, ok := mcpArgString(args, "id")
 	if !ok {
 		return mcpError("missing required argument: id")
@@ -780,11 +781,11 @@ func (m *MCPHandler) toolEditNote(args map[string]any) mcpCallToolResult {
 	if err := m.store.SaveNote(id, finalContent); err != nil {
 		return mcpError("failed to save note: " + err.Error())
 	}
-	_ = m.autoCommit.CommitNoteSave(id, note.Archived, "")
+	_ = m.autoCommit.CommitNoteSave(id, note.Archived, author)
 	return mcpText(fmt.Sprintf("Updated note '%s'", id))
 }
 
-func (m *MCPHandler) toolArchiveNote(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolArchiveNote(args map[string]any, author string) mcpCallToolResult {
 	id, ok := mcpArgString(args, "id")
 	if !ok {
 		return mcpError("missing required argument: id")
@@ -800,7 +801,7 @@ func (m *MCPHandler) toolArchiveNote(args map[string]any) mcpCallToolResult {
 		if err := m.store.RestoreNote(id); err != nil {
 			return mcpError("failed to restore note: " + err.Error())
 		}
-		_ = m.autoCommit.CommitNoteMove(id, false, "")
+		_ = m.autoCommit.CommitNoteMove(id, false, author)
 		return mcpText(fmt.Sprintf("Restored note '%s' to the board", id))
 	}
 	if note.Archived {
@@ -809,11 +810,11 @@ func (m *MCPHandler) toolArchiveNote(args map[string]any) mcpCallToolResult {
 	if err := m.store.ArchiveNote(id); err != nil {
 		return mcpError("failed to archive note: " + err.Error())
 	}
-	_ = m.autoCommit.CommitNoteMove(id, true, "")
+	_ = m.autoCommit.CommitNoteMove(id, true, author)
 	return mcpText(fmt.Sprintf("Archived note '%s'", id))
 }
 
-func (m *MCPHandler) toolDeleteNote(args map[string]any) mcpCallToolResult {
+func (m *MCPHandler) toolDeleteNote(args map[string]any, author string) mcpCallToolResult {
 	id, ok := mcpArgString(args, "id")
 	if !ok {
 		return mcpError("missing required argument: id")
@@ -825,7 +826,7 @@ func (m *MCPHandler) toolDeleteNote(args map[string]any) mcpCallToolResult {
 	if err := m.store.DeleteNote(id); err != nil {
 		return mcpError("failed to delete note: " + err.Error())
 	}
-	_ = m.autoCommit.CommitNoteDelete(id, note.Archived, "")
+	_ = m.autoCommit.CommitNoteDelete(id, note.Archived, author)
 	return mcpText(fmt.Sprintf("Deleted note '%s'", id))
 }
 

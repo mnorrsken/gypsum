@@ -122,6 +122,50 @@ mcp:
   # Accepts a list or a comma-separated string; ["*"] disables the check.
   allowedOrigins: []
 
+# Semantic search: pages and skills are embedded through an OpenAI-compatible
+# /embeddings endpoint (Ollama, OpenAI, llama.cpp, vLLM, LiteLLM, ...) and
+# search blends meaning-based matches with full-text matches. Off unless url
+# is set or embed.server is enabled. Page text is sent to this endpoint, so
+# prefer one you host.
+embed:
+  # Base URL; "/embeddings" is appended (e.g. http://ollama.ollama:11434/v1).
+  url: ""
+  # Embedding model name (e.g. nomic-embed-text). Required when url is set.
+  model: ""
+  # Existing Secret with a key named "api-key", for endpoints that need a key.
+  existingSecret: ""
+
+  # Deploy a CPU-only embeddings server (llama.cpp) as its own Deployment and
+  # Service in the release namespace, and point gypsum at it; embed.url and
+  # embed.model are then ignored. No GPU needed. The model is downloaded from
+  # Hugging Face into an emptyDir each time the pod starts, so the pod needs
+  # outbound HTTPS. Until it is ready, gypsum searches full-text only and
+  # retries indexing in the background.
+  server:
+    enabled: false
+    image:
+      repository: ghcr.io/ggml-org/llama.cpp
+      tag: server-v0.5.0
+      pullPolicy: IfNotPresent
+    # Hugging Face GGUF model as repo:quant. See the model table in the Helm
+    # docs for small, medium and large multilingual choices. Changing it
+    # re-embeds every page once.
+    model: ggml-org/embeddinggemma-300M-GGUF:Q8_0
+    port: 8080
+    # CPU threads for inference. Keep it at or below the CPU limit.
+    threads: 2
+    # Upper bound for the downloaded model in the emptyDir.
+    cacheSizeLimit: 2Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 1536Mi
+      limits:
+        memory: 2Gi
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
 # Per-deployment PBKDF2 salt for encrypted {{secure_aes2}} fields. The salt is
 # not secret, but it must stay stable: changing it makes existing secure_aes2
 # blocks undecryptable. If both value and existingSecret are empty, a pre-install

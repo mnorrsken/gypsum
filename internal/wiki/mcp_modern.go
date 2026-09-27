@@ -256,7 +256,7 @@ func (m *MCPHandler) handleModernRPC(r *http.Request, req jsonRPCRequest, meta m
 			// only input *validation* failures become isError tool results.
 			return fail(errCodeInvalidParams, "invalid params: "+err.Error(), nil, http.StatusBadRequest)
 		}
-		result := m.callTool(params)
+		result := m.callTool(params, mcpCommitAuthor(meta.ClientInfo))
 		result.ResultType = "complete"
 		result.Meta = modernResultMeta()
 		m.recordToolMetrics(params.Name, req.Params, result)

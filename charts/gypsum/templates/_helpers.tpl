@@ -59,3 +59,30 @@ Create the name of the service account to use.
 {{- end }}
 {{- end }}
 
+
+{{/*
+Name of the embeddings server Deployment and Service.
+*/}}
+{{- define "gypsum.embed.fullname" -}}
+{{- printf "%s-embed" (include "gypsum.fullname" . | trunc 57 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
+Embeddings server selector labels. The name differs from gypsum.selectorLabels
+so the gypsum Service never selects the embeddings pod.
+*/}}
+{{- define "gypsum.embed.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "gypsum.name" . }}-embed
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Embeddings server labels.
+*/}}
+{{- define "gypsum.embed.labels" -}}
+helm.sh/chart: {{ include "gypsum.chart" . }}
+{{ include "gypsum.embed.selectorLabels" . }}
+app.kubernetes.io/component: embeddings
+app.kubernetes.io/part-of: {{ include "gypsum.name" . }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}

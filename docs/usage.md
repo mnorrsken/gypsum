@@ -111,7 +111,7 @@ Supported formats: PNG, JPG, JPEG, GIF, WEBP, SVG (max 10 MB).
 
 ## Page History
 
-Click the **History** tab to view the git commit log for a page. Select two revisions using the **Old** and **New** radio buttons, then click **Compare Selected** to see a colorized unified diff.
+Click the **History** tab to view the git commit log for a page. Select two revisions using the **Old** and **New** radio buttons, then click **Compare Selected** to see a colorized unified diff. The author column shows who made each change: the signed-in user for web edits, or the MCP client (for example `claude-code (MCP)`) for agent edits; see [MCP Server](mcp.md#commit-authors).
 
 ## Git Sync Status
 
@@ -148,6 +148,8 @@ Edit the special `_favorites.md` page (linked at the bottom of the Favorites sec
 ## Search
 
 Use the search bar or visit `/search`. Queries are split into individual terms, each matched independently against page titles and content. Prefix matching is supported — e.g. "lösen" finds "lösenord". Title matches score higher than content matches, and pages matching all terms are boosted.
+
+With [semantic search](configuration.md#semantic-search) enabled, pages that match by meaning are mixed into the results, so "backing up my notes" also finds a page titled "Backup Strategy". Those results show a plain excerpt from the best-matching part of the page and no highlighted terms.
 
 ## Table Editor
 

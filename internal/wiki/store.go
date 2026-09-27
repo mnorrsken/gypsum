@@ -17,7 +17,8 @@ type PageStore struct {
 	skillsDir  string
 	notesDir   string
 	secretsDir string
-	db         *DB // optional; enables FTS5 search when non-nil
+	db         *DB            // optional; enables FTS5 search when non-nil
+	semantic   *SemanticIndex // optional; blends vector search into Search when non-nil
 }
 
 // docDir returns the filesystem directory for the given document kind.
@@ -55,10 +56,25 @@ func (s *PageStore) SetDB(db *DB) {
 	}
 }
 
+// SetSemanticIndex attaches a semantic index. Saves and deletes keep it up to
+// date, and Search blends its results with FTS5.
+func (s *PageStore) SetSemanticIndex(x *SemanticIndex) {
+	s.semantic = x
+}
+
 // ReindexChanged reindexes only the given slugs for the specified kind, or
 // does a full reindex if changedSlugs is nil (meaning the diff could not be
 // determined). An empty slice means nothing changed.
 func (s *PageStore) ReindexChanged(kind DocKind, changedSlugs []string) {
+	if s.semantic != nil {
+		if changedSlugs == nil {
+			s.semantic.SyncAll(kind)
+		} else {
+			for _, slug := range changedSlugs {
+				s.semantic.Enqueue(kind, slug)
+			}
+		}
+	}
 	if s.db == nil {
 		return
 	}
@@ -303,6 +319,9 @@ func (s *PageStore) Save(kind DocKind, slug, content string) error {
 			_ = s.db.IndexPage(slug, TitleFromSlug(slug), content)
 		}
 	}
+	if s.semantic != nil {
+		s.semantic.Enqueue(kind, slug)
+	}
 	return nil
 }
 
@@ -321,6 +340,9 @@ func (s *PageStore) Delete(kind DocKind, slug string) error {
 		default:
 			_ = s.db.RemovePage(slug)
 		}
+	}
+	if s.semantic != nil {
+		s.semantic.Remove(kind, slug)
 	}
 	return nil
 }

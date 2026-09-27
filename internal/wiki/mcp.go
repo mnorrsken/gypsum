@@ -179,7 +179,7 @@ type mcpCallToolResult struct {
 type MCPHandler struct {
 	store          *PageStore
 	autoCommit     *GitAutoCommitter
-	sessions       sync.Map            // sessionID → true (legacy era only)
+	sessions       sync.Map            // sessionID → commit author (legacy era only)
 	oauth          *OAuthServer        // non-nil → Bearer token required
 	sections       map[MCPSection]bool // enabled tool sections
 	metrics        *MCPMetrics         // optional; nil = no metrics
@@ -296,7 +296,7 @@ func (m *MCPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := m.HandleRPC(req, func(k, v string) { w.Header().Set(k, v) })
+	resp := m.HandleRPC(req, r.Header.Get("Mcp-Session-Id"), func(k, v string) { w.Header().Set(k, v) })
 	if resp == nil {
 		w.WriteHeader(http.StatusAccepted)
 		return
@@ -309,13 +309,15 @@ func (m *MCPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 // HandleRPC processes a single legacy-era (initialize/session) JSON-RPC request
 // and returns a response. Returns nil for notifications that need no response.
 // The optional headerFn is called to set HTTP headers (ignored for stdio).
+// sessionID is the request's Mcp-Session-Id; it selects the commit author
+// recorded from that session's initialize.
 //
 // Modern (2026-07-28) requests are routed to handleModernRPC instead; see
 // mcp_modern.go.
-func (m *MCPHandler) HandleRPC(req jsonRPCRequest, headerFn func(key, value string)) *jsonRPCResponse {
+func (m *MCPHandler) HandleRPC(req jsonRPCRequest, sessionID string, headerFn func(key, value string)) *jsonRPCResponse {
 	switch req.Method {
 	case "initialize":
-		sid := m.newSession()
+		sid := m.newSession(initializeClientInfo(req.Params))
 		if headerFn != nil {
 			headerFn("Mcp-Session-Id", sid)
 		}
@@ -353,7 +355,7 @@ func (m *MCPHandler) HandleRPC(req jsonRPCRequest, headerFn func(key, value stri
 				Error:   &jsonRPCError{Code: -32602, Message: "invalid params: " + err.Error()},
 			}
 		}
-		result := m.callTool(params)
+		result := m.callTool(params, m.sessionAuthor(sessionID))
 		m.recordToolMetrics(params.Name, req.Params, result)
 		return &jsonRPCResponse{
 			JSONRPC: "2.0",
@@ -405,10 +407,61 @@ func negotiateLegacyVersion(params json.RawMessage) string {
 	return protocolVersionLegacyFallback
 }
 
-func (m *MCPHandler) newSession() string {
+// newSession mints a legacy session ID and remembers the commit author for
+// the client that opened it.
+func (m *MCPHandler) newSession(client *mcpServerInfo) string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	sid := hex.EncodeToString(b)
-	m.sessions.Store(sid, true)
+	m.sessions.Store(sid, mcpCommitAuthor(client))
 	return sid
+}
+
+// sessionAuthor returns the commit author recorded for a legacy session.
+// Unknown sessions (e.g. opened before a restart) get the generic author.
+func (m *MCPHandler) sessionAuthor(sessionID string) string {
+	if v, ok := m.sessions.Load(sessionID); ok {
+		if author, ok := v.(string); ok {
+			return author
+		}
+	}
+	return mcpCommitAuthor(nil)
+}
+
+// initializeClientInfo extracts clientInfo from legacy initialize params.
+func initializeClientInfo(params json.RawMessage) *mcpServerInfo {
+	var p struct {
+		ClientInfo *mcpServerInfo `json:"clientInfo"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil
+	}
+	return p.ClientInfo
+}
+
+// mcpCommitAuthorMaxLen caps the client name taken into a git author.
+const mcpCommitAuthorMaxLen = 64
+
+// mcpCommitAuthor turns the MCP client's self-reported name into the git
+// author for commits it causes, e.g. "claude-code (MCP)", so page history
+// shows which agent made a change. The name is client-supplied, so control
+// characters and the <> that delimit git's email are dropped.
+func mcpCommitAuthor(client *mcpServerInfo) string {
+	name := ""
+	if client != nil {
+		name = strings.Map(func(r rune) rune {
+			if r < 0x20 || r == 0x7f || r == '<' || r == '>' {
+				return -1
+			}
+			return r
+		}, client.Name)
+		name = strings.TrimSpace(name)
+		if r := []rune(name); len(r) > mcpCommitAuthorMaxLen {
+			name = strings.TrimSpace(string(r[:mcpCommitAuthorMaxLen]))
+		}
+	}
+	if name == "" {
+		return "MCP"
+	}
+	return name + " (MCP)"
 }

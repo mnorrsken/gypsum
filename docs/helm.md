@@ -143,6 +143,60 @@ variables.
 | `metrics.serviceMonitor.interval` | `""` | Scrape interval (e.g. `30s`). Omit to use the Prometheus default |
 | `metrics.serviceMonitor.labels` | `{}` | Additional labels for the ServiceMonitor (e.g. `release: kube-prometheus-stack`) |
 
+### Semantic search
+
+| Parameter | Default | Description |
+|---|---|---|
+| `embed.url` | `""` | Base URL of an OpenAI-compatible embeddings API you run yourself (e.g. `http://ollama.ollama:11434/v1`). Turns on [semantic search](configuration.md#semantic-search) |
+| `embed.model` | `""` | Embedding model name at that API. Required when `embed.url` is set |
+| `embed.existingSecret` | `""` | Existing Secret with a key named `api-key`, for endpoints that need a key |
+| `embed.server.enabled` | `false` | Deploy a CPU-only embeddings server (llama.cpp) as its own Deployment and Service, and point gypsum at it. `embed.url` and `embed.model` are then ignored |
+| `embed.server.model` | `ggml-org/embeddinggemma-300M-GGUF:Q8_0` | Hugging Face GGUF model (`repo:quant`) to download and serve. See the table below. Changing it re-embeds every page once |
+| `embed.server.image.repository` | `ghcr.io/ggml-org/llama.cpp` | Server image |
+| `embed.server.image.tag` | `server-v0.5.0` | Server image tag (the CPU `server` build) |
+| `embed.server.port` | `8080` | Container and Service port |
+| `embed.server.threads` | `2` | CPU threads for inference. Keep it at or below the CPU limit |
+| `embed.server.cacheSizeLimit` | `2Gi` | Size limit of the `emptyDir` the model is downloaded into |
+| `embed.server.resources` | requests `100m` / `1536Mi`, limit `2Gi` memory | Server resources (sized for the default model) |
+| `embed.server.nodeSelector` / `tolerations` / `affinity` | empty | Scheduling for the embeddings pod, e.g. to put it on a node with more CPU |
+
+The simplest setup:
+
+```bash
+helm upgrade gypsum oci://ghcr.io/mnorrsken/charts/gypsum \
+  --set embed.server.enabled=true
+```
+
+This creates a `<release>-gypsum-embed` Deployment and Service in the release namespace. The pod needs no GPU. On every start it downloads the model from Hugging Face into an `emptyDir`, so it needs outbound HTTPS, and it only turns ready once the model is loaded. Until then, gypsum searches full-text only and retries indexing in the background (first retry after 30 seconds). The Service is reachable from inside the cluster; add a NetworkPolicy if other workloads should not use it.
+
+To pick another model:
+
+```bash
+helm upgrade gypsum oci://ghcr.io/mnorrsken/charts/gypsum \
+  --set embed.server.enabled=true \
+  --set embed.server.model=Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0 \
+  --set embed.server.resources.requests.memory=2Gi \
+  --set embed.server.resources.limits.memory=3Gi
+```
+
+#### Choosing a model
+
+| Size | Model | Download | RAM | Indexing speed | Notes |
+|---|---|---|---|---|---|
+| **Small** (default) | `ggml-org/embeddinggemma-300M-GGUF:Q8_0` | 334 MB | ~1.3 GiB | ~0.45 s/chunk | Google EmbeddingGemma. 100+ languages, 768 dimensions, reads up to 2,048 tokens. |
+| **Medium** | `Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0` | 639 MB | ~2.1 GiB | ~0.12 s/chunk | 100+ languages, 1024 dimensions. Fastest in our test. Set memory to 2Gi request / 3Gi limit. |
+| **Large** | `Qwen/Qwen3-Embedding-4B-GGUF:Q4_K_M` | 2.5 GB | ~4.2 GiB | ~1 s/chunk | Same family, 2560 dimensions, better on hard queries and big wikis. Set `cacheSizeLimit: 4Gi` and memory to 5Gi request / 6Gi limit. |
+
+RAM is measured with the chart's settings (two 2,048-token slots). Speed is per 1,500-character chunk with 2 threads on an Apple M5 under Docker; a typical server CPU may be slower. Only indexing pays this cost, once at first start and then for edited pages. A search query takes milliseconds.
+
+All three handle many languages, and a query in one language finds pages in another. In a small test with Swedish and English pages (13 queries, most across languages), all three put the right page first every time. The Qwen3 models do slightly better when the query carries an instruction prefix, which gypsum does not send yet (12 of 13 without it).
+
+Avoid, or use only with care:
+
+- `nomic-ai/nomic-embed-text-v1.5-GGUF:Q8_0` — English only. It found the right page first for just 4 of the 13 test queries.
+- `nomic-ai/nomic-embed-text-v2-moe-GGUF:Q8_0` — multilingual and accurate, but it reads only 512 tokens per input, so the end of long chunks is ignored.
+- `gpustack/bge-m3-GGUF:Q8_0` — multilingual and accurate, but the slowest of the medium-sized models (~1 s/chunk).
+
 ### Networking
 
 | Parameter | Default | Description |

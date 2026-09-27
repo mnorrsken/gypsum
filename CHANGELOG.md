@@ -2,6 +2,23 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.54.0
+
+### Added
+- **Semantic search** — optional search by meaning, next to full-text search. Pages and skills are chunked at headings and embedded through any OpenAI-compatible `/embeddings` API (Ollama, OpenAI, llama.cpp, ...); vectors are stored in `gypsum.db`, never in git. Configured with `GYPSUM_EMBED_URL`, `GYPSUM_EMBED_MODEL`, `GYPSUM_EMBED_API_KEY`. The web search box, and the `search_pages`, `search_skills` and `suggest_page_location` MCP tools, blend full-text (FTS5/BM25) ranking with the top 20 vector hits via Reciprocal Rank Fusion. Indexing runs in the background at startup (the server comes online immediately), on save/delete, and after a git pull; unchanged documents are skipped and changing the model re-embeds everything. If the embeddings endpoint is down, search falls back to full-text only and indexing retries with a growing delay (30s up to 10 minutes). `{{secure...}}` blocks are stripped before embedding, and notes and secrets are never embedded. Multilingual models work across languages. See [Configuration → Semantic Search](docs/configuration.md#semantic-search).
+- **Embeddings server in the Helm chart** — `embed.server.enabled=true` deploys a CPU-only llama.cpp server (`ghcr.io/ggml-org/llama.cpp:server-v0.5.0`) as its own Deployment and Service (`<release>-gypsum-embed`) and points gypsum at it. `embed.server.model` picks the Hugging Face GGUF model to download, defaulting to the multilingual `ggml-org/embeddinggemma-300M-GGUF:Q8_0`. `embed.url`/`embed.model`/`embed.existingSecret` wire gypsum to an external embeddings API instead. README and [Helm → Choosing a model](docs/helm.md#choosing-a-model) have measured size/RAM/speed for small, medium and large models. See [Helm → Semantic search](docs/helm.md#semantic-search).
+- **MCP commit authors** — every MCP write is now committed to git under the calling client's name, taken from `clientInfo` (legacy clients: from `initialize`, stored per session; modern clients: per-request `_meta`), e.g. `claude-code (MCP)`. A client that sends no name is committed as `MCP`. Shows up in page history. See [MCP Server → Commit Authors](docs/mcp.md#commit-authors).
+
+### Changed
+- **`search_skills`** still returns the full skill when exactly one match is found, but now only counts full-text matches for that check — semantic-only hits are excluded.
+- The `search_pages` and `search_skills` MCP tool descriptions now mention semantic search.
+
+### Notes
+- Semantic search is off by default; opt in with `GYPSUM_EMBED_URL`/`GYPSUM_EMBED_MODEL` or `embed.server.enabled=true` in the Helm chart.
+- The chart's embeddings server downloads its model from Hugging Face on every pod start, so it needs outbound HTTPS.
+- Page and skill text is sent to the embeddings endpoint — use a self-hosted one (Ollama, llama.cpp) if that content is private.
+- `nomic-embed-text` (v1.5) is English-only; see the model tables in the README and docs/helm.md for multilingual alternatives.
+
 ## v0.53.1
 
 ### Changed

@@ -43,7 +43,7 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Name:        "search_pages",
 			Title:       "Search Pages",
 			Section:     MCPSectionRead,
-			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. Each query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets and each page's outgoing/backlink counts (so you can spot hub pages). Multiple queries can be provided to search for different topics at once.",
+			Description: "Full-text search across all wiki pages. Uses FTS5 indexing for fast, relevant results with BM25 ranking. Each query is split into terms (punctuation ignored); each term is prefix-matched, so 'arch' finds 'architecture'. Results include context snippets and each page's outgoing/backlink counts (so you can spot hub pages). Multiple queries can be provided to search for different topics at once. When the server has semantic search enabled, pages that match by meaning are blended in, so a natural-language question works too.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"query": mcpPropStringArray("Search queries — each is split into terms on whitespace/punctuation, each prefix-matched independently. Multiple queries search for different topics in one call."),
 				"limit": map[string]any{"type": "number", "description": "Maximum number of results to return across all queries (default 10)."},
@@ -272,7 +272,8 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 				"to find relevant conventions and instructions. " +
 				"Example: search for 'go testing' before writing Go tests. " +
 				"Multiple queries can be provided to search for different topics at once. " +
-				"Returns the full skill content when exactly one match is found.",
+				"When the server has semantic search enabled, skills that match by meaning are listed too. " +
+				"Returns the full skill content when exactly one full-text match is found.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"query": mcpPropStringArray("Search queries — each is split into terms, each prefix-matched. E.g. ['go testing', 'deploy kubernetes']. Multiple queries search for different topics in one call."),
 				"limit": map[string]any{"type": "number", "description": "Maximum number of results to return when multiple match (default 10)."},

@@ -60,6 +60,24 @@ func main() {
 
 	store := wiki.NewPageStore(pagesDir)
 	store.SetDB(db)
+	if embedURL := os.Getenv("GYPSUM_EMBED_URL"); embedURL != "" {
+		model := os.Getenv("GYPSUM_EMBED_MODEL")
+		if model == "" {
+			log.Fatalf("GYPSUM_EMBED_MODEL is required when GYPSUM_EMBED_URL is set")
+		}
+		client := wiki.NewEmbedClient(wiki.EmbedConfig{
+			URL:    embedURL,
+			Model:  model,
+			APIKey: os.Getenv("GYPSUM_EMBED_API_KEY"),
+		})
+		semantic, err := wiki.NewSemanticIndex(client, db, store)
+		if err != nil {
+			log.Fatalf("failed to load embeddings: %v", err)
+		}
+		store.SetSemanticIndex(semantic)
+		semantic.Start()
+		log.Printf("semantic search enabled (model %s)", model)
+	}
 	renderer := wiki.NewMarkdownRenderer()
 
 	var remoteConfig *wiki.GitRemoteConfig
