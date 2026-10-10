@@ -316,6 +316,33 @@ func TestSemanticIndexNeverSendsSecrets(t *testing.T) {
 	}
 }
 
+func TestSemanticIndexAddsModelPrefixes(t *testing.T) {
+	tests := []struct {
+		model, query, doc string
+	}{
+		{"ggml-org/embeddinggemma-300M-GGUF:Q8_0", "task: search result | query: ", ""},
+		{"nomic-embed-text:latest", "search_query: ", "search_document: "},
+		{"m1", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			srv := newFakeEmbedServer(t)
+			store, _, _ := newSemanticTestStore(t, srv, tt.model, map[string]string{
+				"Car_Care": "# Car Care\n\nChange the automobile oil.",
+			})
+			if want := tt.doc + "Car Care\n\n"; !strings.HasPrefix(srv.inputs[0], want) {
+				t.Errorf("document input = %q, want prefix %q", srv.inputs[0], want)
+			}
+			if _, err := store.Search(KindPage, "vehicle"); err != nil {
+				t.Fatal(err)
+			}
+			if got := srv.inputs[len(srv.inputs)-1]; got != tt.query+"vehicle" {
+				t.Errorf("query input = %q, want %q", got, tt.query+"vehicle")
+			}
+		})
+	}
+}
+
 func TestChunkDocument(t *testing.T) {
 	long := strings.Repeat("word ", 700) // ~3500 bytes, no paragraph breaks
 	content := "intro line\n\n## Small\n\nshort body\n\n## Big\n\n" + long

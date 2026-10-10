@@ -48,6 +48,35 @@ const (
 	semanticCandidates = 20
 )
 
+// embedPrompt holds the task prefixes a model family was trained with. It is
+// picked by a case-insensitive substring of the model name, so Ollama names
+// (embeddinggemma:300m) and Hugging Face repos
+// (ggml-org/embeddinggemma-300M-GGUF:Q8_0) both match. Other models get no
+// prefixes.
+type embedPrompt struct {
+	match    string
+	query    string // prepended to search queries
+	document string // prepended to every chunk; part of the document hash
+}
+
+var embedPrompts = []embedPrompt{
+	// Google's documented "title: … | text: …" document format gave no
+	// further gain in our test, so documents stay as they are.
+	{match: "embeddinggemma", query: "task: search result | query: "},
+	{match: "qwen3-embedding", query: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"},
+	{match: "nomic-embed-text", query: "search_query: ", document: "search_document: "},
+}
+
+func promptForModel(model string) embedPrompt {
+	m := strings.ToLower(model)
+	for _, p := range embedPrompts {
+		if strings.Contains(m, p.match) {
+			return p
+		}
+	}
+	return embedPrompt{}
+}
+
 // ── Embeddings client ───────────────────────────────────────────────────
 
 // EmbedClient calls an OpenAI-compatible embeddings endpoint.
@@ -285,6 +314,7 @@ type SemanticIndex struct {
 	db      *DB
 	store   *PageStore
 	model   string
+	prompt  embedPrompt
 	backoff time.Duration
 
 	mu     sync.RWMutex
@@ -303,6 +333,7 @@ func NewSemanticIndex(client *EmbedClient, db *DB, store *PageStore) (*SemanticI
 		db:      db,
 		store:   store,
 		model:   client.cfg.Model,
+		prompt:  promptForModel(client.cfg.Model),
 		chunks:  map[DocKind]map[string][]embedChunk{},
 		pending: map[docRef]bool{},
 		wake:    make(chan struct{}, 1),
@@ -465,7 +496,7 @@ func (x *SemanticIndex) indexDoc(r docRef) (bool, error) {
 		end := min(start+embedBatchSize, len(chunks))
 		inputs := make([]string, 0, end-start)
 		for _, c := range chunks[start:end] {
-			inputs = append(inputs, c.Input)
+			inputs = append(inputs, x.prompt.document+c.Input)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), embedIndexTimeout)
 		vecs, err := x.client.Embed(ctx, inputs)
@@ -487,10 +518,13 @@ func (x *SemanticIndex) indexDoc(r docRef) (bool, error) {
 }
 
 // docHash identifies what a stored embedding was built from: the content,
-// the model and the chunker version.
+// the model, the chunker version and the document prefix.
 func (x *SemanticIndex) docHash(content []byte) string {
 	h := sha256.New()
 	h.Write([]byte(x.model + "\x00" + embedChunkerVersion + "\x00"))
+	if x.prompt.document != "" {
+		h.Write([]byte(x.prompt.document + "\x00"))
+	}
 	h.Write(content)
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -503,7 +537,7 @@ func (x *SemanticIndex) Search(ctx context.Context, kind DocKind, query string, 
 	}
 	ctx, cancel := context.WithTimeout(ctx, embedQueryTimeout)
 	defer cancel()
-	vecs, err := x.client.Embed(ctx, []string{query})
+	vecs, err := x.client.Embed(ctx, []string{x.prompt.query + query})
 	if err != nil {
 		return nil, err
 	}

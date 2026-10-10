@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.54.1
+
+### Changed
+- **Embedding task prefixes** — semantic search now adds the prefix each embedding model was trained for, picked by a case-insensitive match on `GYPSUM_EMBED_MODEL`: `embeddinggemma` (query `task: search result | query: `), `qwen3-embedding` (query `Instruct: ...` retrieval instruction) and `nomic-embed-text` (`search_query: ` for queries, `search_document: ` for pages). Other models get no prefix. On the gypsum docs with 28 English and Swedish queries, the right section ranked first more often: embeddinggemma 18 to 21, qwen3-embedding-0.6B 12 to 14, nomic-embed-text 11 to 14. See [Configuration → Semantic Search](docs/configuration.md#semantic-search).
+
+### Notes
+- `nomic-embed-text` users: the document prefix changes the stored hash, so all pages are re-embedded once after the upgrade. Gemma and Qwen only change the query side and do not re-embed.
+
 ## v0.54.0
 
 ### Added
