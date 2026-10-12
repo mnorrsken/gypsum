@@ -105,9 +105,27 @@ Images automatically scale to fit the content area. Add an optional size hint to
 
 ### Image Management
 
-Manage images at `/images` (linked in the sidebar). The index shows each image's thumbnail, filename, file size, and which pages reference it. Unused images can be deleted.
+Manage images and documents at `/images` (linked as **Files** in the sidebar). The index shows each image's thumbnail, filename, file size, and which pages reference it. Unused images can be deleted. A **Documents** table below lists uploaded files with a delete button.
 
-Supported formats: PNG, JPG, JPEG, GIF, WEBP, SVG (max 10 MB).
+Supported image formats: PNG, JPG, JPEG, GIF, WEBP, SVG. HEIC is rejected; convert it to JPEG first. The size limit is `GYPSUM_UPLOAD_MAX_MB` (default 20).
+
+JPEG uploads are always re-encoded: the EXIF orientation is applied and EXIF data, including GPS location, is dropped. JPEG and PNG are scaled so the longest side is at most `GYPSUM_IMAGE_MAX_PX` (default 2048; `0` stores them unchanged). Other formats are stored as uploaded.
+
+## Files and photos
+
+Besides images, you can upload PDF, TXT, MD, CSV, JSON, DOCX, XLSX, PPTX, ODT, ODS and ODP files. They are stored in `files/` in the git repo and committed as `wiki: upload file <name>`. The content must match the extension. Names get a date and random suffix, e.g. `report-20261012-1a2b3c4d.pdf`.
+
+In the editor, drag and drop a non-image file onto the textarea. It is uploaded and a `[name](/files/...)` link is inserted.
+
+`/files/<name>` serves PDFs inline, txt/md/csv/json as plain text, and Office files as a download.
+
+**Search.** The text layer of PDFs (no OCR; scanned pages give nothing) and the text of txt/md/csv/json files is indexed. Web search shows matches in a **Files** section; the `list_files` MCP tool searches them too. The index is rebuilt at startup and after a git pull, and a file is re-read only when its size or modification time changes.
+
+### Upload links
+
+An image attached in a Claude chat cannot be passed to an MCP tool. Ask Claude for an upload link (`create_upload_link`, see [MCP Server](mcp.md#uploading-files)). The page is made for phones: a file input with camera and an optional caption. A link works once and for 30 minutes.
+
+Behind Authelia or another proxy, an upload link works as long as the browser that opens it is logged in. To skip that login, bypass `/upload/*`; see [Authentication](authentication.md).
 
 ## Page History
 

@@ -122,6 +122,17 @@ mcp:
   # Accepts a list or a comma-separated string; ["*"] disables the check.
   allowedOrigins: []
 
+# File uploads (photos, PDFs, text and Office documents).
+uploads:
+  # Largest accepted file in MB. A reverse proxy in front of gypsum needs a
+  # body limit at least this large (e.g. the ingress-nginx annotation
+  # nginx.ingress.kubernetes.io/proxy-body-size: "25m").
+  maxMb: 20
+  # Longest side, in pixels, of stored JPEG and PNG images. JPEGs are also
+  # re-encoded to drop EXIF data such as GPS location. 0 stores images as
+  # uploaded.
+  imageMaxPx: 2048
+
 # Semantic search: pages and skills are embedded through an OpenAI-compatible
 # /embeddings endpoint (Ollama, OpenAI, llama.cpp, vLLM, LiteLLM, ...) and
 # search blends meaning-based matches with full-text matches. Off unless url

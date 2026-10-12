@@ -1,7 +1,7 @@
 {{define "content"}}
 <article>
   <div class="page-header">
-    <h1>Images</h1>
+    <h1>Files</h1>
   </div>
 
   {{if .Images}}
@@ -40,6 +40,43 @@
   </table>
   {{else}}
   <p class="hint">No images uploaded yet. Paste an image in the editor to upload.</p>
+  {{end}}
+
+  <h2>Documents</h2>
+  {{if .Files}}
+  <table class="image-table">
+    <thead>
+      <tr>
+        <th>Filename</th>
+        <th>Size</th>
+        <th>Used By</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Files}}
+      <tr>
+        <td class="image-name"><a href="{{.URL}}" target="_blank"><code>{{.Name}}</code></a></td>
+        <td class="image-size">{{.Size}} B</td>
+        <td class="image-usage">
+          {{if .UsedBy}}
+            {{range .UsedBy}}<a href="/wiki/{{.}}">{{.}}</a> {{end}}
+          {{else}}
+            <span class="unused">unused</span>
+          {{end}}
+        </td>
+        <td>
+          <button class="btn-delete" title="Delete file"
+                  hx-post="/files/delete" hx-vals='{"filename":"{{.Name}}"}'
+                  hx-confirm="Delete this file?" hx-target="closest tr"
+                  hx-swap="outerHTML swap:0.3s">✕</button>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="hint">No documents uploaded yet. Drop a PDF or other file into the editor to upload it.</p>
   {{end}}
 </article>
 {{end}}

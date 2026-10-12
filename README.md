@@ -18,7 +18,7 @@ The endpoint is dual-era: it serves the current stateless `2026-07-28` revision 
 
 Both `/mcp` and `/mcp/external` require OAuth 2.0 (PKCE) when OAuth is configured — if OAuth is not configured, the endpoints are not exposed. For Claude Desktop or CI use, the `mcp-proxy` binary bridges stdio to the HTTP endpoint; run `mcp-proxy auth <url>` to obtain a token non-interactively.
 
-Available tools: `list_pages`, `get_page`, `create_page`, `edit_page`, `delete_page`, `search_pages`, `suggest_page_location`, `page_links`, `link_graph`, `page_history`, `get_page_revision`, `list_images`, `delete_image`, and more. Editing tools support search-and-replace, section-scoped edits, and append mode for token-efficient updates. See [MCP Server](docs/mcp.md) for setup.
+Available tools: `list_pages`, `get_page`, `create_page`, `edit_page`, `delete_page`, `search_pages`, `suggest_page_location`, `page_links`, `link_graph`, `page_history`, `get_page_revision`, `list_images`, `list_files`, `get_file`, `delete_image`, and more. Editing tools support search-and-replace, section-scoped edits, and append mode for token-efficient updates. See [MCP Server](docs/mcp.md) for setup.
 
 ### Skills
 
@@ -65,6 +65,8 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Interactive link graph
 - Page history with revision diffs; MCP edits are committed under the calling client's name (e.g. `claude-code (MCP)`)
 - Image uploads (paste, drag-and-drop, or picker) with size hints
+- File uploads — PDF, text, CSV, JSON and Office documents are stored in `files/`, linked from pages, and searchable (text of PDFs and text files is indexed, no OCR). Photos are scaled and stripped of EXIF/GPS data on upload
+- Upload from a phone: one-time upload links that Claude hands out through MCP (`create_upload_link`)
 - Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM and PBKDF2 key derivation, encrypted and decrypted entirely in the browser — the server never sees plaintext or the key
 - Visual table editor
 - MediaWiki import
@@ -123,7 +125,8 @@ data/
     ├── skills/          # procedural knowledge for LLMs
     ├── notes/           # quick notes
     ├── secrets/         # encrypted secrets vault
-    └── images/          # uploaded images
+    ├── images/          # uploaded images
+    └── files/           # uploaded documents
 ```
 
 ## Development

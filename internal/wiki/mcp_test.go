@@ -161,8 +161,8 @@ func TestMCPToolsList(t *testing.T) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(result.Tools) != 25 {
-		t.Fatalf("expected 25 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 29 {
+		t.Fatalf("expected 29 tools, got %d", len(result.Tools))
 	}
 	// Verify all tools have name, description, and schema
 	for _, tool := range result.Tools {

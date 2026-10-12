@@ -220,6 +220,16 @@ func (c *GitAutoCommitter) CommitImageDelete(filename, author string) error {
 	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete image %s", filename), author)
 }
 
+// CommitFileSave commits an uploaded non-image file under files/.
+func (c *GitAutoCommitter) CommitFileSave(filename, author string) error {
+	return c.commitFile(filepath.Join("files", filename), fmt.Sprintf("wiki: upload file %s", filename), author)
+}
+
+// CommitFileDelete commits the deletion of an uploaded non-image file.
+func (c *GitAutoCommitter) CommitFileDelete(filename, author string) error {
+	return c.commitDelete(filepath.Join("files", filename), fmt.Sprintf("wiki: delete file %s", filename), author)
+}
+
 func (c *GitAutoCommitter) commitDelete(relPath, message, author string) error {
 	if c == nil || c.dataDir == "" || !c.isOwnRepo() {
 		return nil

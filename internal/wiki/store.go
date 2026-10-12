@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 var ErrPageNotFound = errors.New("page not found")
@@ -14,11 +15,14 @@ var ErrPageNotFound = errors.New("page not found")
 type PageStore struct {
 	pagesDir   string
 	imagesDir  string
+	filesDir   string
 	skillsDir  string
 	notesDir   string
 	secretsDir string
 	db         *DB            // optional; enables FTS5 search when non-nil
 	semantic   *SemanticIndex // optional; blends vector search into Search when non-nil
+
+	fileIndexMu sync.Mutex // serializes file search index updates
 }
 
 // docDir returns the filesystem directory for the given document kind.
@@ -36,14 +40,16 @@ func (s *PageStore) docDir(kind DocKind) string {
 func NewPageStore(pagesDir string) *PageStore {
 	parent := filepath.Dir(pagesDir)
 	imagesDir := filepath.Join(parent, "images")
+	filesDir := filepath.Join(parent, "files")
 	skillsDir := filepath.Join(parent, "skills")
 	notesDir := filepath.Join(parent, "notes")
 	secretsDir := filepath.Join(parent, "secrets")
 	_ = os.MkdirAll(imagesDir, 0o755)
+	_ = os.MkdirAll(filesDir, 0o755)
 	_ = os.MkdirAll(skillsDir, 0o755)
 	_ = os.MkdirAll(filepath.Join(notesDir, "archive"), 0o755)
 	_ = os.MkdirAll(secretsDir, 0o755)
-	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir, skillsDir: skillsDir, notesDir: notesDir, secretsDir: secretsDir}
+	return &PageStore{pagesDir: pagesDir, imagesDir: imagesDir, filesDir: filesDir, skillsDir: skillsDir, notesDir: notesDir, secretsDir: secretsDir}
 }
 
 // SetDB attaches a database for FTS5 full-text search and triggers a full reindex.
@@ -207,7 +213,7 @@ func (s *PageStore) ListImages() ([]ImageInfo, error) {
 	}
 
 	// Build a map of image filename -> list of pages referencing it
-	usageMap := s.findImageUsage()
+	usageMap := s.findUploadUsage(s.imagesDir, "/images/")
 
 	var images []ImageInfo
 	for _, entry := range entries {
@@ -238,11 +244,13 @@ func (s *PageStore) ListImages() ([]ImageInfo, error) {
 	return images, nil
 }
 
-func (s *PageStore) findImageUsage() map[string][]string {
+// findUploadUsage maps each file in dir to the pages that reference it
+// through urlPrefix (e.g. "/images/").
+func (s *PageStore) findUploadUsage(dir, urlPrefix string) map[string][]string {
 	usage := make(map[string][]string)
 
 	// Read image filenames once.
-	imgEntries, err := os.ReadDir(s.imagesDir)
+	imgEntries, err := os.ReadDir(dir)
 	if err != nil {
 		return usage
 	}
@@ -273,7 +281,7 @@ func (s *PageStore) findImageUsage() map[string][]string {
 		text := string(content)
 
 		for _, imgName := range imageNames {
-			if strings.Contains(text, "/images/"+imgName) {
+			if strings.Contains(text, urlPrefix+imgName) {
 				usage[imgName] = append(usage[imgName], slug)
 			}
 		}

@@ -11,7 +11,7 @@
     </div>
   </div>
   {{if .Query}}<p class="error">{{.Query}}</p>{{end}}
-  <p class="hint">{{if .IsNew}}Creating a new page.{{else}}Editing page.{{end}} Secure blocks: <code>{{"{{secure:your secret}}"}}</code>. Paste or drop images to upload.</p>
+  <p class="hint">{{if .IsNew}}Creating a new page.{{else}}Editing page.{{end}} Secure blocks: <code>{{"{{secure:your secret}}"}}</code>. Paste or drop images or files (PDF, text, Office) to upload.</p>
   <div class="editor-layout">
     <form method="post" action="/edit/{{.Page.Slug}}" class="editor-form">
       <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
@@ -70,7 +70,7 @@ password: s3cret
       <p class="help-note">Encrypted with AES-256-GCM on save. Multiline blocks require <code>{{"{{secure:"}}</code> and <code>{{"}}"}}</code> on their own lines.</p>
 
       <h3>Images</h3>
-      <p class="help-note">Paste from clipboard, drag &amp; drop a file, or click <strong>Images</strong> to browse and insert uploaded images.</p>
+      <p class="help-note">Paste from clipboard, drag &amp; drop a file, or click <strong>Images</strong> to browse and insert uploaded images. Dropped PDFs and other documents are uploaded and linked.</p>
     </aside>
   </div>
 </article>
@@ -287,6 +287,28 @@ password: s3cret
     }
   }
 
+  // Upload a non-image file (PDF, text, Office) and insert a link to it.
+  async function uploadFile(file) {
+    const id = Math.random().toString(36).slice(2, 8);
+    const placeholder = `[uploading-${id}…]()`;
+    insertAtCursor(placeholder);
+
+    const formData = new FormData();
+    formData.append("file", file, file.name);
+
+    try {
+      const resp = await fetch("/files/upload", { method: "POST", body: formData });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || "Upload failed");
+      replacePlaceholder(placeholder, data.files[0].markdown);
+      return data;
+    } catch (err) {
+      replacePlaceholder(placeholder, "");
+      alert("File upload failed: " + err.message);
+      throw err;
+    }
+  }
+
   // --- Paste handler ---
   textarea.addEventListener("paste", async (e) => {
     const items = Array.from(e.clipboardData.items);
@@ -301,10 +323,8 @@ password: s3cret
 
   // --- Drag-and-drop handler ---
   textarea.addEventListener("dragover", (e) => {
-    const hasImage = Array.from(e.dataTransfer.items).some(
-      (i) => i.kind === "file" && i.type.startsWith("image/")
-    );
-    if (!hasImage) return;
+    const hasFile = Array.from(e.dataTransfer.items).some((i) => i.kind === "file");
+    if (!hasFile) return;
     e.preventDefault();
     textarea.classList.add("drag-over");
   });
@@ -317,14 +337,16 @@ password: s3cret
   });
 
   textarea.addEventListener("drop", async (e) => {
-    const files = Array.from(e.dataTransfer.files).filter((f) =>
-      f.type.startsWith("image/")
-    );
+    const files = Array.from(e.dataTransfer.files);
     if (!files.length) return;
     e.preventDefault();
     textarea.classList.remove("drag-over");
     for (const file of files) {
-      await uploadImage(file);
+      if (file.type.startsWith("image/")) {
+        await uploadImage(file);
+      } else {
+        await uploadFile(file);
+      }
     }
   });
 

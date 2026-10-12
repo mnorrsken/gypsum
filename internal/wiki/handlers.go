@@ -24,6 +24,8 @@ type Handler struct {
 	secureSalt  string       // base64 PBKDF2 salt served to the browser for {{secure_aes2}}
 	mcpOrigins  []string     // Origin allowlist for the MCP endpoint
 	siteImages  *http.Client // HTTP client for secret site-image fetches (nil = default)
+	uploadCfg   UploadConfig // upload size limit and photo resizing
+	uploads     *UploadLinks // single-use upload links minted over MCP
 }
 
 // SetMCPAllowedOrigins sets the Origin allowlist enforced on /mcp. Build it
@@ -58,6 +60,8 @@ type TemplateData struct {
 	Query         string
 	Results       []SearchResult
 	Images        []ImageInfo
+	Files         []ImageInfo    // non-image uploads (PDFs, documents)
+	FileResults   []SearchResult // search hits in uploaded files
 	History       []HistoryEntry
 	GlobalEdits   []GlobalHistoryEntry
 	CurrentPage   int
@@ -91,6 +95,8 @@ func NewHandler(store *PageStore, renderer *MarkdownRenderer, templates fs.FS, a
 		mcpSections: mcpSections,
 		mcpMetrics:  NewMCPMetrics(),
 		tmplCache:   make(map[string]*template.Template),
+		uploadCfg:   DefaultUploadConfig,
+		uploads:     NewUploadLinks(),
 	}
 	h.parseTemplates()
 	return h
@@ -150,10 +156,11 @@ func (h *Handler) parseTemplates() {
 		h.tmplCache[name] = tmpl
 	}
 
-	// Public page template is standalone (no base layout).
-	const publicPath = "public.html"
-	if tmpl, err := template.New("").Funcs(templateFuncs).ParseFS(h.templates, publicPath); err == nil {
-		h.tmplCache["public"] = tmpl
+	// Public and upload-link pages are standalone (no base layout).
+	for _, name := range []string{"public", "upload"} {
+		if tmpl, err := template.New("").Funcs(templateFuncs).ParseFS(h.templates, name+".html"); err == nil {
+			h.tmplCache[name] = tmpl
+		}
 	}
 
 	// Partial templates (standalone fragments for htmx responses).
@@ -183,6 +190,10 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/images/delete", h.handleImageDelete)
 	mux.HandleFunc("/images/list", h.handleImageList)
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
+	mux.HandleFunc("POST /files/upload", h.handleFileUpload)
+	mux.HandleFunc("POST /files/delete", h.handleFileDelete)
+	mux.HandleFunc("GET /files/{name}", h.handleFileServe)
+	mux.HandleFunc("/upload/{token}", h.handleUploadLink)
 	mux.HandleFunc("/delete/", h.handleDeletePage)
 	mux.HandleFunc("/toggle-checkbox/", h.handleToggleCheckbox)
 	mux.HandleFunc("/share/", h.handleShare)
@@ -231,6 +242,7 @@ func (h *Handler) Routes() http.Handler {
 		mcpOAuth := NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth, h.mcpSections)
 		mcpOAuth.SetMetrics(h.mcpMetrics)
 		mcpOAuth.SetAllowedOrigins(h.mcpOrigins)
+		mcpOAuth.SetUploadLinks(h.uploads, h.oauth.externalURL)
 		mux.Handle("/mcp", RateLimit(mcpRL, mcpOAuth))
 		mux.Handle("/mcp/external", RateLimit(mcpRL, mcpOAuth))
 	}

@@ -158,6 +158,8 @@ Tools are grouped into sections (read, edit, delete, skills, notes) that can be 
 | `search_pages` | read | Relevance-ranked (BM25) full-text search across pages, blended with meaning-based matches when [semantic search](configuration.md#semantic-search) is enabled. Accepts multiple `query` strings and a `limit`; results include snippets and link counts. |
 | `suggest_page_location` | read | Suggest good parent pages to link a **new** page from — ranked by relevance and link-graph position. Use before `create_page` to pick `link_from`. |
 | `list_images` | read | List uploaded images with metadata (name, size, mtime, using pages). |
+| `list_files` | read | List uploaded documents and images, newest first. `query` full-text searches file names and the extracted text of PDFs and text files, with snippets. |
+| `get_file` | read | Read an uploaded file. Images come back as image content scaled to at most 1568 px; PDFs and text files as text (`max_chars`, default 50000, text layer only, no OCR); other files as metadata. |
 | `page_history` | read | Git revision history for a page. |
 | `get_page_revision` | read | Page content at a specific git revision. |
 | `page_links` | read | Wiki links connected to a page. `direction: out`/`in`/`both` (default) for outgoing links, backlinks, or both. |
@@ -166,6 +168,8 @@ Tools are grouped into sections (read, edit, delete, skills, notes) that can be 
 | `edit_page` | edit | Update an existing page (see edit modes below); `format: mediawiki` on full-replace imports wikitext. |
 | `delete_page` | delete | Delete a page permanently. |
 | `delete_image` | delete | Delete an uploaded image by filename. |
+| `delete_file` | delete | Delete an uploaded document or image by filename. |
+| `create_upload_link` | edit | Return a one-time upload URL (`<GYPSUM_EXTERNAL_URL>/upload/<token>`), optionally tied to a `page`. See [Uploading files](#uploading-files). |
 
 ### Skill tools
 
@@ -193,7 +197,7 @@ Quick notes are short, sticky-note-style jottings — a middle ground between a 
 | `archive_note` | notes | Archive a note (off the board, kept in git & searchable), or `restore: true` to move it back. |
 | `delete_note` | notes | Delete a note permanently (prefer `archive_note`). |
 
-**Consolidations (v0.47.0):** `list_pages` absorbed the former `get_recent_pages` and `get_favorites` (now `sort: recent` / `favorites_only: true`); `page_links` absorbed `what_links_here` (now `direction: in`); and `create_page`/`edit_page` absorbed the standalone MediaWiki tools (now `format: mediawiki`). The MCP surface is 25 tools.
+**Consolidations (v0.47.0):** `list_pages` absorbed the former `get_recent_pages` and `get_favorites` (now `sort: recent` / `favorites_only: true`); `page_links` absorbed `what_links_here` (now `direction: in`); and `create_page`/`edit_page` absorbed the standalone MediaWiki tools (now `format: mediawiki`). The MCP surface is 25 tools (29 with the file tools added in v0.55.0).
 
 ## Edit Modes for `edit_page`, `edit_skill`, and `edit_note`
 
@@ -207,6 +211,18 @@ These tools support four edit modes to minimise the amount of content sent over 
 | **Full replace** | `content` only | Replace the entire page. Fetch the current content with `get_page` first. |
 
 Section names are matched case-insensitively and leading `#` markers are ignored, so `"## My Section"` and `"my section"` both work. If a heading appears more than once, the tool returns an error and suggests using search-and-replace instead.
+
+## Uploading files
+
+An image attached in a Claude chat cannot be passed to a tool. Instead, ask Claude for an upload link: `create_upload_link` returns a URL on your wiki. Open it on your phone (the page offers the camera), pick or take a file, optionally add a caption, and send. The link works once, is valid for 30 minutes, and is kept in memory, so a server restart invalidates it. If a `page` was given, the file is appended to that page as markdown. Afterwards Claude can find the file with `list_files` and read it with `get_file`.
+
+To have Claude write a page about a photo (describe it, or read the text on it), take the photo through the link instead of attaching it in the chat:
+
+1. Ask: "I want to save a photo to the wiki." Claude creates a link without a `page`.
+2. Open the link, take the photo, upload.
+3. Say "done". Claude finds the photo with `list_files`, looks at it with `get_file`, and creates the page with the image embedded where it fits.
+
+This way you pick the photo only once. If you attach the photo in the chat instead, Claude can still write the page, but you have to upload the same photo again through a link tied to that page, and it lands at the end of the page.
 
 ## Commit Authors
 

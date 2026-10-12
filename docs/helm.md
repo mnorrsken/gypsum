@@ -79,9 +79,9 @@ advertised in `tools/list` and are refused if called anyway.
 
 | Section | Tools |
 |---|---|
-| `read` | `list_pages`, `get_page`, `search_pages`, `suggest_page_location`, `list_images`, `page_history`, `get_page_revision`, `page_links`, `link_graph` |
-| `edit` | `create_page`, `edit_page` |
-| `delete` | `delete_page`, `delete_image` |
+| `read` | `list_pages`, `get_page`, `search_pages`, `suggest_page_location`, `list_images`, `list_files`, `get_file`, `page_history`, `get_page_revision`, `page_links`, `link_graph` |
+| `edit` | `create_page`, `edit_page`, `create_upload_link` |
+| `delete` | `delete_page`, `delete_image`, `delete_file` |
 | `skills` | `list_skills`, `get_skill`, `search_skills`, `create_skill`, `edit_skill`, `delete_skill` |
 | `notes` | `list_notes`, `get_note`, `create_note`, `edit_note`, `archive_note`, `delete_note` |
 
@@ -132,6 +132,21 @@ variables.
 | `auth.userHeader` | `""` | Header name for reverse proxy auth (e.g. `Remote-User`). Enables header auth when set |
 | `auth.groupHeader` | `Remote-Group` | Header containing comma-separated group names |
 | `auth.requiredGroup` | `""` | If set, requests without this group are rejected with 403 |
+
+### Uploads
+
+| Parameter | Default | Description |
+|---|---|---|
+| `uploads.maxMb` | `20` | Largest accepted file in MB (`GYPSUM_UPLOAD_MAX_MB`) |
+| `uploads.imageMaxPx` | `2048` | Longest side of stored JPEG/PNG images; `0` stores them unchanged (`GYPSUM_IMAGE_MAX_PX`) |
+
+Raise the proxy body limit to match, e.g. on ingress-nginx:
+
+```yaml
+ingress:
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+```
 
 ### Metrics
 

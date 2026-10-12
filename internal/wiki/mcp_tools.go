@@ -71,6 +71,28 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			InputSchema: mcpSchema("object", nil, nil),
 		},
 		{
+			Name:    "list_files",
+			Title:   "List Files",
+			Section: MCPSectionRead,
+			Description: "List uploaded files, newest first: documents (PDF, text, Office) and images, with name, URL, kind, size, modification time and the pages that link to them. " +
+				"Pass 'query' to full-text search file names and the text inside PDFs and text files instead; results then include snippets.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"query": mcpPropStringArray("Optional search queries — each split into terms and prefix-matched against file names and file text. Omit to list all files."),
+			}, nil),
+		},
+		{
+			Name:    "get_file",
+			Title:   "Get File",
+			Section: MCPSectionRead,
+			Description: "Read an uploaded file by filename (from list_files, or the last part of a /files/... or /images/... link in a page). " +
+				"Images are returned as an image you can look at (scaled down to at most 1568 px). " +
+				"PDFs and text files return their text; a scanned PDF without a text layer returns no text. Other documents return only their metadata.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"filename":  mcpPropString("Stored filename, e.g. 'invoice-20261012-ab12cd34.pdf'."),
+				"max_chars": map[string]any{"type": "number", "description": "Maximum characters of text to return for PDFs and text files (default 50000)."},
+			}, []string{"filename"}),
+		},
+		{
 			Name:        "page_history",
 			Title:       "Page History",
 			Section:     MCPSectionRead,
@@ -164,6 +186,20 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			}, []string{"slug"}),
 		},
 
+		{
+			Name:    "create_upload_link",
+			Title:   "Create Upload Link",
+			Section: MCPSectionEdit,
+			Description: "Create a single-use upload link, valid for 30 minutes, that lets the user add photos or files (PDF, text, Office documents) to the wiki from their phone or browser without logging in. " +
+				"Use this when the user wants to store a photo, screenshot, scan or document in the wiki: a file or image attached to the chat cannot be passed to a tool, so give the user this link to open instead. " +
+				"Pass 'page' to append the uploads to the end of that page (images are embedded, other files linked). " +
+				"To write a page about a photo (describe it, read its text), call this without 'page', wait until the user says the upload is done, then use list_files and get_file to see the photo and create the page with the image embedded where it fits. " +
+				"The link is a credential — give it only to the user.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"page": mcpPropString("Optional exact slug of an existing page to append the uploaded files to. Use search_pages first if unsure."),
+			}, nil),
+		},
+
 		// ── Delete tools ─────────────────────────────────────────────
 		{
 			Name:        "delete_page",
@@ -181,6 +217,16 @@ func (m *MCPHandler) toolDefinitions() []mcpTool {
 			Description: "Delete an uploaded image by filename.",
 			InputSchema: mcpSchema("object", map[string]any{
 				"filename": mcpPropString("Image filename, e.g. 'photo-20250101-ab12cd34.png'"),
+			}, []string{"filename"}),
+		},
+
+		{
+			Name:        "delete_file",
+			Title:       "Delete File",
+			Section:     MCPSectionDelete,
+			Description: "Delete an uploaded file (document or image) by filename.",
+			InputSchema: mcpSchema("object", map[string]any{
+				"filename": mcpPropString("Stored filename, e.g. 'invoice-20261012-ab12cd34.pdf'"),
 			}, []string{"filename"}),
 		},
 

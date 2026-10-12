@@ -1,0 +1,66 @@
+{{define "upload"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Upload - Gypsum</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    (function() {
+      var t = localStorage.getItem('theme');
+      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
+</head>
+<body class="public-page">
+  <header class="public-header">
+    <div class="public-header-inner">
+      <div class="brand">Gypsum</div>
+    </div>
+    <div class="topbar-rules">
+      <div class="rule-red"></div>
+    </div>
+  </header>
+
+  <main class="public-content">
+    <article class="upload-link">
+      <div class="page-title-area">
+        <h1>Upload</h1>
+        <hr class="title-rule" />
+      </div>
+
+      {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+
+      {{if .Saved}}
+        <p>Saved {{len .Saved}} file{{if gt (len .Saved) 1}}s{{end}}{{if .Page}} to <strong>{{.Page}}</strong>{{end}}:</p>
+        <ul>
+          {{range .Saved}}<li><code>{{.Name}}</code></li>{{end}}
+        </ul>
+        <p class="hint">This link is now used up. Ask for a new one to upload more.</p>
+      {{else if .Invalid}}
+        <p>This upload link is not valid. It may have expired or already been used. Ask for a new one.</p>
+      {{else}}
+        <p>
+          {{if .Page}}Files are added to the page <strong>{{.Page}}</strong>.{{else}}Files are stored in the wiki.{{end}}
+          The link works once and expires at {{.Expires}}.
+        </p>
+        <form method="POST" enctype="multipart/form-data">
+          <p>
+            <label for="upload-file">Photo or file (up to {{.MaxMB}} MB each)</label><br />
+            <input type="file" id="upload-file" name="file" accept="{{.Accept}}" multiple required />
+          </p>
+          <p>
+            <label for="upload-caption">Caption (optional)</label><br />
+            <input type="text" id="upload-caption" name="caption" />
+          </p>
+          <button type="submit">Upload</button>
+        </form>
+        {{if .Resize}}<p class="hint">Photos are scaled down and their location data is removed. PDF, text and Office files are kept as they are.</p>{{end}}
+      {{end}}
+    </article>
+  </main>
+</body>
+</html>
+{{end}}

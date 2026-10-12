@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -104,7 +105,13 @@ func main() {
 	}
 
 	autoCommitter := wiki.NewGitAutoCommitter(repoDir, remoteConfig)
-	autoCommitter.SetAfterPull(store.ReindexChanged)
+	autoCommitter.SetAfterPull(func(kind wiki.DocKind, changed []string) {
+		store.ReindexChanged(kind, changed)
+		if kind == wiki.KindPage {
+			store.SyncFileIndex()
+		}
+	})
+	go store.SyncFileIndex()
 	if remoteConfig != nil {
 		pullInterval := 5 * time.Minute
 		if v := os.Getenv("GYPSUM_GIT_PULL_INTERVAL"); v != "" {
@@ -139,6 +146,7 @@ func main() {
 
 	mcpSections := wiki.ParseMCPSections(os.Getenv("GYPSUM_MCP_SECTIONS"))
 	handler := wiki.NewHandler(store, renderer, web.Templates(), autoCommitter, oauthServer, db, mcpSections)
+	handler.SetUploadConfig(uploadConfigFromEnv())
 	docsDir := filepath.Join(workspaceRoot, "docs")
 	if info, err := os.Stat(docsDir); err == nil && info.IsDir() {
 		handler.SetDocsDir(docsDir)
@@ -291,6 +299,27 @@ func seedSkillsIfEmpty(skillsDir string) error {
 	}
 
 	return nil
+}
+
+// uploadConfigFromEnv reads GYPSUM_UPLOAD_MAX_MB and GYPSUM_IMAGE_MAX_PX,
+// keeping the default for unset or invalid values.
+func uploadConfigFromEnv() wiki.UploadConfig {
+	cfg := wiki.DefaultUploadConfig
+	if v := os.Getenv("GYPSUM_UPLOAD_MAX_MB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.MaxBytes = int64(n) << 20
+		} else {
+			log.Printf("WARNING: invalid GYPSUM_UPLOAD_MAX_MB %q — using default %d MB", v, cfg.MaxBytes>>20)
+		}
+	}
+	if v := os.Getenv("GYPSUM_IMAGE_MAX_PX"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.ImageMaxPx = n
+		} else {
+			log.Printf("WARNING: invalid GYPSUM_IMAGE_MAX_PX %q — using default %d", v, cfg.ImageMaxPx)
+		}
+	}
+	return cfg
 }
 
 func envOrDefault(key, fallback string) string {

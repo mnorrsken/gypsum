@@ -16,7 +16,8 @@ const wikiFormattingGuide = "Wiki formatting conventions: " +
 	"(2) Use [[Page Title]] to link to other wiki pages; the title is auto-converted to a slug (spaces → underscores). Linking to a non-existent page will let users create it. " +
 	"(3) Images: use ![alt text](/images/filename.ext) — optional size hints: ![alt|500](/images/f.png) for max-width 500px, ![alt|50%](/images/f.png) for 50%, ![alt|800x400](/images/f.png) for explicit dimensions. " +
 	"(4) Secure/encrypted fields: use {{secure:plaintext}} for inline secrets. For multiline secrets, put {{secure: and }} on their own lines. On save, these are encrypted to {{secure_aes:...}} — never modify secure_aes blocks directly. " +
-	"(5) Diagrams: a fenced code block tagged mermaid renders as a Mermaid diagram — flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt and the rest. Prefer a diagram over ASCII art when documenting a flow, an architecture or a sequence of calls. To show mermaid syntax literally instead of rendering it, wrap the example in a longer (four-backtick) fence."
+	"(5) Diagrams: a fenced code block tagged mermaid renders as a Mermaid diagram — flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt and the rest. Prefer a diagram over ASCII art when documenting a flow, an architecture or a sequence of calls. To show mermaid syntax literally instead of rendering it, wrap the example in a longer (four-backtick) fence. " +
+	"(6) Files: link an uploaded document as [label](/files/filename.pdf). Use create_upload_link to let the user upload a photo or file."
 
 const wikiContentGuide = "Start with '# Page Title' as the first line to set the display title. " +
 	"Use [[Page Title]] for wiki links. " +
@@ -156,9 +157,26 @@ type mcpToolCallParams struct {
 	Arguments map[string]any `json:"arguments"`
 }
 
+// mcpContent is one content block of a tool result: text, or an image
+// carried as base64 Data with its MimeType.
 type mcpContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	Data     string `json:"data,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
+}
+
+// MarshalJSON leaves the text field out of image blocks.
+func (c mcpContent) MarshalJSON() ([]byte, error) {
+	if c.Type == "image" {
+		return json.Marshal(struct {
+			Type     string `json:"type"`
+			Data     string `json:"data"`
+			MimeType string `json:"mimeType"`
+		}{c.Type, c.Data, c.MimeType})
+	}
+	type plain mcpContent
+	return json.Marshal(plain(c))
 }
 
 type mcpCallToolResult struct {
@@ -184,6 +202,14 @@ type MCPHandler struct {
 	sections       map[MCPSection]bool // enabled tool sections
 	metrics        *MCPMetrics         // optional; nil = no metrics
 	allowedOrigins []string            // Origin allowlist; loopback always permitted
+	uploads        *UploadLinks        // nil = create_upload_link unavailable
+	externalURL    string              // public base URL for upload links, no trailing slash
+}
+
+// SetUploadLinks enables create_upload_link, building links on externalURL.
+func (m *MCPHandler) SetUploadLinks(links *UploadLinks, externalURL string) {
+	m.uploads = links
+	m.externalURL = strings.TrimRight(externalURL, "/")
 }
 
 // SetAllowedOrigins sets the Origin allowlist enforced on the MCP endpoint.
@@ -388,7 +414,7 @@ func (m *MCPHandler) recordToolMetrics(name string, params json.RawMessage, resu
 	}
 	received := 0
 	for _, c := range result.Content {
-		received += len(c.Text)
+		received += len(c.Text) + len(c.Data)
 	}
 	m.metrics.Record(name, len(params), received, result.IsError)
 }

@@ -11,6 +11,8 @@ import (
 var toolSectionMap = map[string]MCPSection{
 	"list_pages": MCPSectionRead, "get_page": MCPSectionRead, "search_pages": MCPSectionRead,
 	"suggest_page_location": MCPSectionRead, "list_images": MCPSectionRead,
+	"list_files": MCPSectionRead, "get_file": MCPSectionRead,
+	"create_upload_link": MCPSectionEdit, "delete_file": MCPSectionDelete,
 	"page_history": MCPSectionRead, "get_page_revision": MCPSectionRead,
 	"page_links": MCPSectionRead, "link_graph": MCPSectionRead,
 	"create_page": MCPSectionEdit, "edit_page": MCPSectionEdit,
@@ -48,6 +50,14 @@ func (m *MCPHandler) callTool(params mcpToolCallParams, author string) mcpCallTo
 		return m.toolListImages()
 	case "delete_image":
 		return m.toolDeleteImage(params.Arguments, author)
+	case "list_files":
+		return m.toolListFiles(params.Arguments)
+	case "get_file":
+		return m.toolGetFile(params.Arguments)
+	case "create_upload_link":
+		return m.toolCreateUploadLink(params.Arguments, author)
+	case "delete_file":
+		return m.toolDeleteFile(params.Arguments, author)
 	case "page_history":
 		return m.toolPageHistory(params.Arguments)
 	case "get_page_revision":

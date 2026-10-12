@@ -30,7 +30,8 @@ func UsernameFromRequest(r *http.Request) string {
 
 // HeaderAuth returns middleware that enforces the configured header authentication.
 // Requests without a valid username header (or missing the required group) get a 403.
-// OAuth paths (/.well-known/*, /oauth/*, /mcp) are excluded.
+// OAuth paths (/.well-known/*, /oauth/*, /mcp) and upload links (/upload/*,
+// authenticated by their token) are excluded.
 func HeaderAuth(cfg HeaderAuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +43,8 @@ func HeaderAuth(cfg HeaderAuthConfig) func(http.Handler) http.Handler {
 				strings.HasPrefix(path, "/.well-known/") ||
 				strings.HasPrefix(path, "/oauth/") ||
 				strings.HasPrefix(path, "/mcp/") || 
-				path == "/mcp" {
+				path == "/mcp" ||
+				strings.HasPrefix(path, "/upload/") {
 				next.ServeHTTP(w, r)
 				return
 			}

@@ -67,6 +67,17 @@ func OpenDB(dataDir string) (*DB, error) {
 			archived UNINDEXED,
 			tokenize='unicode61'
 		);
+		CREATE VIRTUAL TABLE IF NOT EXISTS fts_files USING fts5(
+			name UNINDEXED,
+			title,
+			content,
+			tokenize='unicode61'
+		);
+		CREATE TABLE IF NOT EXISTS file_index (
+			name  TEXT PRIMARY KEY,
+			size  INTEGER NOT NULL,
+			mtime INTEGER NOT NULL
+		);
 		CREATE TABLE IF NOT EXISTS embed_docs (
 			kind TEXT NOT NULL,
 			slug TEXT NOT NULL,
@@ -547,6 +558,93 @@ func (d *DB) SearchFTSNotes(query string, includeArchived bool) ([]FTSNoteResult
 			Snippets: snippets,
 			Archived: archived == "1",
 		})
+	}
+	return results, rows.Err()
+}
+
+// ---------- File FTS5 operations ----------
+
+// IndexFile inserts or replaces an uploaded file's text in the FTS index and
+// records the size and mtime it was extracted from.
+func (d *DB) IndexFile(name, content string, size, mtime int64) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM fts_files WHERE name = ?", name); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("INSERT INTO fts_files (name, title, content) VALUES (?, ?, ?)",
+		name, fileSearchTitle(name), content); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		"INSERT INTO file_index (name, size, mtime) VALUES (?, ?, ?) ON CONFLICT (name) DO UPDATE SET size = excluded.size, mtime = excluded.mtime",
+		name, size, mtime); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RemoveFile removes an uploaded file from the FTS index.
+func (d *DB) RemoveFile(name string) error {
+	if _, err := d.db.Exec("DELETE FROM fts_files WHERE name = ?", name); err != nil {
+		return err
+	}
+	_, err := d.db.Exec("DELETE FROM file_index WHERE name = ?", name)
+	return err
+}
+
+// IndexedFiles returns the size and mtime each indexed file had when its text
+// was extracted.
+func (d *DB) IndexedFiles() (map[string][2]int64, error) {
+	rows, err := d.db.Query("SELECT name, size, mtime FROM file_index")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string][2]int64)
+	for rows.Next() {
+		var name string
+		var size, mtime int64
+		if err := rows.Scan(&name, &size, &mtime); err != nil {
+			return nil, err
+		}
+		out[name] = [2]int64{size, mtime}
+	}
+	return out, rows.Err()
+}
+
+// SearchFTSFiles searches file names and extracted file text. Slug and Title
+// of each result are the stored filename.
+func (d *DB) SearchFTSFiles(query string) ([]FTSSearchResult, error) {
+	ftsQuery := buildFTSQuery(query)
+	if ftsQuery == "" {
+		return nil, nil
+	}
+	rows, err := d.db.Query(`
+		SELECT name, snippet(fts_files, 2, '<<', '>>', '…', 48)
+		FROM fts_files
+		WHERE fts_files MATCH ?
+		ORDER BY rank
+		LIMIT 50
+	`, ftsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var results []FTSSearchResult
+	for rows.Next() {
+		var name, snip string
+		if err := rows.Scan(&name, &snip); err != nil {
+			return nil, err
+		}
+		r := FTSSearchResult{Slug: name, Title: name}
+		if snip != "" {
+			r.Snippets = []string{snip}
+		}
+		results = append(results, r)
 	}
 	return results, rows.Err()
 }

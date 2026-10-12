@@ -4,7 +4,7 @@ Gypsum supports reverse proxy authentication via HTTP headers, designed for use 
 
 ## Header Authentication
 
-Set `GYPSUM_AUTH_USER_HEADER` to a header name (e.g. `Remote-User`) to enable header auth. When set, every request (except OAuth and health probe endpoints) must include this header. The username from the header is used as the git commit author.
+Set `GYPSUM_AUTH_USER_HEADER` to a header name (e.g. `Remote-User`) to enable header auth. When set, every request (except OAuth, health probe and upload-link endpoints) must include this header. The username from the header is used as the git commit author.
 
 Optionally restrict access to a specific group:
 
@@ -29,6 +29,7 @@ access_control:
         - "^/.well-known/oauth.*$"
         - "^/oauth/.*$"
         - "^/public/.*$"
+        - "^/upload/.*$"   # optional, see below
         - "^/static/.*$"
         - "^/healthz$"
         - "^/readyz$"
@@ -47,6 +48,7 @@ access_control:
 | `/.well-known/oauth*` | OAuth discovery documents |
 | `/oauth/*` | OAuth authorization and token endpoints |
 | `/public/*` | Publicly shared pages (secret-link access) |
+| `/upload/*` | Optional. One-time upload links; the secret token in the URL is the credential. Without the bypass the link still works, but the browser that opens it must be logged in (a link opened from the Claude app may ask you to log in again). |
 | `/static/*` | CSS, JS, and other static assets (needed by public pages) |
 | `/healthz`, `/readyz` | Kubernetes health probes (served on a separate port, but bypass is harmless) |
 

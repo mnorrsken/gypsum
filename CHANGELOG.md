@@ -2,6 +2,25 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.55.0
+
+### Added
+- **File uploads** — non-image files (PDF, TXT, MD, CSV, JSON, DOCX, XLSX, PPTX, ODT, ODS, ODP) are stored in `files/` next to `images/` and committed to git (`wiki: upload file <name>`). The content is sniffed and must match the extension; HEIC is rejected with a hint to convert to JPEG. Names are made unique as `{name}-{YYYYMMDD}-{8hex}{ext}`. Served at `/files/<name>`: PDFs inline, txt/md/csv/json as plain text, Office files as a download. In the editor, dropping a non-image file uploads it and inserts a `[name](/files/...)` link. The **Images** page is now **Files** and has a **Documents** table with delete. See [Usage → Files and photos](docs/usage.md#files-and-photos).
+- **File search** — the text layer of PDFs (no OCR) and text files is extracted into a SQLite FTS index, synced at startup and after a git pull, and re-extracted only when size or mtime changes. Web search shows a **Files** section.
+- **Upload links** — new MCP tool `create_upload_link` returns `<GYPSUM_EXTERNAL_URL>/upload/<token>`, a phone-friendly page (camera input, optional caption) valid once for 30 minutes and kept in memory. It exists because an image attached in a Claude chat cannot be passed to a tool. See [MCP Server → Uploading files](docs/mcp.md#uploading-files).
+- **MCP file tools** — `list_files` (newest first; optional `query` searches file names and extracted text, with snippets), `get_file` (images as image content scaled to 1568 px; PDFs and text as text, `max_chars` default 50000; others as metadata) and `delete_file`. The MCP surface is now 29 tools.
+- **Config** — `GYPSUM_UPLOAD_MAX_MB` (default 20, per file, max 10 files per request) and `GYPSUM_IMAGE_MAX_PX` (default 2048). Helm values `uploads.maxMb` and `uploads.imageMaxPx`.
+
+### Changed
+- **Photo processing** — JPEG uploads are always re-encoded (EXIF orientation applied, EXIF including GPS dropped) and JPEG/PNG are scaled to a longest side of `GYPSUM_IMAGE_MAX_PX`. Set it to `0` to store images unchanged. Other formats are untouched.
+- The upload size limit for images is now `GYPSUM_UPLOAD_MAX_MB` (20 MB) instead of a fixed 10 MB.
+- The MCP formatting guide (in `create_page` and `edit_page`) mentions `[label](/files/x.pdf)` links and `create_upload_link`.
+
+### Notes
+- Authelia or any auth proxy: bypassing `^/upload/.*$` is optional. Without it, upload links work when the browser that opens them is logged in. See [Authentication](docs/authentication.md).
+- A reverse proxy must allow request bodies of at least `GYPSUM_UPLOAD_MAX_MB`; on ingress-nginx set `nginx.ingress.kubernetes.io/proxy-body-size`.
+- New dependencies: `github.com/ledongthuc/pdf` (PDF text) and `golang.org/x/image` (scaling, WebP decode).
+
 ## v0.54.1
 
 ### Changed

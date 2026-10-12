@@ -17,14 +17,16 @@
 | `GYPSUM_EMBED_URL` | _(empty)_ | Base URL of an OpenAI-compatible embeddings API, e.g. `http://localhost:11434/v1` for Ollama. `/embeddings` is appended. Setting it turns on [semantic search](#semantic-search). |
 | `GYPSUM_EMBED_MODEL` | _(empty)_ | Embedding model name, e.g. `nomic-embed-text`. Required when `GYPSUM_EMBED_URL` is set. |
 | `GYPSUM_EMBED_API_KEY` | _(empty)_ | Optional API key, sent as a Bearer token. |
+| `GYPSUM_UPLOAD_MAX_MB` | `20` | Largest accepted upload, per file, in MB. One request carries at most 10 files. A reverse proxy in front of Gypsum needs a body limit at least this large. |
+| `GYPSUM_IMAGE_MAX_PX` | `2048` | Longest side, in pixels, of stored JPEG and PNG uploads. Larger images are scaled down. JPEGs are always re-encoded, which drops EXIF data including GPS. `0` stores images unchanged. |
 
 ### MCP sections
 
 | Section | Tools |
 |---|---|
-| `read` | list_pages, get_page, search_pages, suggest_page_location, list_images, page_history, get_page_revision, page_links, link_graph |
-| `edit` | create_page, edit_page |
-| `delete` | delete_page, delete_image |
+| `read` | list_pages, get_page, search_pages, suggest_page_location, list_images, list_files, get_file, page_history, get_page_revision, page_links, link_graph |
+| `edit` | create_page, edit_page, create_upload_link |
+| `delete` | delete_page, delete_image, delete_file |
 | `skills` | list_skills, get_skill, search_skills, create_skill, edit_skill, delete_skill |
 | `notes` | list_notes, get_note, create_note, edit_note, archive_note, delete_note |
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -221,10 +222,16 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fileResults, err := h.store.SearchFiles(query)
+	if err != nil {
+		log.Printf("search: files: %v", err)
+	}
+
 	data := TemplateData{
-		Title:   "Search",
-		Query:   query,
-		Results: results,
+		Title:       "Search",
+		Query:       query,
+		Results:     results,
+		FileResults: fileResults,
 	}
 	if isHTMX(r) {
 		h.renderFragment(w, "search", data)

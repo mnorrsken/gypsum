@@ -23,8 +23,22 @@
       </li>
       {{end}}
     </ul>
-  {{else if .Query}}
+  {{else if and .Query (not .FileResults)}}
     <p>No results found.</p>
+  {{end}}
+
+  {{if .FileResults}}
+    <h2>Files</h2>
+    <ul class="result-list">
+      {{range .FileResults}}
+      <li>
+        <a href="/files/{{.Slug}}" target="_blank">{{.Title}}</a>
+        {{range .Snippets}}
+        <p class="excerpt">{{highlightSnippet .}}</p>
+        {{end}}
+      </li>
+      {{end}}
+    </ul>
   {{end}}
   </div>
 </article>

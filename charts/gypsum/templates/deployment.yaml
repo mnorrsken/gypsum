@@ -146,6 +146,16 @@ spec:
             - name: GYPSUM_MCP_ALLOWED_ORIGINS
               value: {{ if kindIs "slice" . }}{{ join "," . | quote }}{{ else }}{{ . | quote }}{{ end }}
             {{- end }}
+            {{- with .Values.uploads }}
+            {{- if .maxMb }}
+            - name: GYPSUM_UPLOAD_MAX_MB
+              value: {{ .maxMb | quote }}
+            {{- end }}
+            {{- if not (kindIs "invalid" .imageMaxPx) }}
+            - name: GYPSUM_IMAGE_MAX_PX
+              value: {{ .imageMaxPx | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.embed }}
             {{- if (.server).enabled }}
             - name: GYPSUM_EMBED_URL

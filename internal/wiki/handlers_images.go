@@ -1,15 +1,10 @@
 package wiki
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 func (h *Handler) handleImages(w http.ResponseWriter, r *http.Request) {
@@ -23,10 +18,16 @@ func (h *Handler) handleImages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	files, err := h.store.ListFiles()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	h.render(w, "images", TemplateData{
-		Title:  "Images",
+		Title:  "Files",
 		Images: images,
+		Files:  files,
 	})
 }
 
@@ -35,78 +36,16 @@ func (h *Handler) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB max
-		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file too large or invalid"})
+	if err := h.parseUploadForm(w, r); err != nil {
+		h.writeJSON(w, uploadStatus(err), map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-
-	file, header, err := r.FormFile("image")
+	saved, err := h.saveUploads(r, "image", "", "", UsernameFromRequest(r), true)
 	if err != nil {
-		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing image"})
+		h.writeJSON(w, uploadStatus(err), map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	defer file.Close()
-
-	ext := strings.ToLower(filepath.Ext(header.Filename))
-	allowedExt := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true}
-	if !allowedExt[ext] {
-		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "unsupported image type"})
-		return
-	}
-
-	// Sniff actual content type from the first 512 bytes.
-	buf := make([]byte, 512)
-	n, _ := file.Read(buf)
-	contentType := http.DetectContentType(buf[:n])
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "failed to read file"})
-		return
-	}
-	allowedMIME := map[string]bool{
-		"image/png":     true,
-		"image/jpeg":    true,
-		"image/gif":     true,
-		"image/webp":    true,
-		"image/svg+xml": true,
-		"text/xml":      true, // SVGs may be detected as text/xml
-	}
-	if !allowedMIME[contentType] {
-		h.writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file content does not match an allowed image type"})
-		return
-	}
-
-	// Generate unique filename: {original-name}-{YYYYMMDD}-{8hexrandom}{ext}
-	// or {YYYYMMDD}-{8hexrandom}{ext} when the original name is generic/absent.
-	randBytes := make([]byte, 4)
-	_, _ = rand.Read(randBytes)
-	namePart := sanitizeImageBasename(header.Filename)
-	datePart := time.Now().Format("20060102")
-	shortRand := hex.EncodeToString(randBytes) // 8 hex chars
-	var filename string
-	if namePart != "" {
-		filename = fmt.Sprintf("%s-%s-%s%s", namePart, datePart, shortRand, ext)
-	} else {
-		filename = fmt.Sprintf("%s-%s%s", datePart, shortRand, ext)
-	}
-
-	dstPath := filepath.Join(h.store.ImagesDir(), filename)
-	dst, err := os.Create(dstPath)
-	if err != nil {
-		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "failed to save image"})
-		return
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, file); err != nil {
-		h.writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "failed to write image"})
-		return
-	}
-
-	_ = h.autoCommit.CommitImageSave(filename, UsernameFromRequest(r))
-
-	url := "/images/" + filename
-	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": url, "filename": filename})
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": saved[0].URL, "filename": saved[0].Name})
 }
 
 // sanitizeImageBasename converts an original filename (without extension) into
