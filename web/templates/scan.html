@@ -1,0 +1,34 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>Scan a photo</h1>
+    <hr class="title-rule" />
+  </div>
+
+  {{if not .ScanEnabled}}
+  <p>Photo scanning is off. Set <code>ANTHROPIC_API_KEY</code> on the server to turn it on; see <a href="/docs/usage">Usage</a>.</p>
+  {{else}}
+  <form class="scan-form" method="POST" action="/scan" enctype="multipart/form-data">
+    {{if .Page}}
+    <p>The text from the photo is added to the end of <a href="/wiki/{{.Page.Slug}}"><strong>{{.Page.Title}}</strong></a>.</p>
+    <input type="hidden" name="page" value="{{.Page.Slug}}" />
+    {{else}}
+    <p>The photo becomes a new page: its text, plus any pictures cut out of it. Claude picks the title and where to link it from.</p>
+    {{end}}
+    <p>
+      <label for="scan-note">Note for Claude (optional)</label><br />
+      <input type="text" id="scan-note" name="note" placeholder="e.g. dishwasher manual, page 12" />
+    </p>
+    <div class="scan-buttons">
+      <label class="button scan-pick">Take photo
+        <input type="file" name="photo" accept="image/*" capture="environment" hidden onchange="this.form.submit()" />
+      </label>
+      <label class="button secondary scan-pick">Choose photo
+        <input type="file" name="photo" accept="image/*" hidden onchange="this.form.submit()" />
+      </label>
+    </div>
+    <p class="hint">The photo is sent to Claude (Anthropic) to read. Only the text and the cut-out pictures are kept, not the photo itself.</p>
+  </form>
+  {{end}}
+</article>
+{{end}}

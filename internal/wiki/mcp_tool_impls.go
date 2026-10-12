@@ -239,15 +239,19 @@ func (m *MCPHandler) toolEditPage(args map[string]any, author string) mcpCallToo
 	return mcpText(fmt.Sprintf("Updated page '%s'", slug))
 }
 
+func (m *MCPHandler) addWikiLink(parentRef, childTitle, section, author string) string {
+	return addWikiLink(m.store, m.autoCommit, parentRef, childTitle, section, author)
+}
+
 // addWikiLink adds a [[childTitle]] link to the parent page identified by
 // parentRef (slug or title). It returns a human-readable note describing the
 // outcome; it never fails the caller — a missing parent is reported, not fatal.
-func (m *MCPHandler) addWikiLink(parentRef, childTitle, section, author string) string {
+func addWikiLink(store *PageStore, autoCommit *GitAutoCommitter, parentRef, childTitle, section, author string) string {
 	parentSlug := parentRef
-	parent, err := m.store.Load(KindPage, parentSlug)
+	parent, err := store.Load(KindPage, parentSlug)
 	if err != nil {
 		parentSlug = SlugFromTitle(parentRef)
-		parent, err = m.store.Load(KindPage, parentSlug)
+		parent, err = store.Load(KindPage, parentSlug)
 	}
 	if err != nil {
 		return fmt.Sprintf("(note: link_from page '%s' not found — no link added; the page is not yet discoverable)", parentRef)
@@ -284,10 +288,10 @@ func (m *MCPHandler) addWikiLink(parentRef, childTitle, section, author string) 
 		updated = parent.Content + sep + linkLine + "\n"
 	}
 
-	if err := m.store.Save(KindPage, parentSlug, updated); err != nil {
+	if err := store.Save(KindPage, parentSlug, updated); err != nil {
 		return fmt.Sprintf("(note: failed to add link from '%s': %s)", parentSlug, err.Error())
 	}
-	_ = m.autoCommit.CommitSave(KindPage, parentSlug, author)
+	_ = autoCommit.CommitSave(KindPage, parentSlug, author)
 	return fmt.Sprintf("Linked from '%s'.", parentSlug)
 }
 

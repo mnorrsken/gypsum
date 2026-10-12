@@ -19,6 +19,8 @@
 | `GYPSUM_EMBED_API_KEY` | _(empty)_ | Optional API key, sent as a Bearer token. |
 | `GYPSUM_UPLOAD_MAX_MB` | `20` | Largest accepted upload, per file, in MB. One request carries at most 10 files. A reverse proxy in front of Gypsum needs a body limit at least this large. |
 | `GYPSUM_IMAGE_MAX_PX` | `2048` | Longest side, in pixels, of stored JPEG and PNG uploads. Larger images are scaled down. JPEGs are always re-encoded, which drops EXIF data including GPS. `0` stores images unchanged. |
+| `ANTHROPIC_API_KEY` | _(empty)_ | Anthropic API key. Setting it turns on [photo scans](usage.md#photo-scans). Each scan is one API call billed to this key, and the photo is sent to Anthropic. |
+| `GYPSUM_SCAN_MODEL` | `claude-opus-5-5` | Claude model used for photo scans. Only used when `ANTHROPIC_API_KEY` is set. |
 
 ### MCP sections
 

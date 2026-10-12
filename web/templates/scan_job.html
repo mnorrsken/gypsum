@@ -1,0 +1,29 @@
+{{define "content"}}
+<article>
+  <div class="page-title-area">
+    <h1>Scan</h1>
+    <hr class="title-rule" />
+  </div>
+  {{template "scan_status" .}}
+</article>
+{{end}}
+
+{{define "scan_status"}}
+{{with .ScanJob}}
+<div id="scan-status"{{if eq .Status "running"}} hx-get="/scan/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  {{if eq .Status "running"}}
+  <p class="scan-progress">{{.Step}}&hellip;</p>
+  <p class="hint">This usually takes under a minute. You can leave this page; the result is saved either way.</p>
+  {{else if eq .Status "failed"}}
+  <p class="error">The scan failed: {{.Error}}</p>
+  <p><a class="button" href="/scan{{if .Target}}?page={{.Target}}{{end}}">Try again</a></p>
+  {{else}}
+  <p>{{if .Appended}}Added to{{else}}Created{{end}} <a href="/wiki/{{.Slug}}"><strong>{{.Title}}</strong></a>{{if .Figures}}, with {{.Figures}} picture{{if gt .Figures 1}}s{{end}} cut out{{end}}.</p>
+  <div class="scan-buttons">
+    <a class="button" href="/wiki/{{.Slug}}">Open page</a>
+    <a class="button secondary" href="/scan?page={{.Slug}}">Scan another photo into this page</a>
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

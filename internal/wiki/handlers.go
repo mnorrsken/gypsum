@@ -26,6 +26,7 @@ type Handler struct {
 	siteImages  *http.Client // HTTP client for secret site-image fetches (nil = default)
 	uploadCfg   UploadConfig // upload size limit and photo resizing
 	uploads     *UploadLinks // single-use upload links minted over MCP
+	scanner     *Scanner     // nil = photo scanning disabled
 }
 
 // SetMCPAllowedOrigins sets the Origin allowlist enforced on /mcp. Build it
@@ -82,6 +83,8 @@ type TemplateData struct {
 	SecretHues    int              // number of mnemonic tile colors
 	SecureSalt    string           // base64 PBKDF2 salt for {{secure_aes2}}
 	SecureIters   int              // PBKDF2 iteration count
+	ScanEnabled   bool             // show the photo scan button
+	ScanJob       *ScanJob         // scan progress view
 }
 
 func NewHandler(store *PageStore, renderer *MarkdownRenderer, templates fs.FS, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
@@ -137,6 +140,7 @@ func (h *Handler) parseTemplates() {
 		"skills", "skill_view", "skill_edit",
 		"notes",
 		"secrets",
+		"scan", "scan_job",
 	}
 	for _, name := range names {
 		pagePath := name + ".html"
@@ -194,6 +198,9 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /files/delete", h.handleFileDelete)
 	mux.HandleFunc("GET /files/{name}", h.handleFileServe)
 	mux.HandleFunc("/upload/{token}", h.handleUploadLink)
+	mux.HandleFunc("GET /scan", h.handleScanForm)
+	mux.HandleFunc("POST /scan", h.handleScanStart)
+	mux.HandleFunc("GET /scan/{id}", h.handleScanJob)
 	mux.HandleFunc("/delete/", h.handleDeletePage)
 	mux.HandleFunc("/toggle-checkbox/", h.handleToggleCheckbox)
 	mux.HandleFunc("/share/", h.handleShare)
@@ -292,6 +299,7 @@ func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) 
 	}
 
 	data.SecureSalt = h.secureSalt
+	data.ScanEnabled = h.scanner != nil
 	data.SecureIters = SecurePBKDF2Iterations
 
 	tmpl := h.tmplCache[name]

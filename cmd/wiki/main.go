@@ -146,7 +146,14 @@ func main() {
 
 	mcpSections := wiki.ParseMCPSections(os.Getenv("GYPSUM_MCP_SECTIONS"))
 	handler := wiki.NewHandler(store, renderer, web.Templates(), autoCommitter, oauthServer, db, mcpSections)
-	handler.SetUploadConfig(uploadConfigFromEnv())
+	uploadCfg := uploadConfigFromEnv()
+	handler.SetUploadConfig(uploadCfg)
+	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
+		model := envOrDefault("GYPSUM_SCAN_MODEL", wiki.DefaultScanModel)
+		analyzer := wiki.NewClaudeAnalyzer(apiKey, model)
+		handler.SetScanner(wiki.NewScanner(store, autoCommitter, analyzer, uploadCfg))
+		log.Printf("photo scanning enabled (model %s)", model)
+	}
 	docsDir := filepath.Join(workspaceRoot, "docs")
 	if info, err := os.Stat(docsDir); err == nil && info.IsDir() {
 		handler.SetDocsDir(docsDir)

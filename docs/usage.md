@@ -127,6 +127,21 @@ An image attached in a Claude chat cannot be passed to an MCP tool. Ask Claude f
 
 Behind Authelia or another proxy, an upload link works as long as the browser that opens it is logged in. To skip that login, bypass `/upload/*`; see [Authentication](authentication.md).
 
+## Photo scans
+
+With `ANTHROPIC_API_KEY` set (see [Configuration](configuration.md)), a camera button appears in the top bar and each page gets an **Add scan** tab. Both open `/scan`. Use **Take photo** to open the phone camera, or **Choose photo** to pick a file, and add an optional note for Claude. JPEG, PNG and WebP work; HEIC is rejected. The size limit is `GYPSUM_UPLOAD_MAX_MB`.
+
+**The photo is sent to Anthropic.** Do not scan anything you cannot send there. Each scan is one Claude API call billed to your key (about 5k image tokens plus the output).
+
+The photo is turned upright and scaled down (long edge at most 2576 px) before it is sent. Claude transcribes the text as Markdown and uses what the wiki can show: grids (tables, schedules, pin charts) become Markdown tables, and flows (steps with arrows, decision trees) become Mermaid diagrams. Drawings whose layout matters, such as schematics, stay pictures. Claude also gets the titles of existing pages (up to 1500, most recently edited first) and links the first mention of each as `[[Title]]`; links to pages that do not exist are removed before saving. It also marks the figures. Each figure is cropped from the full-resolution photo, stored as an image and embedded where it sat in the original. Claude picks a style per figure: black and white, grayscale, a small color palette (2-8 colors), or full color.
+
+A photo that is not a document (a car, a bird, a person, a building) is put on the page itself, cropped to its subject and scaled down to `GYPSUM_IMAGE_MAX_PX`, with a description under it.
+
+- **From the top bar:** a new page is created. Claude picks the title (` 2`, ` 3` is added if the title exists) and the page is linked from the best matching parent page, or Home.
+- **From the Add scan tab** (`/scan?page=Slug`): the content is appended to that page. Claude gets the page title and headings for context.
+
+The original photo is not kept. The scan runs in the background; `/scan/{id}` shows progress, then a link to the page and **Scan another photo into this page**. Jobs are kept in memory for 1 hour, so a restart loses running jobs.
+
 ## Page History
 
 Click the **History** tab to view the git commit log for a page. Select two revisions using the **Old** and **New** radio buttons, then click **Compare Selected** to see a colorized unified diff. The author column shows who made each change: the signed-in user for web edits, or the MCP client (for example `claude-code (MCP)`) for agent edits; see [MCP Server](mcp.md#commit-authors).

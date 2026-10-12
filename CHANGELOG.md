@@ -2,6 +2,17 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.56.0
+
+### Added
+- **Photo scan to page** — with `ANTHROPIC_API_KEY` set, a camera button in the top bar (`/scan`) and an **Add scan** tab on each page (`/scan?page=Slug`) turn a photo into wiki content. Claude transcribes the text as Markdown, turns grids into tables and flows into Mermaid diagrams, links mentions of existing pages as `[[Title]]`, finds the figures, and each figure is cropped from the full-resolution photo, stored as an image and embedded where it sat. Per figure it picks a style: black and white (1-bit PNG), grayscale (PNG for diagrams, JPEG for photos), a 2-8 color palette (indexed PNG) or color (JPEG). A new scan gets a title from Claude and is linked from the best parent page (Home as fallback); a scan from a page tab is appended to that page. Runs in the background with a progress page at `/scan/{id}`. JPEG, PNG and WebP are accepted, HEIC is rejected, the limit is `GYPSUM_UPLOAD_MAX_MB`. A photo that is not a document (a car, a bird, a person) is stored on the page, cropped to its subject, with a description. Otherwise the original photo is not kept. See [Usage → Photo scans](docs/usage.md#photo-scans).
+- **Config** — `ANTHROPIC_API_KEY` (turns scanning on) and `GYPSUM_SCAN_MODEL` (default `claude-opus-5-5`). Helm values `scan.apiKeySecret` and `scan.model`. See [Configuration](docs/configuration.md).
+
+### Notes
+- The photo is sent to Anthropic. Each scan is one Claude API call billed to the key.
+- Scan jobs are kept in memory for 1 hour; a restart loses running jobs.
+- New dependency: `github.com/anthropics/anthropic-sdk-go`.
+
 ## v0.55.0
 
 ### Added

@@ -8,6 +8,7 @@
       <a href="/edit/{{.Page.Slug}}">Edit</a>
       <a href="/share/{{.Page.Slug}}">Share</a>
       <a href="/history/{{.Page.Slug}}">History</a>
+      {{if .ScanEnabled}}<a href="/scan?page={{.Page.Slug}}">Add scan</a>{{end}}
     </div>
   </div>
   <div class="wiki-content">{{.RenderedHTML}}</div>

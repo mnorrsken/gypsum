@@ -133,6 +133,15 @@ uploads:
   # uploaded.
   imageMaxPx: 2048
 
+# Photo scanning: a camera button in the web UI sends a photo to Claude, which
+# turns it into a wiki page (text plus cut-out figures). Off unless
+# apiKeySecret is set. Each scan is one Claude API call, billed to that key.
+scan:
+  # Existing Secret with a key named "anthropic-api-key".
+  apiKeySecret: ""
+  # Claude model id. Empty uses the built-in default (claude-opus-5-5).
+  model: ""
+
 # Semantic search: pages and skills are embedded through an OpenAI-compatible
 # /embeddings endpoint (Ollama, OpenAI, llama.cpp, vLLM, LiteLLM, ...) and
 # search blends meaning-based matches with full-text matches. Off unless url

@@ -156,6 +156,19 @@ spec:
               value: {{ .imageMaxPx | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.scan }}
+            {{- if .apiKeySecret }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .apiKeySecret }}
+                  key: anthropic-api-key
+            {{- if .model }}
+            - name: GYPSUM_SCAN_MODEL
+              value: {{ .model | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.embed }}
             {{- if (.server).enabled }}
             - name: GYPSUM_EMBED_URL

@@ -42,6 +42,9 @@
            role="status" aria-live="polite" title="Git sync status">
           <span class="git-status-dot"></span>
         </a>
+        {{if .ScanEnabled}}
+        <a class="lock-toggle scan-button" href="/scan" aria-label="Scan a photo" title="Scan a photo">&#128247;</a>
+        {{end}}
         <button id="secure-lock-btn" class="lock-toggle" type="button" aria-label="Encryption" title="Encryption locked">
           <span class="lock-icon">&#128274;</span>
         </button>

@@ -148,6 +148,13 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-body-size: "25m"
 ```
 
+### Photo scans
+
+| Parameter | Default | Description |
+|---|---|---|
+| `scan.apiKeySecret` | `""` | Name of an existing Secret with a key `anthropic-api-key`. Turns on [photo scans](usage.md#photo-scans) (`ANTHROPIC_API_KEY`). |
+| `scan.model` | `""` | Claude model id; empty uses the built-in default (`GYPSUM_SCAN_MODEL`). Only applied when `scan.apiKeySecret` is set. |
+
 ### Metrics
 
 | Parameter | Default | Description |
