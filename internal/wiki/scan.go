@@ -20,6 +20,10 @@ const scanTimeout = 6 * time.Minute
 // [[links]]; larger wikis offer the most recently edited ones.
 const scanMaxLinkPages = 1500
 
+// scanMaxRewriteChars caps the page size sent to the model for a rewrite.
+// Longer pages only get their headings and the scan is appended.
+const scanMaxRewriteChars = 20000
+
 // scanJobTTL is how long finished scan jobs stay visible.
 const scanJobTTL = time.Hour
 
@@ -32,16 +36,17 @@ const (
 
 // ScanJob is one photo being turned into wiki content.
 type ScanJob struct {
-	ID       string
-	Status   string // running, done or failed
-	Step     string // what is happening now, for the progress view
-	Error    string
-	Target   string // page the scan was asked to extend; "" = new page
-	Slug     string // page created or extended
-	Title    string
-	Appended bool // true when added to an existing page
-	Figures  int  // figures cut out and stored
-	Created  time.Time
+	ID        string
+	Status    string // running, done or failed
+	Step      string // what is happening now, for the progress view
+	Error     string
+	Target    string // page the scan was asked to extend; "" = new page
+	Slug      string // page created or extended
+	Title     string
+	Appended  bool // true when added to an existing page
+	Rewritten bool // true when the existing page was rewritten around the scan
+	Figures   int  // figures cut out and stored
+	Created   time.Time
 }
 
 // Scanner turns photos into wiki pages: the analyzer reads the photo, figures
@@ -53,13 +58,15 @@ type Scanner struct {
 	analyzer   ScanAnalyzer
 	uploadCfg  UploadConfig
 
-	mu   sync.Mutex
-	jobs map[string]*ScanJob
+	mu        sync.Mutex
+	jobs      map[string]*ScanJob
+	pageLocks map[string]*sync.Mutex // serializes scans into the same page
 }
 
 // NewScanner creates a scanner that stores results through store.
 func NewScanner(store *PageStore, autoCommit *GitAutoCommitter, analyzer ScanAnalyzer, cfg UploadConfig) *Scanner {
-	return &Scanner{store: store, autoCommit: autoCommit, analyzer: analyzer, uploadCfg: cfg, jobs: make(map[string]*ScanJob)}
+	return &Scanner{store: store, autoCommit: autoCommit, analyzer: analyzer, uploadCfg: cfg,
+		jobs: make(map[string]*ScanJob), pageLocks: make(map[string]*sync.Mutex)}
 }
 
 // Start begins scanning photo in the background and returns the job ID.
@@ -109,6 +116,20 @@ func (s *Scanner) step(id, step string) {
 	s.update(id, func(j *ScanJob) { j.Step = step })
 }
 
+// lockPage holds a page for the whole of a scan into it, so a second scan
+// of the same page waits and then sees the first one's result.
+func (s *Scanner) lockPage(slug string) func() {
+	s.mu.Lock()
+	l, ok := s.pageLocks[slug]
+	if !ok {
+		l = &sync.Mutex{}
+		s.pageLocks[slug] = l
+	}
+	s.mu.Unlock()
+	l.Lock()
+	return l.Unlock
+}
+
 func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, note, author string) error {
 	photoImg, err := prepareScanImage(photo)
 	if err != nil {
@@ -116,13 +137,25 @@ func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, 
 	}
 
 	req := ScanRequest{Width: photoImg.sent.Bounds().Dx(), Height: photoImg.sent.Bounds().Dy(), Note: note}
+	var original, header string // target page content and its "# Title" line
 	if targetSlug != "" {
+		s.step(id, "Waiting for other scans of this page")
+		defer s.lockPage(targetSlug)()
 		page, err := s.store.Load(KindPage, targetSlug)
 		if err != nil {
 			return fmt.Errorf("page not found: %s", targetSlug)
 		}
+		original = page.Content
 		req.AppendTitle = pageDisplayTitle(page)
-		req.Headings = ListSectionHeadings(page.Content)
+		var body string
+		header, body = splitTitleLine(page.Content)
+		// Pages with encrypted fields are never rewritten, so the model can
+		// not damage them; long pages are appended to keep the request small.
+		if len(body) <= scanMaxRewriteChars && !strings.Contains(body, "{{secure") {
+			req.PageBody = body
+		} else {
+			req.Headings = ListSectionHeadings(page.Content)
+		}
 	}
 
 	existing, offered := s.linkablePages(targetSlug)
@@ -132,6 +165,10 @@ func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, 
 	result, err := s.analyzer.Analyze(ctx, photoImg.jpeg, req)
 	if err != nil {
 		return err
+	}
+	log.Printf("scan %s: %q, %d chars, %d figures, rewrite=%v", id, result.Title, len(result.Markdown), len(result.Figures), result.Rewrite)
+	if strings.TrimSpace(result.Markdown) == "" && len(result.Figures) == 0 {
+		return fmt.Errorf("Claude found nothing to add from this photo")
 	}
 
 	s.step(id, "Saving figures")
@@ -145,12 +182,29 @@ func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, 
 	s.step(id, "Saving the page")
 	if targetSlug != "" {
 		body = keepExistingLinks(body, existing, targetSlug)
-		if err := s.store.AppendToPage(targetSlug, body); err != nil {
+		if strings.TrimSpace(body) == "" {
+			return fmt.Errorf("Claude found nothing to add from this photo")
+		}
+		// The page lock keeps other scans out, but not edits in the browser.
+		if current, err := s.store.Load(KindPage, targetSlug); err != nil || current.Content != original {
+			return fmt.Errorf("the page was edited during the scan; scan again")
+		}
+		rewrite := result.Rewrite && req.PageBody != ""
+		if rewrite {
+			body = restoreMissingRefs(req.PageBody, body)
+			content := strings.TrimSpace(body) + "\n"
+			if header != "" {
+				content = header + "\n\n" + content
+			}
+			if err := s.store.Save(KindPage, targetSlug, content); err != nil {
+				return fmt.Errorf("saving page %s: %w", targetSlug, err)
+			}
+		} else if err := s.store.AppendToPage(targetSlug, body); err != nil {
 			return fmt.Errorf("adding to page %s: %w", targetSlug, err)
 		}
 		_ = s.autoCommit.CommitSave(KindPage, targetSlug, author)
 		s.update(id, func(j *ScanJob) {
-			j.Status, j.Slug, j.Title, j.Appended, j.Figures = scanDone, targetSlug, req.AppendTitle, true, len(figureMarkdown)
+			j.Status, j.Slug, j.Title, j.Appended, j.Rewritten, j.Figures = scanDone, targetSlug, req.AppendTitle, true, rewrite, len(figureMarkdown)
 		})
 		return nil
 	}
@@ -176,6 +230,7 @@ func (s *Scanner) saveFigures(photo *scanPhoto, figures []ScanFigure, title, aut
 	for _, f := range figures {
 		crop := photo.cropFigure(image.Rect(f.X0, f.Y0, f.X1, f.Y1))
 		if crop == nil {
+			log.Printf("scan: figure %d box (%d,%d)-(%d,%d) is outside the image or too small", f.ID, f.X0, f.Y0, f.X1, f.Y1)
 			continue
 		}
 		data, ext, err := renderFigure(crop, f.Style, f.Colors)
@@ -307,4 +362,29 @@ func keepExistingLinks(md string, existing map[string]bool, self string) string 
 			return title
 		})
 	})
+}
+
+// splitTitleLine separates a leading "# Title" line from the rest of a page.
+func splitTitleLine(content string) (header, body string) {
+	trimmed := strings.TrimLeft(content, "\n")
+	first, rest, _ := strings.Cut(trimmed, "\n")
+	if strings.HasPrefix(first, "# ") {
+		return first, strings.TrimSpace(rest)
+	}
+	return "", strings.TrimSpace(content)
+}
+
+// uploadRefPattern matches a Markdown image or link to an uploaded file.
+var uploadRefPattern = regexp.MustCompile(`!?\[[^\]\n]*\]\((/(?:images|files)/[^)\s]+)\)`)
+
+// restoreMissingRefs appends, unchanged, every image or file reference of the
+// old page that the rewritten page dropped, so a rewrite never loses one.
+func restoreMissingRefs(oldBody, newBody string) string {
+	for _, m := range uploadRefPattern.FindAllStringSubmatch(oldBody, -1) {
+		if !strings.Contains(newBody, m[1]) {
+			log.Printf("scan: rewrite dropped %s; adding it back", m[1])
+			newBody = strings.TrimRight(newBody, "\n") + "\n\n" + m[0]
+		}
+	}
+	return newBody
 }

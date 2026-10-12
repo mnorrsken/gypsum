@@ -18,7 +18,7 @@
   <p class="error">The scan failed: {{.Error}}</p>
   <p><a class="button" href="/scan{{if .Target}}?page={{.Target}}{{end}}">Try again</a></p>
   {{else}}
-  <p>{{if .Appended}}Added to{{else}}Created{{end}} <a href="/wiki/{{.Slug}}"><strong>{{.Title}}</strong></a>{{if .Figures}}, with {{.Figures}} picture{{if gt .Figures 1}}s{{end}} cut out{{end}}.</p>
+  <p>{{if .Rewritten}}Rewrote{{else if .Appended}}Added to{{else}}Created{{end}} <a href="/wiki/{{.Slug}}"><strong>{{.Title}}</strong></a>{{if .Figures}}, with {{.Figures}} picture{{if gt .Figures 1}}s{{end}} cut out{{end}}.</p>
   <div class="scan-buttons">
     <a class="button" href="/wiki/{{.Slug}}">Open page</a>
     <a class="button secondary" href="/scan?page={{.Slug}}">Scan another photo into this page</a>

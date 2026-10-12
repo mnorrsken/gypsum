@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -13,6 +14,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -287,7 +289,7 @@ func TestScannerAppendAndFailure(t *testing.T) {
 	if job.Status != scanDone || !job.Appended || job.Slug != "Oven" {
 		t.Fatalf("job = %+v", job)
 	}
-	if fake.got.AppendTitle != "Oven Manual" || len(fake.got.Headings) != 2 {
+	if fake.got.AppendTitle != "Oven Manual" || fake.got.PageBody != "## Setup\n\nPlug it in." {
 		t.Errorf("analyzer request = %+v", fake.got)
 	}
 	page, _ := store.Load(KindPage, "Oven")
@@ -295,10 +297,89 @@ func TestScannerAppendAndFailure(t *testing.T) {
 		t.Fatalf("page content:\n%q", page.Content)
 	}
 
+	// An empty answer fails instead of adding blank lines.
+	fake.result = &ScanResult{Title: "Oven Manual", Markdown: "%%FIGURE 1%%"}
+	job = waitScan(t, s, s.Start(pagePhoto(t), "Oven", "", "tester"))
+	if job.Status != scanFailed || !strings.Contains(job.Error, "nothing to add") {
+		t.Fatalf("empty job = %+v", job)
+	}
+
 	fake.err = errors.New("claude API error 529: overloaded")
 	job = waitScan(t, s, s.Start(pagePhoto(t), "Oven", "", "tester"))
 	if job.Status != scanFailed || !strings.Contains(job.Error, "overloaded") {
 		t.Fatalf("failed job = %+v", job)
+	}
+	if page2, _ := store.Load(KindPage, "Oven"); page2.Content != page.Content {
+		t.Errorf("failed scans changed the page:\n%q", page2.Content)
+	}
+}
+
+func TestScannerRewrite(t *testing.T) {
+	store := NewPageStore(filepath.Join(t.TempDir(), "pages"))
+	_ = store.Save(KindPage, "Icons", "# Pixel Icons\n\n![Tank](/images/tank.png)\n\nTwo tanks.\n\n![Dome](/images/dome.png)\n\nA dome.\n")
+	// Claude restructures the page with a heading per icon, but drops the dome image.
+	fake := &fakeAnalyzer{result: &ScanResult{
+		Title:    "Pixel Icons",
+		Rewrite:  true,
+		Markdown: "## Tank\n\n![Tank](/images/tank.png)\n\nTwo tanks.\n\n## Dome\n\nA dome.\n\n## Rocket\n\n%%FIGURE 1%%\n\nA rocket.",
+		Figures:  []ScanFigure{{ID: 1, Caption: "Rocket", X0: 110, Y0: 110, X1: 190, Y1: 190, Style: figureColor}},
+	}}
+	s := NewScanner(store, nil, fake, DefaultUploadConfig)
+
+	job := waitScan(t, s, s.Start(pagePhoto(t), "Icons", "", "tester"))
+	if job.Status != scanDone || !job.Rewritten {
+		t.Fatalf("job = %+v", job)
+	}
+	page, _ := store.Load(KindPage, "Icons")
+	c := page.Content
+	if !strings.HasPrefix(c, "# Pixel Icons\n\n## Tank\n") || !strings.Contains(c, "## Rocket\n\n![Rocket](/images/pixel-icons-fig1-") {
+		t.Fatalf("page content:\n%s", c)
+	}
+	if !strings.HasSuffix(c, "\n\n![Dome](/images/dome.png)\n") {
+		t.Errorf("dropped image was not restored:\n%s", c)
+	}
+
+	// Pages with encrypted fields are only sent as headings and never rewritten.
+	_ = store.Save(KindPage, "Secret", "# Secret\n\n## Wifi\n\n{{secure_aes:abc=}}\n")
+	fake.result = &ScanResult{Title: "Secret", Rewrite: true, Markdown: "## Router\n\nA router."}
+	job = waitScan(t, s, s.Start(pagePhoto(t), "Secret", "", "tester"))
+	if fake.got.PageBody != "" || len(fake.got.Headings) != 2 || job.Rewritten {
+		t.Fatalf("secure page request = %+v, job = %+v", fake.got, job)
+	}
+	if page, _ := store.Load(KindPage, "Secret"); !strings.Contains(page.Content, "{{secure_aes:abc=}}\n\n## Router") {
+		t.Errorf("secure page content:\n%s", page.Content)
+	}
+}
+
+// slowAnalyzer appends a numbered section and records the page body it saw.
+type slowAnalyzer struct {
+	mu     sync.Mutex
+	n      int
+	bodies []string
+}
+
+func (a *slowAnalyzer) Analyze(_ context.Context, _ []byte, req ScanRequest) (*ScanResult, error) {
+	a.mu.Lock()
+	a.n++
+	n := a.n
+	a.bodies = append(a.bodies, req.PageBody)
+	a.mu.Unlock()
+	time.Sleep(50 * time.Millisecond)
+	return &ScanResult{Title: "List", Markdown: fmt.Sprintf("Item %d", n)}, nil
+}
+
+func TestScannerSerializesScansOfOnePage(t *testing.T) {
+	store := NewPageStore(filepath.Join(t.TempDir(), "pages"))
+	_ = store.Save(KindPage, "List", "# List\n\nStart\n")
+	s := NewScanner(store, nil, &slowAnalyzer{}, DefaultUploadConfig)
+
+	a := s.Start(pagePhoto(t), "List", "", "tester")
+	b := s.Start(pagePhoto(t), "List", "", "tester")
+	waitScan(t, s, a)
+	waitScan(t, s, b)
+	page, _ := store.Load(KindPage, "List")
+	if !strings.Contains(page.Content, "Item 1") || !strings.Contains(page.Content, "Item 2") {
+		t.Fatalf("a concurrent scan was lost:\n%s", page.Content)
 	}
 }
 
@@ -387,7 +468,7 @@ func TestClaudeAnalyzerRequest(t *testing.T) {
 		t.Error("request sets thinking; Opus 5.5 runs adaptive by default")
 	}
 	raw, _ := json.Marshal(got["messages"])
-	if !strings.Contains(string(raw), `"type":"image"`) || !strings.Contains(string(raw), `continues the existing wiki page \"Oven\"`) ||
+	if !strings.Contains(string(raw), `"type":"image"`) || !strings.Contains(string(raw), `is added to the existing wiki page \"Oven\"`) ||
 		!strings.Contains(string(raw), `Existing wiki pages:\nHeat Pump`) {
 		t.Errorf("messages = %s", raw)
 	}
