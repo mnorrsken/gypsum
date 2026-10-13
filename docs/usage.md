@@ -2,7 +2,7 @@
 
 ## Layout and navigation
 
-On a desktop screen there is a top bar (logo, search field, sync status dot, scan camera when scanning is on, 🔒, theme toggle) and a sidebar on the left. The sidebar has icon links to Home, All pages, Recent edits, Search, Quick notes, Files, Secrets, Link graph, Skills and Scan a photo, the **New page** and **New skill** buttons, your Favorites, Recently edited pages, and a collapsible **Documentation** group. The current page is highlighted. Page tabs (Page, Edit, Share, History) are a segmented control above the content.
+On a desktop screen there is a top bar (logo, search field, sync status dot, scan camera when scanning is on, lock, theme toggle) and a sidebar on the left. The sidebar has icon links to Home, All pages, Recent edits, Search, Quick notes, Files, Secrets, Link graph, Skills and Scan a photo, the **New page** and **New skill** buttons, your Favorites, Recently edited pages, and a collapsible **Documentation** group. The current page is highlighted. Page tabs (Page, Edit, Share, History) are a segmented control above the content.
 
 ### Phones
 
@@ -22,7 +22,7 @@ Gypsum has a web app manifest (`/static/manifest.json`) and icons, so the browse
 
 ## Pages
 
-All pages live in `data/repo/pages/` as `.md` files. Click **+ New Page** in the sidebar to create a page.
+All pages live in `data/repo/pages/` as `.md` files. Click **New page** in the sidebar (on a phone: the menu) to create a page.
 
 Use `[[Page Title]]` to link between pages. The title is converted to a slug (`Page_Title`) automatically. Clicking a link to a non-existent page opens the editor pre-populated with a heading.
 
@@ -61,7 +61,7 @@ upgrades its blocks to `secure_aes2`. See
 [Configuration → Encryption](configuration.md#encryption) for the salt and bulk
 migration.
 
-The passphrase is entered once via the 🔒 icon in the top bar and can be
+The passphrase is entered once via the lock icon in the top bar and can be
 remembered on the device (the derived keys are stored in `localStorage`). The
 server never sees the passphrase, the derived key, or any plaintext.
 
@@ -149,7 +149,7 @@ Behind Authelia or another proxy, an upload link works as long as the browser th
 
 ## Photo scans
 
-With `ANTHROPIC_API_KEY` set (see [Configuration](configuration.md)), a camera button appears in the top bar and each page gets an **Add scan** tab. Both open `/scan`. Use **Take photo** to open the phone camera, or **Choose photo** to pick a file, and add an optional note for Claude. JPEG, PNG and WebP work; HEIC is rejected. The size limit is `GYPSUM_UPLOAD_MAX_MB`.
+With `ANTHROPIC_API_KEY` set (see [Configuration](configuration.md)), a camera button appears (in the top bar on a desktop, as the round centre button of the bottom bar on a phone) and each page gets an **Add scan** tab. Both open `/scan`. Use **Take photo** to open the phone camera, or **Choose photo** to pick a file, and add an optional note for Claude. JPEG, PNG and WebP work; HEIC is rejected. The size limit is `GYPSUM_UPLOAD_MAX_MB`.
 
 **The photo is sent to Anthropic.** Do not scan anything you cannot send there. Each scan is one Claude API call billed to your key (about 5k image tokens plus the output).
 
@@ -157,7 +157,7 @@ The photo is turned upright and scaled down (long edge at most 2576 px) before i
 
 A photo that is not a document (a car, a bird, a person, a building) is put on the page itself, cropped to its subject and scaled down to `GYPSUM_IMAGE_MAX_PX`, with a description under it.
 
-- **From the top bar:** a new page is created. Claude picks the title (` 2`, ` 3` is added if the title exists) and the page is linked from the best matching parent page, or Home.
+- **From the camera button:** a new page is created. Claude picks the title (` 2`, ` 3` is added if the title exists) and the page is linked from the best matching parent page, or Home.
 - **From the Add scan tab** (`/scan?page=Slug`): Claude gets the page's content and either appends the new part (for example the next page of a manual) or rewrites the whole page so every item has the same layout (for example a heading per picture, or a table with a picture and a description column). A rewrite keeps every existing image and file link; one that Claude drops is added back at the end. The old version stays in the page history. Pages longer than 20,000 characters or with encrypted fields are never rewritten; Claude only gets their headings and the scan is appended. Scans into the same page run one after another, and a scan fails if the page was edited in the browser meanwhile.
 
 The original photo is not kept. The scan runs in the background; `/scan/{id}` shows progress, then a link to the page and **Scan another photo into this page**. Jobs are kept in memory for 1 hour, so a restart loses running jobs.
@@ -169,7 +169,7 @@ Click the **History** tab to view the git commit log for a page. Select two revi
 ## Git Sync Status
 
 When a git remote is configured (`GYPSUM_GIT_REMOTE_URL`), a status dot appears
-in the top bar next to the 🔒 icon:
+in the top bar next to the lock icon:
 
 - **Green** — the last fetch/push to the remote succeeded.
 - **Amber (pulsing)** — a fetch or push is in progress.
@@ -190,7 +190,7 @@ Tick "Show diff" in the editor before saving to see a colorized unified diff of 
 
 ## Favorites
 
-Edit the special `_favorites.md` page (linked at the bottom of the Favorites section in the sidebar) to pin pages:
+Edit the special `_favorites.md` page (the pencil icon next to the Favorites heading in the sidebar) to pin pages:
 
 ```
 [[Home]]
@@ -222,4 +222,4 @@ Share any page via the **Share** tab. Public pages are rendered in a minimal rea
 
 ## Printing
 
-Use your browser's print function (Ctrl+P / Cmd+P) to get a clean printout with just the page title and content. Navigation, sidebar, tabs, and encrypted fields are hidden automatically.
+Use your browser's print function (Ctrl+P / Cmd+P) to get a clean printout with just the page title and content. Navigation (top bar, sidebar, bottom bar), tabs, and encrypted fields are hidden automatically.

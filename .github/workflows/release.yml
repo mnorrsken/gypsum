@@ -11,9 +11,31 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -race ./...
+
   build-and-push:
     name: Build and push container image
     runs-on: ubuntu-latest
+    needs: test
     permissions:
       contents: read
       packages: write
@@ -54,3 +76,67 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    name: GitHub release with binaries
+    runs-on: ubuntu-latest
+    needs: [test, build-and-push]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binaries
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          mkdir -p dist
+          build() { # binary package os arch
+            ext=""
+            [ "$3" = windows ] && ext=".exe"
+            CGO_ENABLED=0 GOOS="$3" GOARCH="$4" go build -trimpath -ldflags="-s -w" \
+              -o "dist/$1_${VERSION}_$3_$4${ext}" "$2"
+          }
+          for os in linux darwin; do
+            for arch in amd64 arm64; do
+              build gypsum ./cmd/wiki "$os" "$arch"
+              build mcp-proxy ./cmd/mcp-proxy "$os" "$arch"
+            done
+          done
+          # mcp-proxy also runs next to Claude Desktop on Windows.
+          build mcp-proxy ./cmd/mcp-proxy windows amd64
+          build mcp-proxy ./cmd/mcp-proxy windows arm64
+          (cd dist && sha256sum * > checksums.txt)
+
+      - name: Release notes from CHANGELOG
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          VERSION_NO_V="${VERSION#v}"
+          awk -v v="$VERSION_NO_V" '
+            $0 ~ "^## v" v "$" { found = 1; next }
+            found && /^## /     { exit }
+            found               { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "No CHANGELOG section for $VERSION" >&2; exit 1; }
+          cat >> notes.md <<EOF
+
+          ## Install
+
+          Container image: \`ghcr.io/${GITHUB_REPOSITORY}:${VERSION_NO_V}\`, Helm chart: \`oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/gypsum --version ${VERSION_NO_V}\`.
+
+          Binaries below are named \`<binary>_${VERSION}_<os>_<arch>\`. After downloading, \`chmod +x\` them and check them with \`sha256sum -c checksums.txt --ignore-missing\`.
+          EOF
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          gh release create "$VERSION" --title "Release $VERSION" --notes-file notes.md dist/*

@@ -119,7 +119,7 @@ init process as PID 1.
 
 Secure fields (`{{secure:...}}`) are encrypted and decrypted entirely in the
 browser using AES-256-GCM. The passphrase never reaches the server. On first
-visit, click the 🔒 icon in the top bar and enter your passphrase; tick
+visit, click the lock icon in the top bar and enter your passphrase; tick
 "Remember on this device" to persist the derived key in `localStorage`.
 
 New blocks are written as `{{secure_aes2:...}}` with **PBKDF2-HMAC-SHA256**

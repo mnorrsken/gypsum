@@ -2,6 +2,17 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.57.1
+
+### Added
+- **GitHub releases** — every tag now gets a GitHub Release with the CHANGELOG section as notes, `gypsum` binaries for Linux and macOS (amd64, arm64), `mcp-proxy` binaries for Linux, macOS and Windows, and `checksums.txt`. The release workflow also runs `go vet` and `go test -race` before it builds the image or the release.
+
+### Changed
+- **Docs and README** — the README screenshot shows the new UI on desktop and phone; the README configuration table lists the upload and photo-scan variables; usage and skills docs describe the new buttons and icons instead of the old sidebar links and emoji.
+
+### Fixed
+- **`mcp-proxy auth <url> --password=…`** — the documented form ignored the password flag because it came after the URL, and then asked for the password on stdin. Flags are now accepted before or after the URL.
+
 ## v0.57.0
 
 ### Added

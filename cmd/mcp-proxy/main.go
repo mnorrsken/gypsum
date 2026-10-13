@@ -226,6 +226,31 @@ func encodeHeaderValue(v string) string {
 
 // ── Auth mode ───────────────────────────────────────────────────────────────
 
+// flagsFirst moves flags in front of the positional arguments, because the
+// flag package stops at the first non-flag. That lets the documented
+// `mcp-proxy auth <url> --password=PASS` work as well as `--password` first.
+func flagsFirst(args []string) []string {
+	var flags, rest []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			rest = append(rest, args[i+1:]...)
+			return append(flags, rest...)
+		case strings.HasPrefix(a, "-"):
+			flags = append(flags, a)
+			// "--password value" (no "=") takes the next argument.
+			if !strings.Contains(a, "=") && i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+		default:
+			rest = append(rest, a)
+		}
+	}
+	return append(flags, rest...)
+}
+
 func runAuth(args []string) {
 	fs := flag.NewFlagSet("auth", flag.ExitOnError)
 	password := fs.String("password", "", "wiki password (falls back to GYPSUM_PASSWORD env var, then prompts)")
@@ -244,7 +269,7 @@ func runAuth(args []string) {
 		fmt.Fprintln(os.Stderr, "  GYPSUM_PASSWORD  Wiki password (alternative to --password flag)")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	_ = fs.Parse(flagsFirst(args))
 
 	if fs.NArg() < 1 {
 		fs.Usage()

@@ -85,7 +85,7 @@ make build
 make run
 ```
 
-Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md) or [Helm](docs/helm.md) for container deployment.
+Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md) or [Helm](docs/helm.md) for container deployment. Prebuilt `gypsum` and `mcp-proxy` binaries are attached to each [GitHub release](https://github.com/mnorrsken/gypsum/releases).
 
 ## Configuration
 
@@ -102,12 +102,16 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 | `GYPSUM_EMBED_URL` | _(empty)_ | OpenAI-compatible embeddings API (e.g. `http://localhost:11434/v1`); turns on [semantic search](#semantic-search) |
 | `GYPSUM_EMBED_MODEL` | _(empty)_ | Embedding model name; required with `GYPSUM_EMBED_URL` |
 | `GYPSUM_EMBED_API_KEY` | _(empty)_ | Optional Bearer token for the embeddings API |
+| `GYPSUM_UPLOAD_MAX_MB` | `20` | Largest accepted upload, per file |
+| `GYPSUM_IMAGE_MAX_PX` | `2048` | Longest side of stored JPEG/PNG photos (EXIF/GPS stripped); `0` stores them unchanged |
+| `ANTHROPIC_API_KEY` | _(empty)_ | Turns on [photo scans](docs/usage.md#photo-scans); the photo is sent to Claude |
+| `GYPSUM_SCAN_MODEL` | `claude-opus-5-5` | Claude model used for photo scans |
 
 OAuth, auth, and Docker-specific variables are documented in [Configuration](docs/configuration.md).
 
 ## Documentation
 
-- [Usage](docs/usage.md) — pages, secure fields, images, search, favorites
+- [Usage](docs/usage.md) — layout, pages, secure fields, images and files, photo scans, search, favorites
 - [Configuration](docs/configuration.md) — all environment variables
 - [Authentication](docs/authentication.md) — header auth and Authelia setup
 - [MCP Server](docs/mcp.md) — connecting AI assistants to your wiki
@@ -137,6 +141,7 @@ data/
 make help       # show all targets
 make fmt        # format Go source
 make test       # run unit tests
+make ui-test    # browser tests in headless Chrome (needs Chrome)
 make build      # build binary
 make run        # run on :8080
 ```

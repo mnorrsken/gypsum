@@ -116,7 +116,7 @@ Claude will detect the 401 response, follow the OAuth discovery documents, and e
 
 For local use or when the wiki isn't publicly accessible, use the `mcp-proxy` binary. It bridges stdio to the remote HTTP endpoint.
 
-Build it with `make build`, then obtain a token:
+Download it for your platform from the [GitHub releases](https://github.com/mnorrsken/gypsum/releases) (`mcp-proxy_<version>_<os>_<arch>`, check it against `checksums.txt` and `chmod +x` it) or build it with `make build`, then obtain a token:
 
 ```bash
 mcp-proxy auth https://wiki.example.com --password=your-password

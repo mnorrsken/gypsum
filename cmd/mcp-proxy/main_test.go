@@ -409,3 +409,19 @@ func TestFullAuthThenProxy(t *testing.T) {
 		t.Fatalf("proxy did not send the token: got %q", gotAuth)
 	}
 }
+
+func TestFlagsFirst(t *testing.T) {
+	tests := []struct {
+		in, want []string
+	}{
+		{[]string{"https://wiki.example.com", "--password=pw"}, []string{"--password=pw", "https://wiki.example.com"}},
+		{[]string{"https://wiki.example.com", "--password", "pw"}, []string{"--password", "pw", "https://wiki.example.com"}},
+		{[]string{"--password=pw", "https://wiki.example.com"}, []string{"--password=pw", "https://wiki.example.com"}},
+		{[]string{"https://wiki.example.com"}, []string{"https://wiki.example.com"}},
+	}
+	for _, tt := range tests {
+		if got := flagsFirst(tt.in); strings.Join(got, " ") != strings.Join(tt.want, " ") {
+			t.Errorf("flagsFirst(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

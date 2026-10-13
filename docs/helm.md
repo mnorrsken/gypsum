@@ -235,7 +235,7 @@ Avoid, or use only with care:
 
 Encryption of `{{secure:...}}` fields happens entirely in the browser; the
 cluster never holds the encryption passphrase. Each user enters it once via
-the 🔒 dialog in the top bar.
+the lock dialog in the top bar.
 
 The PBKDF2 salt (`GYPSUM_SECURE_SALT`) is not secret, but it must stay stable —
 changing it makes existing `secure_aes2` fields undecryptable. It follows the

@@ -6,7 +6,7 @@ Unlike regular wiki pages (which document information for humans), skills tell a
 
 ## Creating a Skill
 
-Click **+ New Skill** in the sidebar, or use the MCP `create_skill` tool. A skill is just markdown with a recommended structure:
+Click **New skill** in the sidebar, or use the MCP `create_skill` tool. A skill is just markdown with a recommended structure:
 
 ```markdown
 # Go Testing Conventions
