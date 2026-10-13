@@ -21,6 +21,7 @@
 | `GYPSUM_IMAGE_MAX_PX` | `2048` | Longest side, in pixels, of stored JPEG and PNG uploads. Larger images are scaled down. JPEGs are always re-encoded, which drops EXIF data including GPS. `0` stores images unchanged. |
 | `ANTHROPIC_API_KEY` | _(empty)_ | Anthropic API key. Setting it turns on [photo scans](usage.md#photo-scans). Each scan is one API call billed to this key, and the photo is sent to Anthropic. |
 | `GYPSUM_SCAN_MODEL` | `claude-opus-5-5` | Claude model used for photo scans. Only used when `ANTHROPIC_API_KEY` is set. |
+| `GYPSUM_SCAN_CORNER_MODEL` | `claude-haiku-5-5` | Claude model that finds the page's corners so a document photographed at an angle is straightened before it is read; `off` skips that step. Only used when `ANTHROPIC_API_KEY` is set. |
 
 ### MCP sections
 

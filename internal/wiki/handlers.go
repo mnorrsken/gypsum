@@ -223,6 +223,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /scan", h.handleScanStart)
 	mux.HandleFunc("GET /scan/{id}", h.handleScanJob)
 	mux.HandleFunc("POST /scan/{id}/link", h.handleScanLink)
+	mux.HandleFunc("GET /scan/{id}/preview.jpg", h.handleScanPreview)
+	mux.HandleFunc("POST /scan/{id}/flat", h.handleScanRescanFlat)
 	mux.HandleFunc("/delete/", h.handleDeletePage)
 	mux.HandleFunc("/toggle-checkbox/", h.handleToggleCheckbox)
 	mux.HandleFunc("/share/", h.handleShare)

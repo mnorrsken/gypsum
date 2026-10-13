@@ -10,11 +10,13 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -142,27 +144,33 @@ func TestRenderFigureStyles(t *testing.T) {
 		t.Errorf("red area mapped to %v", pal.At(35, 5))
 	}
 
-	// Flat areas: grayscale is kept as a sharp PNG.
-	data, ext, err = renderFigure(img, figureGrayscale, nil)
-	if err != nil || ext != ".png" {
-		t.Fatalf("grayscale diagram: %v %s", err, ext)
-	}
-	if g, _ := png.Decode(bytes.NewReader(data)); g.ColorModel() != color.GrayModel {
-		t.Errorf("grayscale figure has color model %v", g.ColorModel())
-	}
-
-	// Smooth shading with grain, like a photo: grayscale falls back to JPEG.
-	photo := image.NewRGBA(image.Rect(0, 0, 256, 256))
-	seed := uint32(1)
-	for y := 0; y < 256; y++ {
+	// Gray: a smooth gradient is reduced to exactly 4 gray levels, as PNG.
+	grad := image.NewRGBA(image.Rect(0, 0, 256, 64))
+	for y := 0; y < 64; y++ {
 		for x := 0; x < 256; x++ {
-			seed = seed*1664525 + 1013904223
-			v := uint8((x+y)/2) + uint8(seed>>28)
-			photo.SetRGBA(x, y, color.RGBA{v, v, v, 255})
+			grad.SetRGBA(x, y, color.RGBA{uint8(x), uint8(x), uint8(x), 255})
 		}
 	}
-	if _, ext, _ := renderFigure(photo, figureGrayscale, nil); ext != ".jpg" {
-		t.Errorf("grayscale photo stored as %s, want .jpg", ext)
+	data, ext, err = renderFigure(grad, figureGray, nil)
+	if err != nil || ext != ".png" {
+		t.Fatalf("gray: %v %s", err, ext)
+	}
+	g, _ := png.Decode(bytes.NewReader(data))
+	levels := map[color.Color]bool{}
+	for x := 0; x < 256; x++ {
+		levels[g.At(x, 10)] = true
+	}
+	if len(levels) != grayLevels {
+		t.Errorf("gray figure has %d levels, want %d", len(levels), grayLevels)
+	}
+	// The earlier style name still works.
+	if _, ext, _ := renderFigure(grad, "grayscale", nil); ext != ".png" {
+		t.Errorf("old grayscale style stored as %s", ext)
+	}
+
+	// Photo: full-color JPEG.
+	if _, ext, _ := renderFigure(img, figurePhoto, nil); ext != ".jpg" {
+		t.Errorf("photo stored as %s, want .jpg", ext)
 	}
 }
 
@@ -342,7 +350,7 @@ func TestScannerRewrite(t *testing.T) {
 		Title:    "Pixel Icons",
 		Rewrite:  true,
 		Markdown: "## Tank\n\n![Tank](/images/tank.png)\n\nTwo tanks.\n\n## Dome\n\nA dome.\n\n## Rocket\n\n%%FIGURE 1%%\n\nA rocket.",
-		Figures:  []ScanFigure{{ID: 1, Caption: "Rocket", X0: 110, Y0: 110, X1: 190, Y1: 190, Style: figureColor}},
+		Figures:  []ScanFigure{{ID: 1, Caption: "Rocket", X0: 110, Y0: 110, X1: 190, Y1: 190, Style: figurePhoto}},
 	}}
 	s := NewScanner(store, nil, fake, DefaultUploadConfig)
 
@@ -538,5 +546,161 @@ func TestSuggestParentsPrefersMatchesOverHubs(t *testing.T) {
 			slugs = append(slugs, g.Slug)
 		}
 		t.Fatalf("suggestions = %v, want Heat_Pump first (Home only links to many pages)", slugs)
+	}
+}
+
+// findingAnalyzer is a fakeAnalyzer that also reports a page outline.
+type findingAnalyzer struct {
+	fakeAnalyzer
+	corners [4]Point // in pixels of a photoW×photoH photo
+	photoW  int
+	gotW    int // width of the image the scan pass received
+	gotH    int
+}
+
+func (f *findingAnalyzer) FindDocument(_ context.Context, _ []byte, w, h int) ([4]Point, bool, error) {
+	var out [4]Point
+	s := float64(w) / float64(f.photoW)
+	for i, c := range f.corners {
+		out[i] = Point{c.X * s, c.Y * s}
+	}
+	return out, true, nil
+}
+
+func (f *findingAnalyzer) Analyze(ctx context.Context, data []byte, req ScanRequest) (*ScanResult, error) {
+	f.gotW, f.gotH = req.Width, req.Height
+	return f.fakeAnalyzer.Analyze(ctx, data, req)
+}
+
+func TestScannerStraightensThePage(t *testing.T) {
+	store := NewPageStore(filepath.Join(t.TempDir(), "pages"))
+	doc := quadrantDoc(420, 594)
+	quad := cameraQuad(420, 594, 1000, 900, 1100, 35, 12)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, photoOfDoc(t, doc, quad, 900, 1100), &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+	a := &findingAnalyzer{fakeAnalyzer: fakeAnalyzer{result: &ScanResult{Title: "Quadrants", Markdown: "Four colors."}}, corners: quad, photoW: 900}
+	s := NewScanner(store, nil, a, DefaultUploadConfig)
+
+	job := waitScan(t, s, s.Start(buf.Bytes(), "", "", "tester"))
+	if job.Status != scanDone || !job.Straightened {
+		t.Fatalf("job = %+v", job)
+	}
+	if _, err := jpeg.Decode(bytes.NewReader(job.Preview)); err != nil {
+		t.Errorf("no outline preview: %v", err)
+	}
+	// The reading pass got the straightened page, with A4 proportions.
+	if ratio := float64(a.gotH) / float64(a.gotW); math.Abs(ratio-594.0/420) > 0.05 {
+		t.Errorf("scan pass got a %dx%d image (ratio %.2f), want the straightened A4 page", a.gotW, a.gotH, ratio)
+	}
+
+	// No usable outline (the photo's own frame): the photo is used as it is.
+	a.corners = [4]Point{{0, 0}, {900, 0}, {900, 1100}, {0, 1100}}
+	job = waitScan(t, s, s.Start(buf.Bytes(), "", "", "tester"))
+	if job.Straightened || a.gotW != 900 {
+		t.Errorf("full-frame outline straightened the photo: job %+v, scan width %d", job, a.gotW)
+	}
+}
+
+func TestClaudeFindDocumentRequest(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","model":"claude-haiku-5-5",
+			"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},
+			"content":[{"type":"text","text":"{\"found\":true,\"corners\":[{\"x\":10,\"y\":12},{\"x\":300,\"y\":20},{\"x\":290,\"y\":400},{\"x\":5,\"y\":390}]}"}]}`))
+	}))
+	defer srv.Close()
+
+	a := NewClaudeAnalyzer("test-key", "", option.WithBaseURL(srv.URL), option.WithMaxRetries(0))
+	corners, found, err := a.FindDocument(context.Background(), []byte{0xFF, 0xD8}, 320, 420)
+	if err != nil || !found || corners[2] != (Point{290, 400}) {
+		t.Fatalf("FindDocument = %v, %v, %v", corners, found, err)
+	}
+	if got["model"] != DefaultScanCornerModel {
+		t.Errorf("model = %v, want %s", got["model"], DefaultScanCornerModel)
+	}
+	raw, _ := json.Marshal(got["messages"])
+	if !strings.Contains(string(raw), "320×420 pixels") || !strings.Contains(string(raw), "reading order") {
+		t.Errorf("prompt lacks the image size or reading order: %s", raw)
+	}
+
+	a.SetCornerModel("")
+	if _, found, err := a.FindDocument(context.Background(), nil, 1, 1); found || err != nil {
+		t.Errorf("disabled corner model still searched: %v %v", found, err)
+	}
+}
+
+// blockingAnalyzer finds a page outline, and its first Analyze call waits
+// until the scan is stopped.
+type blockingAnalyzer struct {
+	findingAnalyzer
+	calls atomic.Int32
+}
+
+func (b *blockingAnalyzer) Analyze(ctx context.Context, data []byte, req ScanRequest) (*ScanResult, error) {
+	if b.calls.Add(1) == 1 {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return b.findingAnalyzer.Analyze(ctx, data, req)
+}
+
+func TestRescanWithoutStraightening(t *testing.T) {
+	store := NewPageStore(filepath.Join(t.TempDir(), "pages"))
+	quad := cameraQuad(420, 594, 1000, 900, 1100, 35, 12)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, photoOfDoc(t, quadrantDoc(420, 594), quad, 900, 1100), &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+	a := &blockingAnalyzer{findingAnalyzer: findingAnalyzer{
+		fakeAnalyzer: fakeAnalyzer{result: &ScanResult{Title: "Quadrants", Markdown: "Four colors."}},
+		corners:      quad, photoW: 900}}
+	s := NewScanner(store, nil, a, DefaultUploadConfig)
+	h := NewHandler(store, NewMarkdownRenderer(), web.Templates(), nil, nil, nil, AllMCPSections)
+	h.SetScanner(s)
+	routes := h.Routes()
+
+	id := s.Start(buf.Bytes(), "", "", "tester")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if job, _ := s.Job(id); len(job.Preview) > 0 && a.calls.Load() == 1 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// While it reads, the progress screen shows the outline and the button.
+	rec := httptest.NewRecorder()
+	routes.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/scan/"+id, nil))
+	body := rec.Body.String()
+	if !strings.Contains(body, `/scan/`+id+`/preview.jpg`) || !strings.Contains(body, `action="/scan/`+id+`/flat"`) {
+		t.Fatalf("progress screen lacks the preview or the button:\n%s", body)
+	}
+	rec = httptest.NewRecorder()
+	routes.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/scan/"+id+"/preview.jpg", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("preview: status %d, type %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+
+	rec = httptest.NewRecorder()
+	routes.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/scan/"+id+"/flat", nil))
+	newID := strings.TrimPrefix(rec.Header().Get("Location"), "/scan/")
+	if rec.Code != http.StatusSeeOther || newID == "" || newID == id {
+		t.Fatalf("rescan: status %d, location %q", rec.Code, rec.Header().Get("Location"))
+	}
+	job := waitScan(t, s, newID)
+	if job.Status != scanDone || job.Straightened || a.gotW != 900 {
+		t.Fatalf("rescan job = %+v (scan width %d), want the unstraightened photo", job, a.gotW)
+	}
+	old, _ := s.Job(id)
+	if old.Status != scanFailed || old.ReplacedBy != newID || old.Slug != "" {
+		t.Errorf("stopped job = %+v", old)
+	}
+	pages, _ := store.List(KindPage)
+	if len(pages) != 1 {
+		t.Errorf("%d pages saved, want 1 (the stopped scan must not save)", len(pages))
 	}
 }

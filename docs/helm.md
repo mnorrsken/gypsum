@@ -154,6 +154,7 @@ ingress:
 |---|---|---|
 | `scan.apiKeySecret` | `""` | Name of an existing Secret with a key `anthropic-api-key`. Turns on [photo scans](usage.md#photo-scans) (`ANTHROPIC_API_KEY`). |
 | `scan.model` | `""` | Claude model id; empty uses the built-in default (`GYPSUM_SCAN_MODEL`). Only applied when `scan.apiKeySecret` is set. |
+| `scan.cornerModel` | `""` | Model that finds the page corners to straighten an angled photo; empty uses the built-in default, `off` skips straightening (`GYPSUM_SCAN_CORNER_MODEL`). Only applied when `scan.apiKeySecret` is set. |
 
 ### Metrics
 

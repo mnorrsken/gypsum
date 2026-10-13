@@ -2884,6 +2884,29 @@ label {
   font-weight: 600;
 }
 
+.scan-preview {
+  margin: 16px 0 12px;
+}
+
+.scan-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.scan-preview-small img {
+  max-width: 240px;
+  max-height: 240px;
+}
+
+.scan-preview figcaption {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .scan-link {
   margin-top: 28px;
   padding-top: 20px;

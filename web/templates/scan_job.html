@@ -14,11 +14,31 @@
   {{if eq .Status "running"}}
   <p class="scan-progress">{{.Step}}&hellip;</p>
   <p class="hint">This usually takes under a minute. You can leave this page; the result is saved either way.</p>
+  {{if .Preview}}
+  <figure class="scan-preview">
+    <img src="/scan/{{.ID}}/preview.jpg" alt="The photo with the found page outlined" />
+    <figcaption>Found the page and straightened it. Wrong outline?</figcaption>
+  </figure>
+  <form method="post" action="/scan/{{.ID}}/flat">
+    <button type="submit" class="secondary">Use the photo as it is</button>
+  </form>
+  {{end}}
   {{else if eq .Status "failed"}}
+  {{if and .ReplacedBy (ne .ReplacedBy "pending")}}
+  <p>{{.Error}}</p>
+  <p><a class="button" href="/scan/{{.ReplacedBy}}">Go to the new scan</a></p>
+  {{else}}
   <p class="error">The scan failed: {{.Error}}</p>
   <p><a class="button" href="/scan{{if .Target}}?page={{.Target}}{{end}}">Try again</a></p>
+  {{end}}
   {{else}}
-  <p>{{if .Rewritten}}Rewrote{{else if .Appended}}Added to{{else}}Created{{end}} <a href="/wiki/{{.Slug}}"><strong>{{.Title}}</strong></a>{{if .Figures}}, with {{.Figures}} picture{{if gt .Figures 1}}s{{end}} cut out{{end}}.</p>
+  <p>{{if .Rewritten}}Rewrote{{else if .Appended}}Added to{{else}}Created{{end}} <a href="/wiki/{{.Slug}}"><strong>{{.Title}}</strong></a>{{if .Figures}}, with {{.Figures}} picture{{if gt .Figures 1}}s{{end}} cut out{{end}}.{{if .Straightened}} The page was found in the photo and straightened.{{end}}</p>
+  {{if .Preview}}
+  <figure class="scan-preview scan-preview-small">
+    <img src="/scan/{{.ID}}/preview.jpg" alt="The photo with the found page outlined" />
+    <figcaption>Where the page was found in the photo</figcaption>
+  </figure>
+  {{end}}
   <div class="scan-buttons">
     <a class="button" href="/wiki/{{.Slug}}">Open page</a>
     <a class="button secondary" href="/scan?page={{.Slug}}">Scan another photo into this page</a>

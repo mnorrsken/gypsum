@@ -167,6 +167,10 @@ spec:
             - name: GYPSUM_SCAN_MODEL
               value: {{ .model | quote }}
             {{- end }}
+            {{- if .cornerModel }}
+            - name: GYPSUM_SCAN_CORNER_MODEL
+              value: {{ .cornerModel | quote }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- with .Values.embed }}

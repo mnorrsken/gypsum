@@ -137,3 +137,36 @@ func (h *Handler) handleScanLink(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, "/scan/"+id, http.StatusSeeOther)
 }
+
+// handleScanPreview serves GET /scan/{id}/preview.jpg: the photo with the
+// page outline found by the corner pass.
+func (h *Handler) handleScanPreview(w http.ResponseWriter, r *http.Request) {
+	if h.scanner == nil {
+		http.NotFound(w, r)
+		return
+	}
+	job, ok := h.scanner.Job(r.PathValue("id"))
+	if !ok || len(job.Preview) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=3600") // fixed per job
+	_, _ = w.Write(job.Preview)
+}
+
+// handleScanRescanFlat serves POST /scan/{id}/flat: stop the scan and scan
+// the photo again without straightening.
+func (h *Handler) handleScanRescanFlat(w http.ResponseWriter, r *http.Request) {
+	if h.scanner == nil {
+		http.NotFound(w, r)
+		return
+	}
+	id := r.PathValue("id")
+	newID, err := h.scanner.RescanFlat(id)
+	if err != nil {
+		http.Redirect(w, r, "/scan/"+id+"?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/scan/"+newID, http.StatusSeeOther)
+}

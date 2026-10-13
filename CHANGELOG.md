@@ -2,6 +2,19 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.60.0
+
+### Added
+- **Straighten documents in photo scans** — before a photo is read, a small, fast model (Claude Haiku 5.5 by default, `GYPSUM_SCAN_CORNER_MODEL` / Helm `scan.cornerModel`, `off` to skip) finds the document's four corners in reading order. The page is cut out of the full-resolution photo, its perspective corrected (true proportions recovered from the perspective), and the straightened page is what Claude reads and crops figures from. Photos without a document, or with a page that already fills the frame, are left as they are. In tests on generated photos of pages, letters and receipts at up to 60° tilt and 60° rotation on wood, desk and cloth backgrounds, Haiku and Opus placed every page within 1.3% of its diagonal (median about 0.25%); a small local CPU model (Qwen2.5-VL-3B) could not locate tilted corners. See [Usage → Photo scans](docs/usage.md#photo-scans).
+
+- **Outline preview** — while a straightened page is read, the progress screen shows the photo with the found outline; **Use the photo as it is** stops the scan and starts it again without straightening. The result screen shows the outline too.
+
+### Changed
+- **Figure styles in photo scans** — Claude picks one of four styles for each figure (or the whole photo), and the image is processed to match: `bw` (pure black and white), `gray` (reduced to 4 gray levels, was full grayscale), `palette` (posterized to 2-8 colors Claude names) or `photo` (full-color JPEG).
+
+### Notes
+- Each scan now makes two Claude calls; the corner call sends a 1568 px copy of the photo and costs a fraction of a cent with Haiku.
+
 ## v0.59.0
 
 ### Changed

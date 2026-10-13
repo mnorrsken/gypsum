@@ -48,6 +48,16 @@ type ScanJob struct {
 	Figures   int  // figures cut out and stored
 	Created   time.Time
 
+	Straightened bool   // the page was found in the photo and its perspective corrected
+	Preview      []byte // JPEG of the photo with the found page outlined
+	ReplacedBy   string // job that rescans the photo without straightening
+
+	// What the job was started with, to scan the photo again.
+	photo []byte
+	note  string
+	flat  bool // skip straightening
+	stop  context.CancelFunc
+
 	// For a new page: where it could be linked from, and where it was linked.
 	Suggestions []ParentChoice
 	LinkedFrom  string
@@ -84,7 +94,13 @@ func NewScanner(store *PageStore, autoCommit *GitAutoCommitter, analyzer ScanAna
 // Start begins scanning photo in the background and returns the job ID.
 // targetSlug is an existing page to append to, or "" for a new page.
 func (s *Scanner) Start(photo []byte, targetSlug, note, author string) string {
-	job := &ScanJob{ID: oauthGenerateToken()[:16], Status: scanRunning, Step: "Reading the photo", Target: targetSlug, Author: author, Created: time.Now()}
+	return s.start(photo, targetSlug, note, author, false)
+}
+
+func (s *Scanner) start(photo []byte, targetSlug, note, author string, flat bool) string {
+	ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
+	job := &ScanJob{ID: oauthGenerateToken()[:16], Status: scanRunning, Step: "Reading the photo", Target: targetSlug, Author: author, Created: time.Now(),
+		photo: photo, note: note, flat: flat, stop: cancel}
 	s.mu.Lock()
 	for id, j := range s.jobs {
 		if time.Since(j.Created) > scanJobTTL {
@@ -95,14 +111,39 @@ func (s *Scanner) Start(photo []byte, targetSlug, note, author string) string {
 	s.mu.Unlock()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
 		defer cancel()
-		if err := s.run(ctx, job.ID, photo, targetSlug, note, author); err != nil {
+		if err := s.run(ctx, job.ID, photo, targetSlug, note, author, flat); err != nil {
 			log.Printf("scan %s: %v", job.ID, err)
-			s.update(job.ID, func(j *ScanJob) { j.Status, j.Error = scanFailed, err.Error() })
+			s.update(job.ID, func(j *ScanJob) {
+				if j.ReplacedBy == "" {
+					j.Status, j.Error = scanFailed, err.Error()
+				}
+			})
 		}
+		s.update(job.ID, func(j *ScanJob) { j.photo = nil }) // keep memory low once done
 	}()
 	return job.ID
+}
+
+// RescanFlat stops a running scan before it saves anything and scans the same
+// photo again without straightening, for when the page outline was wrong. It
+// returns the new job's ID.
+func (s *Scanner) RescanFlat(id string) (string, error) {
+	s.mu.Lock()
+	j, ok := s.jobs[id]
+	if !ok || j.Status != scanRunning || j.photo == nil || j.ReplacedBy != "" {
+		s.mu.Unlock()
+		return "", fmt.Errorf("this scan can no longer be changed")
+	}
+	photo, target, note, author := j.photo, j.Target, j.note, j.Author
+	j.Status, j.Error = scanFailed, "Stopped; the photo is scanned again without straightening."
+	j.ReplacedBy = "pending" // keeps the stopped run from overwriting the message
+	j.stop()
+	s.mu.Unlock()
+
+	newID := s.start(photo, target, note, author, true)
+	s.update(id, func(j *ScanJob) { j.ReplacedBy = newID })
+	return newID, nil
 }
 
 // Job returns a copy of a job's current state.
@@ -142,10 +183,21 @@ func (s *Scanner) lockPage(slug string) func() {
 	return l.Unlock
 }
 
-func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, note, author string) error {
+func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, note, author string, flat bool) error {
 	photoImg, err := prepareScanImage(photo)
 	if err != nil {
 		return err
+	}
+	if finder, ok := s.analyzer.(DocumentFinder); ok && !flat {
+		s.step(id, "Finding the page")
+		if straight, quad := s.straightenPage(ctx, finder, photoImg); straight != nil {
+			preview, err := outlinePreview(photoImg.sent, quad)
+			if err != nil {
+				log.Printf("scan: preview: %v", err)
+			}
+			photoImg = straight
+			s.update(id, func(j *ScanJob) { j.Straightened, j.Preview = true, preview })
+		}
 	}
 
 	req := ScanRequest{Width: photoImg.sent.Bounds().Dx(), Height: photoImg.sent.Bounds().Dy(), Note: note}
@@ -183,6 +235,9 @@ func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, 
 		return fmt.Errorf("Claude found nothing to add from this photo")
 	}
 
+	if ctx.Err() != nil {
+		return ctx.Err() // stopped (RescanFlat) or timed out: save nothing
+	}
 	s.step(id, "Saving figures")
 	title := strings.TrimSpace(result.Title)
 	if title == "" {
@@ -233,6 +288,41 @@ func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, 
 		j.Status, j.Slug, j.Title, j.Figures, j.Suggestions = scanDone, slug, title, len(figureMarkdown), suggestions
 	})
 	return nil
+}
+
+// straightenPage asks the finder for the page outline and returns the photo
+// with the page cut out and its perspective corrected, plus the outline in
+// pixels of the sent image; nil keeps the photo as it is (no document, an
+// unusable outline, or an error).
+func (s *Scanner) straightenPage(ctx context.Context, finder DocumentFinder, photo *scanPhoto) (*scanPhoto, [4]Point) {
+	small, scale, w, h, err := photo.cornerImage()
+	if err != nil {
+		log.Printf("scan: %v", err)
+		return nil, [4]Point{}
+	}
+	corners, found, err := finder.FindDocument(ctx, small, w, h)
+	if err != nil {
+		log.Printf("scan: %v", err)
+		return nil, [4]Point{}
+	}
+	if !found {
+		return nil, [4]Point{}
+	}
+	for i := range corners {
+		corners[i] = Point{corners[i].X * scale, corners[i].Y * scale}
+	}
+	q := readingOrder(corners)
+	sb := photo.sent.Bounds()
+	if !usableQuad(q, float64(sb.Dx()), float64(sb.Dy())) {
+		log.Printf("scan: page outline %v not usable, keeping the photo as is", q)
+		return nil, [4]Point{}
+	}
+	flat, err := photo.straighten(q)
+	if err != nil {
+		log.Printf("scan: straightening: %v", err)
+		return nil, [4]Point{}
+	}
+	return flat, q
 }
 
 // LinkFrom adds a [[link]] to a scanned page from the parent page (slug or

@@ -152,8 +152,13 @@ func main() {
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
 		model := envOrDefault("GYPSUM_SCAN_MODEL", wiki.DefaultScanModel)
 		analyzer := wiki.NewClaudeAnalyzer(apiKey, model)
+		cornerModel := envOrDefault("GYPSUM_SCAN_CORNER_MODEL", wiki.DefaultScanCornerModel)
+		if cornerModel == "off" {
+			cornerModel = ""
+		}
+		analyzer.SetCornerModel(cornerModel)
 		handler.SetScanner(wiki.NewScanner(store, autoCommitter, analyzer, uploadCfg))
-		log.Printf("photo scanning enabled (model %s)", model)
+		log.Printf("photo scanning enabled (model %s, page corners %s)", model, envOrDefault("GYPSUM_SCAN_CORNER_MODEL", wiki.DefaultScanCornerModel))
 	}
 	docsDir := filepath.Join(workspaceRoot, "docs")
 	if info, err := os.Stat(docsDir); err == nil && info.IsDir() {

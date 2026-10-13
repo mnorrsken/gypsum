@@ -26,10 +26,12 @@ const (
 
 // Figure styles the model can pick for a cropped figure.
 const (
-	figureBW        = "bw"        // black ink line art → 1-bit PNG
-	figureGrayscale = "grayscale" // shaded drawings, b/w photos → grayscale PNG or JPEG
-	figurePalette   = "palette"   // a few flat colors → indexed PNG
-	figureColor     = "color"     // photos and many colors → JPEG
+	figureBW      = "bw"      // black ink line art → 2 colors, PNG
+	figureGray    = "gray"    // drawings with a few shades → 4 gray levels, PNG
+	figurePalette = "palette" // flat-color drawings → posterized to the named colors, PNG
+	figurePhoto   = "photo"   // photographs, gradients → full-color JPEG
+
+	grayLevels = 4 // shades kept by the gray style
 )
 
 // scanPhoto is a decoded photo and the upright, scaled copy sent to the
@@ -143,7 +145,7 @@ func renderFigure(img *image.RGBA, style string, colors []string) ([]byte, strin
 	case figurePalette:
 		palette := parsePalette(colors)
 		if len(palette) < 2 {
-			return renderFigure(img, figureGrayscale, nil)
+			return renderFigure(img, figureGray, nil)
 		}
 		pal := image.NewPaletted(img.Bounds(), palette)
 		draw.Draw(pal, pal.Bounds(), img, image.Point{}, draw.Src) // nearest palette color, no dithering
@@ -151,18 +153,21 @@ func renderFigure(img *image.RGBA, style string, colors []string) ([]byte, strin
 			return nil, "", fmt.Errorf("encoding figure: %w", err)
 		}
 		return buf.Bytes(), ".png", nil
-	case figureGrayscale:
-		// Diagrams with flat fills compress well as PNG and stay sharp; shaded
-		// photos do not, so keep the PNG only when it is at most twice the JPEG.
+	case figureGray, "grayscale": // "grayscale" is the style's earlier name
 		gray := stretchGray(toGray(img))
-		if err := jpeg.Encode(&buf, gray, &jpeg.Options{Quality: jpegQuality}); err != nil {
+		levels := grayClusters(gray, grayLevels)
+		pal := make(color.Palette, len(levels))
+		for i, l := range levels {
+			pal[i] = color.Gray{Y: l}
+		}
+		out := image.NewPaletted(gray.Bounds(), pal)
+		for i, v := range gray.Pix {
+			out.Pix[i] = uint8(nearestLevel(levels, v))
+		}
+		if err := png.Encode(&buf, out); err != nil {
 			return nil, "", fmt.Errorf("encoding figure: %w", err)
 		}
-		var pngBuf bytes.Buffer
-		if err := png.Encode(&pngBuf, gray); err == nil && pngBuf.Len() <= 2*buf.Len() {
-			return pngBuf.Bytes(), ".png", nil
-		}
-		return buf.Bytes(), ".jpg", nil
+		return buf.Bytes(), ".png", nil
 	default:
 		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpegQuality}); err != nil {
 			return nil, "", fmt.Errorf("encoding figure: %w", err)
@@ -249,4 +254,63 @@ func parsePalette(colors []string) color.Palette {
 		}
 	}
 	return pal
+}
+
+// grayClusters picks k gray levels that best represent the image's tones
+// (k-means on the brightness histogram, starting from evenly spread levels).
+func grayClusters(g *image.Gray, k int) []uint8 {
+	var hist [256]float64
+	for _, v := range g.Pix {
+		hist[v]++
+	}
+	centers := make([]float64, k)
+	for i := range centers {
+		centers[i] = float64(i) * 255 / float64(k-1)
+	}
+	for iter := 0; iter < 20; iter++ {
+		sum := make([]float64, k)
+		cnt := make([]float64, k)
+		for v, n := range hist {
+			if n == 0 {
+				continue
+			}
+			best := 0
+			for c := range centers {
+				if math.Abs(float64(v)-centers[c]) < math.Abs(float64(v)-centers[best]) {
+					best = c
+				}
+			}
+			sum[best] += float64(v) * n
+			cnt[best] += n
+		}
+		for c := range centers {
+			if cnt[c] > 0 {
+				centers[c] = sum[c] / cnt[c]
+			}
+		}
+	}
+	out := make([]uint8, k)
+	for i, c := range centers {
+		out[i] = uint8(math.Round(c))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// nearestLevel returns the index of the level closest to v.
+func nearestLevel(levels []uint8, v uint8) int {
+	best := 0
+	for i, l := range levels {
+		if absDiff(l, v) < absDiff(levels[best], v) {
+			best = i
+		}
+	}
+	return best
+}
+
+func absDiff(a, b uint8) int {
+	if a > b {
+		return int(a - b)
+	}
+	return int(b - a)
 }

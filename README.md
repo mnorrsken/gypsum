@@ -67,6 +67,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Image uploads (paste, drag-and-drop, or picker) with size hints
 - File uploads — PDF, text, CSV, JSON and Office documents are stored in `files/`, linked from pages, and searchable (text of PDFs and text files is indexed, no OCR). Photos are scaled and stripped of EXIF/GPS data on upload
 - Photo scan to page — with `ANTHROPIC_API_KEY` set, take a photo of a page or note and Claude turns it into Markdown with the figures cut out and embedded, as a new page or appended to an existing one
+- Page straightening in scans — a fast model finds the page corners in an angled photo; the page is cut out and its perspective corrected before reading, and each figure is stored as black and white, 4 gray levels, a small color palette or a photo
 - Upload from a phone: one-time upload links that Claude hands out through MCP (`create_upload_link`)
 - Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM and PBKDF2 key derivation, encrypted and decrypted entirely in the browser — the server never sees plaintext or the key
 - Visual table editor
@@ -106,6 +107,7 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 | `GYPSUM_IMAGE_MAX_PX` | `2048` | Longest side of stored JPEG/PNG photos (EXIF/GPS stripped); `0` stores them unchanged |
 | `ANTHROPIC_API_KEY` | _(empty)_ | Turns on [photo scans](docs/usage.md#photo-scans); the photo is sent to Claude |
 | `GYPSUM_SCAN_MODEL` | `claude-opus-5-5` | Claude model used for photo scans |
+| `GYPSUM_SCAN_CORNER_MODEL` | `claude-haiku-5-5` | Model that finds the page corners to straighten an angled photo; `off` skips it |
 
 OAuth, auth, and Docker-specific variables are documented in [Configuration](docs/configuration.md).
 
