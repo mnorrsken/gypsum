@@ -156,7 +156,7 @@ Tools are grouped into sections (read, edit, delete, skills, notes) that can be 
 | `list_pages` | read | List wiki pages. `sort: recent` orders by last-modified (adds a `modified` timestamp), `favorites_only: true` returns just pinned pages, `limit` caps results. Prefer `search_pages` to find a specific page. |
 | `get_page` | read | Read a page's markdown by exact slug. Supports `section`, `sections_only`, and `include_links` (append outgoing links + backlinks). |
 | `search_pages` | read | Relevance-ranked (BM25) full-text search across pages, blended with meaning-based matches when [semantic search](configuration.md#semantic-search) is enabled. Accepts multiple `query` strings and a `limit`; results include snippets and link counts. |
-| `suggest_page_location` | read | Suggest good parent pages to link a **new** page from — ranked by relevance and link-graph position. Use before `create_page` to pick `link_from`. |
+| `suggest_page_location` | read | Suggest good parent pages to link a **new** page from — ranked by relevance to the title and keywords (full-text and, when enabled, semantic search); hub pages only fill up the list when few pages match. Use before `create_page` to pick `link_from`. |
 | `list_images` | read | List uploaded images with metadata (name, size, mtime, using pages). |
 | `list_files` | read | List uploaded documents and images, newest first. `query` full-text searches file names and the extracted text of PDFs and text files, with snippets. |
 | `get_file` | read | Read an uploaded file. Images come back as image content scaled to at most 1568 px; PDFs and text files as text (`max_chars`, default 50000, text layer only, no OCR); other files as metadata. |

@@ -3,6 +3,7 @@ package wiki
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 )
@@ -104,7 +105,10 @@ func (h *Handler) handleScanJob(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := TemplateData{Title: "Scan", ScanJob: &job}
+	data := TemplateData{Title: "Scan", ScanJob: &job, FormError: r.URL.Query().Get("error")}
+	if job.Status == scanDone && !job.Appended && job.LinkedFrom == "" {
+		data.AllPages, _ = h.store.List(KindPage) // for typing another parent page
+	}
 	if isHTMX(r) {
 		tmpl := h.tmplCache["scan_job"]
 		if tmpl == nil {
@@ -117,4 +121,19 @@ func (h *Handler) handleScanJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.render(w, "scan_job", data)
+}
+
+// handleScanLink serves POST /scan/{id}/link: link the scanned page from the
+// page in the "parent" field (slug or title), then show the result again.
+func (h *Handler) handleScanLink(w http.ResponseWriter, r *http.Request) {
+	if h.scanner == nil {
+		http.NotFound(w, r)
+		return
+	}
+	id := r.PathValue("id")
+	if err := h.scanner.LinkFrom(id, r.FormValue("parent")); err != nil {
+		http.Redirect(w, r, "/scan/"+id+"?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/scan/"+id, http.StatusSeeOther)
 }

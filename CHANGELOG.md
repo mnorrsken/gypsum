@@ -2,6 +2,12 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.59.0
+
+### Changed
+- **Choose where a scanned page is linked** — a new page from a photo scan is no longer linked automatically. The result screen lists the pages that best match its title and keywords, plus Home; tap one to link the page from there, type another page name, or leave it unlinked. See [Usage → Photo scans](docs/usage.md#photo-scans).
+- **Parent suggestions rank by relevance** — `suggest_page_location` (and the scan suggestions) scored pages by relevance plus their number of outgoing links, so a big index page such as Home won almost every time. Relevance from search (full text, blended with semantic search when enabled) now decides; link counts only break ties, and hub pages only fill up the list when few pages match.
+
 ## v0.58.1
 
 ### Fixed

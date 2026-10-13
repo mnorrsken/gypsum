@@ -23,6 +23,31 @@
     <a class="button" href="/wiki/{{.Slug}}">Open page</a>
     <a class="button secondary" href="/scan?page={{.Slug}}">Scan another photo into this page</a>
   </div>
+  {{if not .Appended}}
+  {{if .LinkedFrom}}
+  <p class="scan-linked">Linked from <a href="/wiki/{{.LinkedFrom}}">{{.LinkedFrom}}</a>.</p>
+  {{else}}
+  <section class="scan-link">
+    <h2>Link it from another page</h2>
+    <p class="hint">So you can find it later. These pages match <strong>{{.Title}}</strong>:</p>
+    {{if $.FormError}}<p class="error">{{$.FormError}}</p>{{end}}
+    <form method="post" action="/scan/{{.ID}}/link" class="scan-parents">
+      {{range .Suggestions}}
+      <button type="submit" class="secondary scan-parent" name="parent" value="{{.Slug}}">
+        <span class="scan-parent-title">{{.Title}}</span>
+        <span class="scan-parent-reason">{{.Reason}}</span>
+      </button>
+      {{end}}
+    </form>
+    <form method="post" action="/scan/{{.ID}}/link" class="scan-parent-other">
+      <input type="text" name="parent" list="scan-all-pages" placeholder="Another page…" aria-label="Another page" required />
+      <datalist id="scan-all-pages">{{range $.AllPages}}<option value="{{.Title}}"></option>{{end}}</datalist>
+      <button type="submit">Link</button>
+    </form>
+    <p class="hint">Or leave it unlinked; it is still in All pages and search.</p>
+  </section>
+  {{end}}
+  {{end}}
   {{end}}
 </div>
 {{end}}

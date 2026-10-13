@@ -47,6 +47,18 @@ type ScanJob struct {
 	Rewritten bool // true when the existing page was rewritten around the scan
 	Figures   int  // figures cut out and stored
 	Created   time.Time
+
+	// For a new page: where it could be linked from, and where it was linked.
+	Suggestions []ParentChoice
+	LinkedFrom  string
+	Author      string
+}
+
+// ParentChoice is a page offered as the parent of a newly scanned page.
+type ParentChoice struct {
+	Slug   string
+	Title  string
+	Reason string
 }
 
 // Scanner turns photos into wiki pages: the analyzer reads the photo, figures
@@ -72,7 +84,7 @@ func NewScanner(store *PageStore, autoCommit *GitAutoCommitter, analyzer ScanAna
 // Start begins scanning photo in the background and returns the job ID.
 // targetSlug is an existing page to append to, or "" for a new page.
 func (s *Scanner) Start(photo []byte, targetSlug, note, author string) string {
-	job := &ScanJob{ID: oauthGenerateToken()[:16], Status: scanRunning, Step: "Reading the photo", Target: targetSlug, Created: time.Now()}
+	job := &ScanJob{ID: oauthGenerateToken()[:16], Status: scanRunning, Step: "Reading the photo", Target: targetSlug, Author: author, Created: time.Now()}
 	s.mu.Lock()
 	for id, j := range s.jobs {
 		if time.Since(j.Created) > scanJobTTL {
@@ -215,10 +227,33 @@ func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, 
 		return fmt.Errorf("saving page %s: %w", slug, err)
 	}
 	_ = s.autoCommit.CommitSave(KindPage, slug, author)
-	addWikiLink(s.store, s.autoCommit, s.parentFor(title, slug, result.Keywords), title, "", author)
+	// The user picks where the page is linked from on the result screen.
+	suggestions := s.parentChoices(title, slug, result.Keywords)
 	s.update(id, func(j *ScanJob) {
-		j.Status, j.Slug, j.Title, j.Figures = scanDone, slug, title, len(figureMarkdown)
+		j.Status, j.Slug, j.Title, j.Figures, j.Suggestions = scanDone, slug, title, len(figureMarkdown), suggestions
 	})
+	return nil
+}
+
+// LinkFrom adds a [[link]] to a scanned page from the parent page (slug or
+// title) and records it on the job.
+func (s *Scanner) LinkFrom(id, parent string) error {
+	job, ok := s.Job(id)
+	if !ok || job.Status != scanDone || job.Appended {
+		return fmt.Errorf("no new page to link")
+	}
+	parentSlug := strings.TrimSpace(parent)
+	if _, err := s.store.Load(KindPage, parentSlug); err != nil {
+		parentSlug = SlugFromTitle(parentSlug)
+		if _, err := s.store.Load(KindPage, parentSlug); err != nil {
+			return fmt.Errorf("page not found: %s", parent)
+		}
+	}
+	if parentSlug == job.Slug {
+		return fmt.Errorf("a page cannot link to itself")
+	}
+	addWikiLink(s.store, s.autoCommit, parentSlug, job.Title, "", job.Author)
+	s.update(id, func(j *ScanJob) { j.LinkedFrom = parentSlug })
 	return nil
 }
 
@@ -293,18 +328,31 @@ func (s *Scanner) freeTitle(title string) (string, string) {
 	}
 }
 
-// parentFor picks the page to link a new scan from: the best parent
-// suggestion, or Home.
-func (s *Scanner) parentFor(title, slug string, keywords []string) string {
-	suggestions, err := s.store.SuggestParents(title, keywords, 3)
-	if err == nil {
+// parentChoices ranks pages that could link to a new scan: the best matches
+// for its title and keywords (full text blended with semantic search), with
+// Home added when it is not among them.
+func (s *Scanner) parentChoices(title, slug string, keywords []string) []ParentChoice {
+	var out []ParentChoice
+	hasHome := false
+	if suggestions, err := s.store.SuggestParents(title, keywords, 5); err == nil {
 		for _, sg := range suggestions {
-			if sg.Slug != slug {
-				return sg.Slug
+			if sg.Slug == slug {
+				continue
 			}
+			page, err := s.store.Load(KindPage, sg.Slug)
+			if err != nil {
+				continue
+			}
+			out = append(out, ParentChoice{Slug: sg.Slug, Title: pageDisplayTitle(page), Reason: sg.Reason})
+			hasHome = hasHome || sg.Slug == "Home"
 		}
 	}
-	return "Home"
+	if !hasHome {
+		if page, err := s.store.Load(KindPage, "Home"); err == nil {
+			out = append(out, ParentChoice{Slug: "Home", Title: pageDisplayTitle(page), Reason: "the start page"})
+		}
+	}
+	return out
 }
 
 // pageDisplayTitle is the page's level-1 heading, or its slug-derived title.

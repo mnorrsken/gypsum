@@ -87,6 +87,7 @@ type TemplateData struct {
 	RestoreHash   string           // diff page: the older revision that can be restored
 	ScanEnabled   bool             // show the photo scan button
 	ScanJob       *ScanJob         // scan progress view
+	FormError     string           // error from the last form post, shown on the page
 }
 
 func NewHandler(store *PageStore, renderer *MarkdownRenderer, templates fs.FS, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
@@ -221,6 +222,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /scan", h.handleScanForm)
 	mux.HandleFunc("POST /scan", h.handleScanStart)
 	mux.HandleFunc("GET /scan/{id}", h.handleScanJob)
+	mux.HandleFunc("POST /scan/{id}/link", h.handleScanLink)
 	mux.HandleFunc("/delete/", h.handleDeletePage)
 	mux.HandleFunc("/toggle-checkbox/", h.handleToggleCheckbox)
 	mux.HandleFunc("/share/", h.handleShare)

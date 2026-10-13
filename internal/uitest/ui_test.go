@@ -59,7 +59,7 @@ flowchart LR
 type fakeAnalyzer struct{}
 
 func (fakeAnalyzer) Analyze(context.Context, []byte, wiki.ScanRequest) (*wiki.ScanResult, error) {
-	return &wiki.ScanResult{Title: "Scan", Markdown: "Text"}, nil
+	return &wiki.ScanResult{Title: "Pump wiring", Markdown: "How the pump is wired.", Keywords: []string{"pump"}}, nil
 }
 
 // fixture is a running wiki with seeded content.
@@ -67,6 +67,7 @@ type fixture struct {
 	srv          *httptest.Server
 	fromHash, to string // two revisions of Wide_Test for the diff page
 	shareToken   string // public share link of Wide_Test
+	scanner      *wiki.Scanner
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -123,7 +124,8 @@ func newFixture(t *testing.T) *fixture {
 
 	h := wiki.NewHandler(store, wiki.NewMarkdownRenderer(), web.Templates(), commit, nil, db, wiki.AllMCPSections)
 	h.SetDocsDir(filepath.Join("..", "..", "docs"))
-	h.SetScanner(wiki.NewScanner(store, commit, fakeAnalyzer{}, wiki.DefaultUploadConfig))
+	scanner := wiki.NewScanner(store, commit, fakeAnalyzer{}, wiki.DefaultUploadConfig)
+	h.SetScanner(scanner)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", h.Routes())
@@ -141,7 +143,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &fixture{srv: srv, fromHash: hashes[len(hashes)-1], to: hashes[0], shareToken: share.Token}
+	return &fixture{srv: srv, fromHash: hashes[len(hashes)-1], to: hashes[0], shareToken: share.Token, scanner: scanner}
 }
 
 // browser starts headless Chrome and collects JavaScript errors per page.
@@ -354,6 +356,9 @@ func (b *browser) screenshot(t *testing.T, path string) {
 	img, err := chromedp.Run(b.ctx, chromedp.FullScreenshot(90))
 	if err != nil {
 		t.Fatalf("screenshot: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, img, 0o644); err != nil {
 		t.Fatal(err)
@@ -632,5 +637,48 @@ func TestCardActionsVisibleOnPhones(t *testing.T) {
 		if bad := eval[string](t, b, `[...document.querySelectorAll('button')].map(x => x.textContent.trim()).filter(s => /[\u{1F300}-\u{1FAFF}✕✎×]/u.test(s)).join(' ')`); bad != "" {
 			t.Errorf("%s: emoji button faces left: %q", page, bad)
 		}
+	}
+}
+
+func TestScanResultOffersParents(t *testing.T) {
+	f := newFixture(t)
+	b := newBrowser(t)
+
+	var photo bytes.Buffer
+	if err := png.Encode(&photo, image.NewRGBA(image.Rect(0, 0, 64, 48))); err != nil {
+		t.Fatal(err)
+	}
+	id := f.scanner.Start(photo.Bytes(), "", "", "tester")
+	for i := 0; i < 100; i++ {
+		if job, _ := f.scanner.Job(id); job.Status != "running" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	b.open(t, f.srv.URL+"/scan/"+id, 390)
+	offered := eval[[]string](t, b, `[...document.querySelectorAll('.scan-parent')].map(b => b.value)`)
+	if len(offered) == 0 || offered[0] != "Wide_Test" {
+		t.Fatalf("offered parents = %v, want Wide_Test (it mentions the pump) first", offered)
+	}
+	if res := eval[overflowResult](t, b, fmt.Sprintf(overflowJS, 390)); res.ScrollWidth > 390 {
+		t.Errorf("result page is %dpx wide: %v", res.ScrollWidth, res.Over)
+	}
+	if dir := os.Getenv("UI_SCREENSHOTS"); dir != "" {
+		b.screenshot(t, filepath.Join(dir, "scan-result@390.jpg"))
+	}
+	click(t, b, `.scan-parent[value="Wide_Test"]`)
+	if err := chromedp.Do(b.ctx, chromedp.Sleep(500*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if got := eval[string](t, b, `document.querySelector('.scan-linked')?.textContent.trim() || ''`); !strings.Contains(got, "Wide_Test") {
+		t.Errorf("after choosing, the page says %q", got)
+	}
+	b.open(t, f.srv.URL+"/wiki/Wide_Test", 1280)
+	if !eval[bool](t, b, `!!document.querySelector('.wiki-content a[href^="/wiki/Pump_wiring"]')`) {
+		t.Error("Wide_Test does not link the scanned page")
+	}
+	if errs := b.takeErrors(); len(errs) > 0 {
+		t.Errorf("JavaScript errors: %v", errs)
 	}
 }

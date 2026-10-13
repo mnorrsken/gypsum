@@ -267,9 +267,29 @@ func TestScannerNewPage(t *testing.T) {
 	if len(images) != 1 {
 		t.Fatalf("stored %d images, want 1", len(images))
 	}
-	parent, _ := store.Load(KindPage, "Manuals")
-	if !strings.Contains(parent.Content, "[[Dishwasher Filter]]") {
-		t.Errorf("new page not linked from its parent:\n%s", parent.Content)
+	// Nothing is linked until the user picks a parent; the matching page is
+	// offered first, the hub (Home) only after it.
+	if parent, _ := store.Load(KindPage, "Manuals"); strings.Contains(parent.Content, "[[Dishwasher Filter]]") {
+		t.Errorf("new page linked before the user chose a parent")
+	}
+	var offered []string
+	for _, c := range job.Suggestions {
+		offered = append(offered, c.Slug)
+	}
+	if len(offered) < 2 || offered[0] != "Manuals" || offered[len(offered)-1] != "Home" {
+		t.Errorf("suggested parents = %v, want Manuals first and Home last", offered)
+	}
+	if err := s.LinkFrom(job.ID, "Manuals"); err != nil {
+		t.Fatal(err)
+	}
+	if parent, _ := store.Load(KindPage, "Manuals"); !strings.Contains(parent.Content, "[[Dishwasher Filter]]") {
+		t.Errorf("new page not linked from the chosen parent:\n%s", parent.Content)
+	}
+	if job, _ := s.Job(job.ID); job.LinkedFrom != "Manuals" {
+		t.Errorf("LinkedFrom = %q", job.LinkedFrom)
+	}
+	if err := s.LinkFrom(job.ID, "No Such Page"); err == nil {
+		t.Error("linking from a missing page succeeded")
 	}
 
 	// A second scan with the same title gets a new page, not an overwrite.
@@ -416,6 +436,29 @@ func TestScanHandlers(t *testing.T) {
 		t.Fatalf("status fragment: %d\n%s", rec.Code, out)
 	}
 
+	// The result screen offers parents; posting one links the page.
+	req = httptest.NewRequest(http.MethodGet, "/scan/"+id, nil)
+	rec = httptest.NewRecorder()
+	routes.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `name="parent" value="Home"`) {
+		t.Fatalf("result page offers no parent:\n%s", rec.Body.String())
+	}
+	req = httptest.NewRequest(http.MethodPost, "/scan/"+id+"/link", strings.NewReader("parent=Home"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	routes.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("link: status %d", rec.Code)
+	}
+	if home, _ := store.Load(KindPage, "Home"); !strings.Contains(home.Content, "[[Note]]") {
+		t.Errorf("Home does not link the scanned page:\n%s", home.Content)
+	}
+	rec = httptest.NewRecorder()
+	routes.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/scan/"+id, nil))
+	if !strings.Contains(rec.Body.String(), "Linked from") {
+		t.Errorf("result page does not say where the page is linked from")
+	}
+
 	body, ct = multipartPhoto(t, "IMG_1.HEIC", []byte("x"))
 	req = httptest.NewRequest(http.MethodPost, "/scan", body)
 	req.Header.Set("Content-Type", ct)
@@ -471,5 +514,29 @@ func TestClaudeAnalyzerRequest(t *testing.T) {
 	if !strings.Contains(string(raw), `"type":"image"`) || !strings.Contains(string(raw), `is added to the existing wiki page \"Oven\"`) ||
 		!strings.Contains(string(raw), `Existing wiki pages:\nHeat Pump`) {
 		t.Errorf("messages = %s", raw)
+	}
+}
+
+func TestSuggestParentsPrefersMatchesOverHubs(t *testing.T) {
+	store := NewPageStore(filepath.Join(t.TempDir(), "pages"))
+	var links []string
+	for i := 0; i < 30; i++ {
+		slug := fmt.Sprintf("Topic_%d", i)
+		_ = store.Save(KindPage, slug, "# Topic\n\nUnrelated.\n")
+		links = append(links, "[[Topic "+fmt.Sprint(i)+"]]")
+	}
+	_ = store.Save(KindPage, "Home", "# Home\n\n"+strings.Join(links, "\n"))
+	_ = store.Save(KindPage, "Heat_Pump", "# Heat Pump\n\nThe NIBE heat pump and its [[Manuals]].\n")
+
+	got, err := store.SuggestParents("NIBE SMO 10 wiring", []string{"heat pump", "NIBE"}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || got[0].Slug != "Heat_Pump" {
+		var slugs []string
+		for _, g := range got {
+			slugs = append(slugs, g.Slug)
+		}
+		t.Fatalf("suggestions = %v, want Heat_Pump first (Home only links to many pages)", slugs)
 	}
 }

@@ -2884,6 +2884,58 @@ label {
   font-weight: 600;
 }
 
+.scan-link {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.scan-link h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.scan-parents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.scan-parent {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.scan-parent-title {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.scan-parent-reason {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.scan-parent-other {
+  display: flex;
+  gap: 8px;
+}
+
+.scan-parent-other input {
+  flex: 1;
+  margin: 0;
+}
+
+.scan-linked {
+  margin-top: 20px;
+}
+
 /* ==========================================================================
    Public (shared) and upload-link pages
    ========================================================================== */

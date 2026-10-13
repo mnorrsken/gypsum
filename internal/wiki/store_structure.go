@@ -2,6 +2,7 @@ package wiki
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -93,8 +94,10 @@ func (s *PageStore) SuggestParents(title string, keywords []string, max int) ([]
 
 	selfSlug := SlugFromTitle(title)
 
-	// Relevance: run the title and each keyword through FTS; earlier results
-	// score higher. Accumulate per candidate slug across all queries.
+	// Relevance: run the title and each keyword through search (full text,
+	// blended with semantic search when it is on). Each query gives its top
+	// hit 1 and later hits less, so a page that matches several queries, or
+	// matches one well, ranks high regardless of how many results a query has.
 	rel := map[string]float64{}
 	queries := append([]string{title}, keywords...)
 	for _, q := range queries {
@@ -105,35 +108,39 @@ func (s *PageStore) SuggestParents(title string, keywords []string, max int) ([]
 		if err != nil {
 			continue
 		}
-		n := len(results)
 		for i, r := range results {
-			rel[r.Slug] += float64(n - i)
+			rel[r.Slug] += 1 / float64(i+1)
 		}
 	}
+	delete(rel, selfSlug)
 
-	// Candidate set = relevance matches ∪ top hub pages (so we always offer a
-	// good index page even when nothing matches the topic yet).
+	// Candidates are the relevant pages. Hub pages only fill up the list when
+	// too few pages match, so a big index page like Home does not win just
+	// because it links to many pages.
 	cand := map[string]bool{}
 	for slug := range rel {
 		cand[slug] = true
 	}
-	hubs := make([]string, 0, len(outdeg))
-	for slug := range outdeg {
-		hubs = append(hubs, slug)
-	}
-	sort.Slice(hubs, func(i, j int) bool {
-		if outdeg[hubs[i]] != outdeg[hubs[j]] {
-			return outdeg[hubs[i]] > outdeg[hubs[j]]
+	if len(cand) < max {
+		hubs := make([]string, 0, len(outdeg))
+		for slug := range outdeg {
+			hubs = append(hubs, slug)
 		}
-		return hubs[i] < hubs[j]
-	})
-	for i, slug := range hubs {
-		if i >= 5 || outdeg[slug] == 0 {
-			break
+		sort.Slice(hubs, func(i, j int) bool {
+			if outdeg[hubs[i]] != outdeg[hubs[j]] {
+				return outdeg[hubs[i]] > outdeg[hubs[j]]
+			}
+			return hubs[i] < hubs[j]
+		})
+		for _, slug := range hubs {
+			if len(cand) >= max || outdeg[slug] == 0 {
+				break
+			}
+			if slug != selfSlug {
+				cand[slug] = true
+			}
 		}
-		cand[slug] = true
 	}
-	delete(cand, selfSlug)
 
 	type scored struct {
 		slug  string
@@ -141,8 +148,9 @@ func (s *PageStore) SuggestParents(title string, keywords []string, max int) ([]
 	}
 	list := make([]scored, 0, len(cand))
 	for slug := range cand {
-		// Weight relevance more than raw fan-out, but let hub pages surface.
-		score := rel[slug]*3 + float64(outdeg[slug])
+		// Relevance decides; links only break ties between similar matches
+		// and order the hub pages that fill up the list.
+		score := rel[slug]*10 + math.Log2(1+float64(outdeg[slug]))
 		list = append(list, scored{slug, score})
 	}
 	sort.Slice(list, func(i, j int) bool {
@@ -181,11 +189,11 @@ func (s *PageStore) SuggestParents(title string, keywords []string, max int) ([]
 func suggestReason(matchedTopic bool, outLinks int) string {
 	switch {
 	case matchedTopic && outLinks > 0:
-		return fmt.Sprintf("matches the topic and is a hub (%d outgoing links)", outLinks)
+		return fmt.Sprintf("matches the topic and is a hub (%s)", outgoingLinks(outLinks))
 	case matchedTopic:
 		return "matches the topic"
 	case outLinks > 0:
-		return fmt.Sprintf("hub page (%d outgoing links)", outLinks)
+		return fmt.Sprintf("hub page (%s)", outgoingLinks(outLinks))
 	default:
 		return "candidate page"
 	}
@@ -330,4 +338,11 @@ func sectionsWithLinks(content string) []string {
 		}
 	}
 	return out
+}
+
+func outgoingLinks(n int) string {
+	if n == 1 {
+		return "1 outgoing link"
+	}
+	return fmt.Sprintf("%d outgoing links", n)
 }
