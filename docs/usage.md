@@ -1,5 +1,25 @@
 # Usage
 
+## Layout and navigation
+
+On a desktop screen there is a top bar (logo, search field, sync status dot, scan camera when scanning is on, 🔒, theme toggle) and a sidebar on the left. The sidebar has icon links to Home, All pages, Recent edits, Search, Quick notes, Files, Secrets, Link graph, Skills and Scan a photo, the **New page** and **New skill** buttons, your Favorites, Recently edited pages, and a collapsible **Documentation** group. The current page is highlighted. Page tabs (Page, Edit, Share, History) are a segmented control above the content.
+
+### Phones
+
+On screens up to 768px wide:
+
+- The sidebar is a drawer. Open it with the menu button; close it with Escape or by tapping outside it. It also has a Dark/Light mode switch.
+- A bottom tab bar has **Home**, **Pages**, a round centre button, **Notes** and **More** (opens the drawer). The centre button is **Scan** when scanning is enabled, otherwise **New page**.
+- Content uses the full screen width and dialogs open as bottom sheets.
+
+### Theme
+
+The theme follows the system light/dark setting until you pick one with the toggle. The choice is remembered in the browser (`localStorage`). It also applies to public share pages and upload-link pages.
+
+### Install as an app
+
+Gypsum has a web app manifest (`/static/manifest.json`) and icons, so the browser can install it ("Add to Home Screen" on a phone). It opens standalone, without browser bars, at `/wiki/Home`.
+
 ## Pages
 
 All pages live in `data/repo/pages/` as `.md` files. Click **+ New Page** in the sidebar to create a page.

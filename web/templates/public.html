@@ -5,11 +5,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{.Title}} - Gypsum</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/static/style.css" />
   <script>
     (function() {
-      var t = localStorage.getItem('theme');
-      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      var t = null;
+      try { t = localStorage.getItem('theme'); } catch (_) {}
+      var dark = t === 'dark' || (t !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
   <script src="/static/mermaid-init.js" defer></script>
@@ -18,10 +21,10 @@
 <body class="public-page">
   <header class="public-header">
     <div class="public-header-inner">
-      <div class="brand">Gypsum</div>
-      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
-        <span class="icon-sun">&#9728;&#65039;</span>
-        <span class="icon-moon">&#127769;</span>
+      <div class="brand"><img class="brand-mark" src="/static/icon.svg" alt="" width="28" height="28" /><span class="brand-name">Gypsum</span></div>
+      <button class="icon-btn theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <span class="icon-sun"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"/></svg></span>
+        <span class="icon-moon"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"/></svg></span>
       </button>
     </div>
     <div class="topbar-rules">
@@ -44,13 +47,9 @@
     var themeBtn = document.getElementById("theme-toggle");
     themeBtn.addEventListener("click", function() {
       var isDark = document.documentElement.getAttribute("data-theme") === "dark";
-      if (isDark) {
-        document.documentElement.removeAttribute("data-theme");
-        localStorage.setItem("theme", "light");
-      } else {
-        document.documentElement.setAttribute("data-theme", "dark");
-        localStorage.setItem("theme", "dark");
-      }
+      var next = isDark ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem("theme", next); } catch (_) {}
     });
   })();
   </script>

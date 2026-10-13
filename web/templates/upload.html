@@ -6,18 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex" />
   <title>Upload - Gypsum</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/static/style.css" />
   <script>
     (function() {
-      var t = localStorage.getItem('theme');
-      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      var t = null;
+      try { t = localStorage.getItem('theme'); } catch (_) {}
+      var dark = t === 'dark' || (t !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
 </head>
 <body class="public-page">
   <header class="public-header">
     <div class="public-header-inner">
-      <div class="brand">Gypsum</div>
+      <div class="brand"><img class="brand-mark" src="/static/icon.svg" alt="" width="28" height="28" /><span class="brand-name">Gypsum</span></div>
     </div>
     <div class="topbar-rules">
       <div class="rule-red"></div>

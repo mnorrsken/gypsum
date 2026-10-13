@@ -73,7 +73,8 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - MediaWiki import
 - Public page sharing via secret links — shared pages are HTML-sanitized for anonymous viewers
 - Git-backed storage with optional remote sync and a top-bar status indicator (green/amber/red) that surfaces fetch/push failures; git runs non-interactively with bounded timeouts and process-group cleanup (see [Git Execution](docs/configuration.md))
-- Dark/light theme, responsive layout, print-friendly pages
+- App-like UI — top bar and icon sidebar on desktop; on phones a slide-in drawer, bottom tab bar and bottom-sheet dialogs. Installable as an app ("Add to Home Screen")
+- Dark/light theme that follows the system until you choose, print-friendly pages
 
 ## Quick Start
 

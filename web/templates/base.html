@@ -3,14 +3,26 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>{{.Title}} - Gypsum Wiki</title>
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0f1117" media="(prefers-color-scheme: dark)" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Gypsum" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/static/icon-180.png" />
   <link rel="stylesheet" href="/static/style.css" />
   <script>
-    // Apply saved theme immediately to prevent flash
+    // Apply the theme before first paint: a saved choice wins, otherwise follow
+    // the system setting.
     (function() {
-      var t = localStorage.getItem('theme');
-      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      var t = null;
+      try { t = localStorage.getItem('theme'); } catch (_) {}
+      var dark = t === 'dark' || (t !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
   <script>
@@ -24,90 +36,118 @@
   <script src="/static/mermaid-init.js" defer></script>
   <script src="/static/lightbox.js" defer></script>
 </head>
-<body x-data="{ sidebarOpen: false, dark: document.documentElement.getAttribute('data-theme') === 'dark' }">
+<body class="app{{if .ScanEnabled}} has-scan{{end}}"
+      x-data="{ sidebarOpen: false, dark: document.documentElement.getAttribute('data-theme') === 'dark',
+                toggleTheme() { this.dark = !this.dark; document.documentElement.setAttribute('data-theme', this.dark ? 'dark' : 'light'); try { localStorage.setItem('theme', this.dark ? 'dark' : 'light'); } catch (_) {} } }"
+      :class="{ 'drawer-open': sidebarOpen }"
+      @keydown.escape.window="sidebarOpen = false">
   <header class="topbar">
     <div class="topbar-inner">
       <div class="topbar-left">
-        <button class="sidebar-toggle" @click="sidebarOpen = !sidebarOpen" aria-label="Menu">&#9776;</button>
-        <div class="brand"><a href="/wiki/Home">Gypsum</a></div>
+        <button class="icon-btn sidebar-toggle" type="button" @click="sidebarOpen = !sidebarOpen" aria-label="Menu" :aria-expanded="sidebarOpen"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#menu"/></svg></button>
+        <a class="brand" href="/wiki/Home" aria-label="Gypsum home"><img class="brand-mark" src="/static/icon.svg" alt="" width="28" height="28" /><span class="brand-name">Gypsum</span></a>
       </div>
+      <form class="search" action="/search" method="get" role="search">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#search"/></svg>
+        <input type="search" name="q" value="{{.Query}}" placeholder="Search the wiki" aria-label="Search"
+               hx-get="/search" hx-trigger="input changed delay:300ms, search"
+               hx-target="#search-results" hx-push-url="true" />
+        <button type="submit" class="visually-hidden">Search</button>
+      </form>
       <div class="topbar-right">
-        <form class="search" action="/search" method="get">
-          <input type="search" name="q" value="{{.Query}}" placeholder="Search..."
-                 hx-get="/search" hx-trigger="input changed delay:300ms, search"
-                 hx-target="#search-results" hx-push-url="true" />
-          <button type="submit">Search</button>
-        </form>
         <a id="git-status" class="git-status" href="/recent-edits" hidden
            role="status" aria-live="polite" title="Git sync status">
           <span class="git-status-dot"></span>
         </a>
         {{if .ScanEnabled}}
-        <a class="lock-toggle scan-button" href="/scan" aria-label="Scan a photo" title="Scan a photo">&#128247;</a>
+        <a class="icon-btn scan-button" href="/scan" aria-label="Scan a photo" title="Scan a photo"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#camera"/></svg></a>
         {{end}}
-        <button id="secure-lock-btn" class="lock-toggle" type="button" aria-label="Encryption" title="Encryption locked">
-          <span class="lock-icon">&#128274;</span>
+        <button id="secure-lock-btn" class="icon-btn lock-toggle" type="button" aria-label="Encryption" title="Encryption locked">
+          <span class="lock-icon"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#lock"/></svg></span>
         </button>
-        <button class="theme-toggle" @click="dark = !dark; document.documentElement.setAttribute('data-theme', dark ? 'dark' : ''); localStorage.setItem('theme', dark ? 'dark' : 'light')" aria-label="Toggle dark mode" title="Toggle dark mode">
-          <span class="icon-sun">&#9728;&#65039;</span>
-          <span class="icon-moon">&#127769;</span>
+        <button class="icon-btn theme-toggle" type="button" @click="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark mode">
+          <span class="icon-sun"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"/></svg></span>
+          <span class="icon-moon"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"/></svg></span>
         </button>
       </div>
-    </div>
-    <div class="topbar-rules">
-      <div class="rule-red"></div>
     </div>
   </header>
 
   <div class="layout">
     <div class="sidebar-overlay" :class="{ 'open': sidebarOpen }" @click="sidebarOpen = false"></div>
-    <aside class="sidebar" :class="{ 'open': sidebarOpen }">
-      <h3>Navigation</h3>
-      <a href="/wiki/Home">Home</a>
-      <a href="/pages">All Pages</a>
-      <a href="/recent-edits">Recent Edits</a>
-      <a href="/images">Files</a>
-      <a href="/search">Search</a>
-      <a href="/graph">Link Graph</a>
-      <a href="/notes">Quick Notes</a>
-      <a href="/secrets">Secrets</a>
-      <a href="/edit/New_Page" class="create-link">+ New Page</a>
+    <aside class="sidebar" :class="{ 'open': sidebarOpen }" aria-label="Navigation">
+      <div class="sidebar-head">
+        <a class="brand" href="/wiki/Home"><img class="brand-mark" src="/static/icon.svg" alt="" width="28" height="28" /><span class="brand-name">Gypsum</span></a>
+        <button class="icon-btn" type="button" @click="sidebarOpen = false" aria-label="Close menu"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#x"/></svg></button>
+      </div>
+      <nav class="nav-list">
+        <a class="nav-item" href="/wiki/Home"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#house"/></svg><span>Home</span></a>
+        <a class="nav-item" href="/pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#files"/></svg><span>All pages</span></a>
+        <a class="nav-item" href="/recent-edits"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#clock"/></svg><span>Recent edits</span></a>
+        <a class="nav-item" href="/search"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#search"/></svg><span>Search</span></a>
+        <a class="nav-item" href="/notes"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sticky-note"/></svg><span>Quick notes</span></a>
+        <a class="nav-item" href="/images"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#folder-open"/></svg><span>Files</span></a>
+        <a class="nav-item" href="/secrets"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key-round"/></svg><span>Secrets</span></a>
+        <a class="nav-item" href="/graph"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#network"/></svg><span>Link graph</span></a>
+        <a class="nav-item" href="/skills"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#graduation-cap"/></svg><span>Skills</span></a>
+        {{if .ScanEnabled}}<a class="nav-item" href="/scan"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#camera"/></svg><span>Scan a photo</span></a>{{end}}
+      </nav>
+      <div class="nav-actions">
+        <a class="button nav-new" href="/edit/New_Page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"/></svg><span>New page</span></a>
+        <a class="button secondary nav-new" href="/new-skill"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"/></svg><span>New skill</span></a>
+      </div>
 
-      {{if .DocPages}}
-      <h3>Documentation</h3>
-      {{range .DocPages}}
-        <a href="/docs/{{.Slug}}">{{.Title}}</a>
-      {{end}}
-      {{end}}
-
-      <h3>Skills</h3>
-      <a href="/skills">All Skills</a>
-      <a href="/new-skill" class="create-link">+ New Skill</a>
-
-      {{if .Favorites}}
-      <h3>Favorites</h3>
-      {{range .Favorites}}
-        <a href="/wiki/{{.Slug}}">{{.Title}}</a>
-      {{end}}
-      <a href="/edit/_favorites" class="sidebar-edit">edit</a>
-      {{else}}
-      <h3>Favorites</h3>
-      <p class="sidebar-hint">No favorites yet.</p>
-      <a href="/edit/_favorites" class="sidebar-edit">edit</a>
-      {{end}}
+      <div class="nav-group">
+        <div class="nav-heading">Favorites <a class="nav-heading-action" href="/edit/_favorites" aria-label="Edit favorites" title="Edit favorites"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pencil"/></svg></a></div>
+        {{range .Favorites}}
+        <a class="nav-item nav-sub" href="/wiki/{{.Slug}}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#star"/></svg><span>{{.Title}}</span></a>
+        {{else}}
+        <p class="sidebar-hint">No favorites yet.</p>
+        {{end}}
+      </div>
 
       {{if .RecentPages}}
-      <h3>Recently Edited</h3>
-      {{range .RecentPages}}
-        <a href="/wiki/{{.Slug}}">{{.Title}}</a>
+      <div class="nav-group">
+        <div class="nav-heading">Recently edited</div>
+        {{range .RecentPages}}
+        <a class="nav-item nav-sub" href="/wiki/{{.Slug}}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#file-text"/></svg><span>{{.Title}}</span></a>
+        {{end}}
+      </div>
       {{end}}
+
+      {{if .DocPages}}
+      <details class="nav-group nav-docs">
+        <summary class="nav-heading">Documentation</summary>
+        {{range .DocPages}}
+        <a class="nav-item nav-sub" href="/docs/{{.Slug}}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#book-open"/></svg><span>{{.Title}}</span></a>
+        {{end}}
+      </details>
       {{end}}
+
+      <div class="nav-group sidebar-settings">
+        <button class="nav-item" type="button" @click="toggleTheme()">
+          <span class="icon-sun"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"/></svg></span><span class="icon-moon"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"/></svg></span>
+          <span x-text="dark ? 'Light mode' : 'Dark mode'">Dark mode</span>
+        </button>
+      </div>
     </aside>
 
-    <main class="content">
+    <main class="content" id="main">
       {{template "content" .}}
     </main>
   </div>
+
+  <nav class="bottom-nav" aria-label="Main">
+    <a href="/wiki/Home"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#house"/></svg><span>Home</span></a>
+    <a href="/pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#files"/></svg><span>Pages</span></a>
+    {{if .ScanEnabled}}
+    <a href="/scan" class="bottom-nav-primary" aria-label="Scan a photo"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#camera"/></svg><span>Scan</span></a>
+    {{else}}
+    <a href="/edit/New_Page" class="bottom-nav-primary" aria-label="New page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"/></svg><span>New</span></a>
+    {{end}}
+    <a href="/notes"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sticky-note"/></svg><span>Notes</span></a>
+    <button type="button" @click="sidebarOpen = true" aria-label="More"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#ellipsis"/></svg><span>More</span></button>
+  </nav>
 
   <div id="secure-lock-dialog" class="lock-dialog-overlay" hidden>
     <div class="lock-dialog" role="dialog" aria-modal="true" aria-labelledby="secure-lock-title">
@@ -154,7 +194,7 @@
 
     function refreshIcon() {
       var unlocked = window.gypsumSecure && window.gypsumSecure.isUnlocked();
-      icon.textContent = unlocked ? "🔓" : "🔒";
+      icon.innerHTML = '<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#' + (unlocked ? "lock-open" : "lock") + '"/></svg>';
       btn.title = unlocked ? "Encryption unlocked — click to lock" : "Encryption locked — click to unlock";
       btn.classList.toggle("unlocked", !!unlocked);
     }
@@ -286,6 +326,17 @@
 
     poll();
     setInterval(poll, 15000);
+  })();
+  </script>
+  <script>
+  // Mark the navigation entries that lead to the current page.
+  (function () {
+    var path = location.pathname;
+    document.querySelectorAll(".nav-item[href], .bottom-nav a[href]").forEach(function (a) {
+      var href = a.getAttribute("href");
+      var here = href === path || (href !== "/wiki/Home" && path.indexOf(href + "/") === 0);
+      if (here) a.setAttribute("aria-current", "page");
+    });
   })();
   </script>
 </body>

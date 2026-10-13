@@ -5,6 +5,8 @@ go 1.26.0
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/anthropics/anthropic-sdk-go v1.80.0
+	github.com/chromedp/cdproto v0.157.8
+	github.com/chromedp/chromedp v0.21.0
 	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/yuin/goldmark v1.8.6
@@ -20,6 +22,7 @@ require (
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/go-json-experiment/json v0.0.0-20260213210345-44df1a37e875 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect

@@ -31,3 +31,19 @@ jobs:
 
       - name: go test
         run: go test -race ./...
+
+      # Browser tests in headless Chrome (preinstalled on ubuntu-latest): every
+      # main page at phone, tablet and desktop widths, plus key interactions.
+      - name: UI tests
+        env:
+          UI_SCREENSHOTS: ${{ runner.temp }}/ui-screenshots
+        run: go test -tags uitest -count=1 ./internal/uitest/
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: ${{ runner.temp }}/ui-screenshots
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,15 @@
+{
+  "name": "Gypsum Wiki",
+  "short_name": "Gypsum",
+  "start_url": "/wiki/Home",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -2,6 +2,24 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.57.0
+
+### Added
+- **App-like UI** — desktop has a top app bar (logo, pill search field, sync dot, scan, lock, theme toggle) and a left sidebar with icon navigation, New page / New skill buttons, Favorites, Recently edited and a collapsible Documentation group. On phones (up to 768px) the sidebar is a slide-in drawer (closes with Escape or a tap outside, has a Dark/Light switch) and a bottom tab bar gives Home, Pages, a round centre button (Scan when scanning is enabled, otherwise New page), Notes and More. Content runs edge to edge and dialogs open as bottom sheets. Page tabs are a pill-style segmented control, and the current page is highlighted in the sidebar and bottom bar. See [Usage → Layout and navigation](docs/usage.md#layout-and-navigation).
+- **Installable app** — web app manifest (`/static/manifest.json`), SVG and PNG icons, standalone display, start URL `/wiki/Home`.
+- **Lucide icons** — the Lucide icon set (ISC) is bundled as `web/static/icons.svg`. `make vendor-icons` rebuilds it from `LUCIDE_VERSION` and the `ICONS` list in the Makefile.
+- **UI tests** — `make ui-test` runs browser tests in headless Chrome (chromedp, build tag `uitest`, package `internal/uitest`). They load every main page at 360, 390, 768 and 1280 px and fail on sideways overflow or JavaScript errors, and cover the phone drawer and bottom bar, the theme toggle, page tabs on new pages, the history compare button and live search. `UI_SCREENSHOTS=dir` saves full-page screenshots (light, and dark at 390 and 1280 px). CI runs them after `go test` and uploads the screenshots as the `ui-screenshots` artifact. Locally the tests are skipped when Chrome is missing; in CI they fail.
+
+### Changed
+- **Theme** — follows the system light/dark setting until you pick one with the toggle; the choice is remembered in `localStorage`. Also applies to the public share page and the upload-link page.
+- **Recent edits on phones** — the table hides revision and author instead of author and summary.
+
+### Fixed
+- **Long words on phones** — long words and URLs (for example in search results) no longer make the page wider than the screen.
+
+### Notes
+- New test-only dependency: `github.com/chromedp/chromedp` (behind the `uitest` build tag).
+
 ## v0.56.1
 
 ### Fixed
