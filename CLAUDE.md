@@ -40,5 +40,10 @@ endpoints, config keys, or behaviour changes.
   feature name, then a dash and a concise description.
 - README "Wiki Features" list gets a bullet for each new capability.
 - One commit for code, docs, changelog and readme: `Add <feature> (vX.Y.Z)`.
-- `ci.yml` on push/PR; `release.yml` (binary and image) and `helm.yml` (chart to
-  GHCR) on `v*` tags. Version comes only from git tags.
+- `ci.yml` on push/PR; `release.yml` (tests, image, GitHub Release with
+  binaries and the CHANGELOG section as notes) and `helm.yml` (chart to GHCR) on
+  `v*` tags. Version comes only from git tags.
+- Deploying: the chart version is pinned in `~/dev/gitops/gypsum`
+  (`deploy/kustomization.yaml` and the README pin table). After the Release and
+  Helm Chart workflows pass, bump the pin there in its own commit and push;
+  Argo CD rolls it out. Nothing deploys without that bump.
