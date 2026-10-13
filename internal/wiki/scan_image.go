@@ -130,11 +130,14 @@ func renderFigure(img *image.RGBA, style string, colors []string) ([]byte, strin
 	var buf bytes.Buffer
 	switch style {
 	case figureBW:
-		gray := stretchGray(toGray(img))
+		flat, onPaper := flattenLighting(img)
+		gray := stretchGray(toGray(flat))
 		t := otsuThreshold(gray)
 		pal := image.NewPaletted(gray.Bounds(), color.Palette{color.Black, color.White})
+		w := gray.Rect.Dx()
 		for i, v := range gray.Pix {
-			if v > t {
+			// On paper, colored marker counts as ink however light it is.
+			if v > t && !(onPaper && isInk(flat.RGBAAt(i%w, i/w))) {
 				pal.Pix[i] = 1
 			}
 		}
@@ -147,14 +150,14 @@ func renderFigure(img *image.RGBA, style string, colors []string) ([]byte, strin
 		if len(palette) < 2 {
 			return renderFigure(img, figureGray, nil)
 		}
-		pal := image.NewPaletted(img.Bounds(), palette)
-		draw.Draw(pal, pal.Bounds(), img, image.Point{}, draw.Src) // nearest palette color, no dithering
+		pal := posterize(img, palette)
 		if err := png.Encode(&buf, pal); err != nil {
 			return nil, "", fmt.Errorf("encoding figure: %w", err)
 		}
 		return buf.Bytes(), ".png", nil
 	case figureGray, "grayscale": // "grayscale" is the style's earlier name
-		gray := stretchGray(toGray(img))
+		flat, _ := flattenLighting(img)
+		gray := stretchGray(toGray(flat))
 		levels := grayClusters(gray, grayLevels)
 		pal := make(color.Palette, len(levels))
 		for i, l := range levels {
@@ -180,6 +183,287 @@ func toGray(img *image.RGBA) *image.Gray {
 	gray := image.NewGray(img.Bounds())
 	draw.Draw(gray, gray.Bounds(), img, img.Bounds().Min, draw.Src)
 	return gray
+}
+
+// flattenLighting evens out the light on a drawing on paper or a whiteboard.
+// It estimates the paper color in a grid of blocks (the brightest tenth of
+// each block) and divides it out, so the paper comes out white everywhere,
+// also in shadows and under a color cast, and the ink keeps its color.
+// Blocks covered by ink take the paper color of their neighbours. An image
+// that is not mostly light, gray paper (pixel art on a dark screen, colored
+// paper) is returned unchanged, with false.
+func flattenLighting(img *image.RGBA) (*image.RGBA, bool) {
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w == 0 || h == 0 {
+		return img, false
+	}
+	bs := max(16, max(w, h)/24)
+	gw, gh := (w+bs-1)/bs, (h+bs-1)/bs
+	paper := make([][3]float64, gw*gh)
+	lum := make([]float64, gw*gh)
+	for gy := 0; gy < gh; gy++ {
+		for gx := 0; gx < gw; gx++ {
+			x0, y0 := b.Min.X+gx*bs, b.Min.Y+gy*bs
+			x1, y1 := min(x0+bs, b.Max.X), min(y0+bs, b.Max.Y)
+			var hist [256]int
+			for y := y0; y < y1; y++ {
+				for x := x0; x < x1; x++ {
+					c := img.RGBAAt(x, y)
+					hist[luma(c)]++
+				}
+			}
+			// The brightness above which the brightest tenth lies.
+			cut, n := 255, 0
+			for need := (x1 - x0) * (y1 - y0) / 10; cut > 0 && n+hist[cut] <= need; cut-- {
+				n += hist[cut]
+			}
+			var sum [3]float64
+			cnt := 0.0
+			for y := y0; y < y1; y++ {
+				for x := x0; x < x1; x++ {
+					if c := img.RGBAAt(x, y); int(luma(c)) >= cut {
+						sum[0] += float64(c.R)
+						sum[1] += float64(c.G)
+						sum[2] += float64(c.B)
+						cnt++
+					}
+				}
+			}
+			i := gy*gw + gx
+			paper[i] = [3]float64{sum[0] / cnt, sum[1] / cnt, sum[2] / cnt}
+			lum[i] = 0.299*paper[i][0] + 0.587*paper[i][1] + 0.114*paper[i][2]
+		}
+	}
+	sorted := append([]float64(nil), lum...)
+	sort.Float64s(sorted)
+	median := sorted[len(sorted)/2]
+	// A block shows paper when it is light, close to the typical paper
+	// brightness and nearly gray.
+	valid := make([]bool, len(paper))
+	nValid := 0
+	for i, p := range paper {
+		chroma := max(p[0], p[1], p[2]) - min(p[0], p[1], p[2])
+		if lum[i] >= 100 && lum[i] >= 0.75*median && chroma < 60 {
+			valid[i] = true
+			nValid++
+		}
+	}
+	if nValid*2 < len(paper) {
+		return img, false
+	}
+	// Fill ink-covered blocks from their neighbours, ring by ring.
+	for nValid < len(paper) {
+		next := append([]bool(nil), valid...)
+		for gy := 0; gy < gh; gy++ {
+			for gx := 0; gx < gw; gx++ {
+				i := gy*gw + gx
+				if valid[i] {
+					continue
+				}
+				var sum [3]float64
+				cnt := 0.0
+				for dy := -1; dy <= 1; dy++ {
+					for dx := -1; dx <= 1; dx++ {
+						nx, ny := gx+dx, gy+dy
+						if nx >= 0 && ny >= 0 && nx < gw && ny < gh && valid[ny*gw+nx] {
+							j := ny*gw + nx
+							sum[0] += paper[j][0]
+							sum[1] += paper[j][1]
+							sum[2] += paper[j][2]
+							cnt++
+						}
+					}
+				}
+				if cnt > 0 {
+					paper[i] = [3]float64{sum[0] / cnt, sum[1] / cnt, sum[2] / cnt}
+					next[i] = true
+					nValid++
+				}
+			}
+		}
+		valid = next
+	}
+	// Divide each pixel by the paper color, blended between block centres.
+	out := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		fy := min(max((float64(y)+0.5)/float64(bs)-0.5, 0), float64(gh-1))
+		y0 := int(fy)
+		y1, ty := min(y0+1, gh-1), fy-float64(y0)
+		for x := 0; x < w; x++ {
+			fx := min(max((float64(x)+0.5)/float64(bs)-0.5, 0), float64(gw-1))
+			x0 := int(fx)
+			x1, tx := min(x0+1, gw-1), fx-float64(x0)
+			c := img.RGBAAt(b.Min.X+x, b.Min.Y+y)
+			in := [3]float64{float64(c.R), float64(c.G), float64(c.B)}
+			var px [3]uint8
+			for k := range 3 {
+				top := paper[y0*gw+x0][k]*(1-tx) + paper[y0*gw+x1][k]*tx
+				bot := paper[y1*gw+x0][k]*(1-tx) + paper[y1*gw+x1][k]*tx
+				bg := max(top*(1-ty)+bot*ty, 1)
+				px[k] = uint8(min(255, math.Round(in[k]*255/bg)))
+			}
+			out.SetRGBA(x, y, color.RGBA{px[0], px[1], px[2], 255})
+		}
+	}
+	return out, true
+}
+
+// isInk tells ink from paper on a page whose light was flattened (paper is
+// near white): dark pixels and clearly colored ones are ink.
+func isInk(c color.RGBA) bool {
+	chroma := max(c.R, c.G, c.B) - min(c.R, c.G, c.B)
+	return luma(c) < 190 || chroma >= 24
+}
+
+// posterize maps each pixel to the nearest palette color, compared in Lab
+// so hue counts more than in RGB, without dithering. On paper, the paper
+// becomes the palette's lightest color, and ink the color whose mix with
+// white comes closest: pale or thin marker strokes are ink thinned by the
+// white paper, so they keep their hue instead of turning black or white.
+func posterize(img *image.RGBA, palette color.Palette) *image.Paletted {
+	flat, onPaper := flattenLighting(img)
+	labs := make([][3]float64, len(palette))
+	paper := 0
+	for i, c := range palette {
+		r, g, b, _ := c.RGBA()
+		labs[i] = toLab(uint8(r>>8), uint8(g>>8), uint8(b>>8))
+		if labs[i][0] > labs[paper][0] {
+			paper = i
+		}
+	}
+	nearest := func(lab [3]float64) int16 {
+		best, bestD := 0, math.Inf(1)
+		for i, p := range labs {
+			if d := (lab[0]-p[0])*(lab[0]-p[0]) + (lab[1]-p[1])*(lab[1]-p[1]) + (lab[2]-p[2])*(lab[2]-p[2]); d < bestD {
+				best, bestD = i, d
+			}
+		}
+		return int16(best)
+	}
+	// nearestInk measures, in RGB, how far c is from the line between white
+	// and each ink color.
+	nearestInk := func(c color.RGBA) int16 {
+		best, bestD := 0, math.Inf(1)
+		off := [3]float64{float64(c.R) - 255, float64(c.G) - 255, float64(c.B) - 255}
+		for i, pc := range palette {
+			if i == paper && len(palette) > 2 {
+				continue
+			}
+			r, g, b, _ := pc.RGBA()
+			dir := [3]float64{float64(r>>8) - 255, float64(g>>8) - 255, float64(b>>8) - 255}
+			t := 0.0
+			if dd := dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]; dd > 0 {
+				t = min(1, max(0, (off[0]*dir[0]+off[1]*dir[1]+off[2]*dir[2])/dd))
+			}
+			d := 0.0
+			for k := range 3 {
+				d += (off[k] - t*dir[k]) * (off[k] - t*dir[k])
+			}
+			if d < bestD {
+				best, bestD = i, d
+			}
+		}
+		return int16(best)
+	}
+	// Colors are looked up at 5 bits per channel; plenty for a few colors.
+	var cache [1 << 15]int16
+	for i := range cache {
+		cache[i] = -1
+	}
+	b := flat.Bounds()
+	out := image.NewPaletted(image.Rect(0, 0, b.Dx(), b.Dy()), palette)
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			c := flat.RGBAAt(x, y)
+			key := int(c.R>>3)<<10 | int(c.G>>3)<<5 | int(c.B>>3)
+			if cache[key] < 0 {
+				switch {
+				case !onPaper:
+					cache[key] = nearest(toLab(c.R, c.G, c.B))
+				case !isInk(c):
+					cache[key] = int16(paper)
+				default:
+					cache[key] = nearestInk(c)
+				}
+			}
+			out.Pix[(y-b.Min.Y)*out.Stride+(x-b.Min.X)] = uint8(cache[key])
+		}
+	}
+	despeckle(out)
+	return out
+}
+
+// despeckle gives each pixel that matches none of its 8 neighbours the color
+// most of them have, which removes the stray colored dots that color noise
+// and JPEG fringes leave along strokes.
+func despeckle(img *image.Paletted) {
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	src := append([]uint8(nil), img.Pix...)
+	var count [256]int
+	for y := 1; y < h-1; y++ {
+		for x := 1; x < w-1; x++ {
+			c := src[y*img.Stride+x]
+			alone := true
+			for dy := -1; dy <= 1 && alone; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					if (dx != 0 || dy != 0) && src[(y+dy)*img.Stride+x+dx] == c {
+						alone = false
+						break
+					}
+				}
+			}
+			if !alone {
+				continue
+			}
+			best := src[y*img.Stride+x-1]
+			for dy := -1; dy <= 1; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					if dx == 0 && dy == 0 {
+						continue
+					}
+					n := src[(y+dy)*img.Stride+x+dx]
+					if count[n]++; count[n] > count[best] {
+						best = n
+					}
+				}
+			}
+			for dy := -1; dy <= 1; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					count[src[(y+dy)*img.Stride+x+dx]] = 0
+				}
+			}
+			img.Pix[y*img.Stride+x] = best
+		}
+	}
+}
+
+// toLab converts an sRGB color to CIE L*a*b* (D65 white).
+func toLab(r, g, b uint8) [3]float64 {
+	lin := func(v uint8) float64 {
+		c := float64(v) / 255
+		if c <= 0.04045 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	rl, gl, bl := lin(r), lin(g), lin(b)
+	x := (0.4124*rl + 0.3576*gl + 0.1805*bl) / 0.95047
+	y := 0.2126*rl + 0.7152*gl + 0.0722*bl
+	z := (0.0193*rl + 0.1192*gl + 0.9505*bl) / 1.08883
+	f := func(t float64) float64 {
+		if t > 216.0/24389 {
+			return math.Cbrt(t)
+		}
+		return (24389.0/27*t + 16) / 116
+	}
+	fx, fy, fz := f(x), f(y), f(z)
+	return [3]float64{116*fy - 16, 500 * (fx - fy), 200 * (fy - fz)}
+}
+
+
+func luma(c color.RGBA) uint8 {
+	return uint8((299*int(c.R) + 587*int(c.G) + 114*int(c.B)) / 1000)
 }
 
 // stretchGray spreads the 2nd–98th percentile of brightness over the full

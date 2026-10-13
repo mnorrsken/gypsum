@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.60.1
+
+### Fixed
+- **Figure styles on unevenly lit paper** — `palette`, `bw` and `gray` figures from a whiteboard or a page in uneven light came out wrong: shaded paper was matched to an ink color (a whiteboard turned lime green), and pale marker strokes vanished into the paper or turned black. The light is now evened out first, so the paper is white everywhere; in `palette` and `bw` any clearly colored stroke counts as ink, pale strokes keep their hue, and stray single-pixel dots are cleaned up.
+
 ## v0.60.0
 
 ### Added

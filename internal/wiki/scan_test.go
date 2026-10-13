@@ -174,6 +174,51 @@ func TestRenderFigureStyles(t *testing.T) {
 	}
 }
 
+func TestPaletteOnUnevenlyLitWhiteboard(t *testing.T) {
+	// A whiteboard lit from the right: the board goes from dark gray to
+	// near white. A pale pink stroke runs across it, a blue one below.
+	img := image.NewRGBA(image.Rect(0, 0, 300, 200))
+	for y := 0; y < 200; y++ {
+		for x := 0; x < 300; x++ {
+			light := 0.55 + 0.4*float64(x)/300
+			c := [3]float64{250, 248, 240} // board
+			switch {
+			case y >= 60 && y < 64:
+				c = [3]float64{245, 165, 175} // pale pink marker
+			case y >= 130 && y < 134:
+				c = [3]float64{60, 90, 180} // blue marker
+			}
+			img.SetRGBA(x, y, color.RGBA{uint8(c[0] * light), uint8(c[1] * light), uint8(c[2] * light), 255})
+		}
+	}
+	data, _, err := renderFigure(img, figurePalette, []string{"#f4f4f4", "#a8d84a", "#e0408a", "#3a5fb0", "#222222"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := png.Decode(bytes.NewReader(data))
+	want := func(x, y int, hex string) {
+		t.Helper()
+		r, g, b, _ := out.At(x, y).RGBA()
+		if got := fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8); got != hex {
+			t.Errorf("(%d,%d) = %s, want %s", x, y, got, hex)
+		}
+	}
+	for _, x := range []int{10, 150, 290} {
+		want(x, 20, "#f4f4f4") // the board is paper in the shade too
+		want(x, 62, "#e0408a") // pale pink stays pink
+		want(x, 132, "#3a5fb0")
+	}
+
+	// Pixel art on a dark background is not "paper": colors map as they are.
+	dark := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	for i := 0; i < len(dark.Pix); i += 4 {
+		copy(dark.Pix[i:], []uint8{20, 20, 30, 255})
+	}
+	if _, onPaper := flattenLighting(dark); onPaper {
+		t.Error("a dark image was treated as paper")
+	}
+}
+
 func TestPrepareScanImageLimits(t *testing.T) {
 	p, err := prepareScanImage(testJPEG(t, 4000, 3000, 6))
 	if err != nil {
