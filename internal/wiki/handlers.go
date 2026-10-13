@@ -83,6 +83,8 @@ type TemplateData struct {
 	SecretHues    int              // number of mnemonic tile colors
 	SecureSalt    string           // base64 PBKDF2 salt for {{secure_aes2}}
 	SecureIters   int              // PBKDF2 iteration count
+	CanRestore    bool             // history rows get a Restore button (pages only)
+	RestoreHash   string           // diff page: the older revision that can be restored
 	ScanEnabled   bool             // show the photo scan button
 	ScanJob       *ScanJob         // scan progress view
 }
@@ -115,8 +117,25 @@ func (h *Handler) SetDocsDir(dir string) {
 	h.docsDir = dir
 }
 
+// assetVersion is appended to static asset URLs so browsers fetch new files
+// after an upgrade; set it with SetAssetVersion.
+var assetVersion string
+
+// SetAssetVersion sets the version used by the "asset" template function,
+// typically web.AssetVersion().
+func SetAssetVersion(v string) {
+	assetVersion = v
+}
+
 // templateFuncs are helper functions available in all templates.
 var templateFuncs = template.FuncMap{
+	// asset returns the URL of a static file, versioned for caching.
+	"asset": func(name string) string {
+		if assetVersion == "" {
+			return "/static/" + name
+		}
+		return "/static/" + name + "?v=" + assetVersion
+	},
 	"add":      func(a, b int) int { return a + b },
 	"subtract": func(a, b int) int { return a - b },
 	"highlightSnippet": func(s string) template.HTML {
@@ -189,6 +208,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/search", h.handleSearch)
 	mux.HandleFunc("/history/", h.handleHistory)
 	mux.HandleFunc("/history-diff/", h.handleHistoryDiff)
+	mux.HandleFunc("POST /restore/{slug}", h.handleRestore)
 	mux.HandleFunc("/images", h.handleImages)
 	mux.HandleFunc("/images/upload", h.handleImageUpload)
 	mux.HandleFunc("/images/delete", h.handleImageDelete)

@@ -144,6 +144,7 @@ func main() {
 		log.Printf("OAuth enabled: /mcp/external protected via OAuth (external URL: %s)", externalURL)
 	}
 
+	wiki.SetAssetVersion(web.AssetVersion())
 	mcpSections := wiki.ParseMCPSections(os.Getenv("GYPSUM_MCP_SECTIONS"))
 	handler := wiki.NewHandler(store, renderer, web.Templates(), autoCommitter, oauthServer, db, mcpSections)
 	uploadCfg := uploadConfigFromEnv()
@@ -175,7 +176,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServerFS(web.Static())))
+	mux.Handle("/static/", http.StripPrefix("/static/", web.StaticHandler()))
 
 	var root http.Handler = mux
 	if userHeader := os.Getenv("GYPSUM_AUTH_USER_HEADER"); userHeader != "" {

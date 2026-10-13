@@ -274,10 +274,41 @@ func (h *Handler) handleHistory(w http.ResponseWriter, r *http.Request) {
 	entries, _ := h.autoCommit.DocHistory(KindPage, slug, 50)
 
 	h.render(w, "history", TemplateData{
-		Title:   "History: " + title,
-		Page:    &Page{Slug: slug, Title: title},
-		History: entries,
+		Title:      "History: " + title,
+		Page:       &Page{Slug: slug, Title: title},
+		History:    entries,
+		CanRestore: true,
 	})
+}
+
+// revisionHashRe matches an abbreviated or full git commit hash.
+var revisionHashRe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+
+// handleRestore serves POST /restore/{slug}: it saves the page content of the
+// revision in the "hash" form field as the current version and commits that
+// as a new revision, so a restore can itself be undone from the history.
+func (h *Handler) handleRestore(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	hash := strings.TrimSpace(r.FormValue("hash"))
+	if slug == "" || !revisionHashRe.MatchString(hash) {
+		http.Error(w, "missing page or revision", http.StatusBadRequest)
+		return
+	}
+	content, err := h.autoCommit.DocContentAtRevision(KindPage, slug, hash)
+	if err != nil {
+		http.Error(w, "could not load revision: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	if current, err := h.store.Load(KindPage, slug); err == nil && current.Content == content {
+		http.Redirect(w, r, "/history/"+slug, http.StatusSeeOther) // already at that version
+		return
+	}
+	if err := h.store.Save(KindPage, slug, content); err != nil {
+		http.Error(w, "failed to save page: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = h.autoCommit.CommitRestore(KindPage, slug, hash, UsernameFromRequest(r))
+	http.Redirect(w, r, "/wiki/"+slug, http.StatusSeeOther)
 }
 
 const recentEditsPerPage = 50
@@ -345,10 +376,11 @@ func (h *Handler) handleHistoryDiff(w http.ResponseWriter, r *http.Request) {
 	title := TitleFromSlug(slug)
 
 	h.render(w, "history_diff", TemplateData{
-		Title:    "Diff: " + title,
-		Page:     &Page{Slug: slug, Title: title},
-		DiffHTML: diffHTML,
-		Query:    fmt.Sprintf("%s...%s", fromHash[:minLen(len(fromHash), 7)], toHash[:minLen(len(toHash), 7)]),
+		Title:       "Diff: " + title,
+		Page:        &Page{Slug: slug, Title: title},
+		DiffHTML:    diffHTML,
+		Query:       fmt.Sprintf("%s...%s", fromHash[:minLen(len(fromHash), 7)], toHash[:minLen(len(toHash), 7)]),
+		RestoreHash: fromHash,
 	})
 }
 

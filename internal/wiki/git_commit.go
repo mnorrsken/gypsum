@@ -135,6 +135,12 @@ func (c *GitAutoCommitter) CommitSave(kind DocKind, slug, author string) error {
 	return c.commitFile(filepath.Join(string(kind), MarkdownFilename(slug)), fmt.Sprintf("wiki: update %s %s", kind.Label(), slug), author)
 }
 
+// CommitRestore commits a document that was set back to an earlier revision.
+func (c *GitAutoCommitter) CommitRestore(kind DocKind, slug, hash, author string) error {
+	return c.commitFile(filepath.Join(string(kind), MarkdownFilename(slug)),
+		fmt.Sprintf("wiki: restore %s %s to %s", kind.Label(), slug, hash[:minLen(len(hash), 7)]), author)
+}
+
 func (c *GitAutoCommitter) CommitDelete(kind DocKind, slug, author string) error {
 	relPath := filepath.Join(string(kind), MarkdownFilename(slug))
 	return c.commitDelete(relPath, fmt.Sprintf("wiki: delete %s %s", kind.Label(), slug), author)

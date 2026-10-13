@@ -17,6 +17,13 @@
 
   <div class="page-actions">
     <a href="/history/{{.Page.Slug}}" class="button secondary">Back to History</a>
+    {{if .RestoreHash}}
+    <form method="post" action="/restore/{{.Page.Slug}}"
+          onsubmit="return confirm('Restore the older version? The current text is replaced, and the change is saved as a new revision you can undo.')">
+      <input type="hidden" name="hash" value="{{.RestoreHash}}" />
+      <button type="submit">Restore older version</button>
+    </form>
+    {{end}}
   </div>
 </article>
 {{end}}

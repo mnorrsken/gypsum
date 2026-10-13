@@ -63,7 +63,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Quick Notes — a whiteboard-style board of always-editable sticky notes with autosave, title-hashed colors, and archive; stored as plain markdown in git
 - Secrets vault — a searchable list of credentials with click-to-reveal (60s) and copy-without-showing; tiles use the linked site's own picture or a title-hashed two-letter mnemonic. Encrypted in the browser, stored as markdown in git, never exposed over MCP
 - Interactive link graph
-- Page history with revision diffs; MCP edits are committed under the calling client's name (e.g. `claude-code (MCP)`)
+- Page history with revision diffs and one-click restore of any older revision; MCP edits are committed under the calling client's name (e.g. `claude-code (MCP)`)
 - Image uploads (paste, drag-and-drop, or picker) with size hints
 - File uploads — PDF, text, CSV, JSON and Office documents are stored in `files/`, linked from pages, and searchable (text of PDFs and text files is indexed, no OCR). Photos are scaled and stripped of EXIF/GPS data on upload
 - Photo scan to page — with `ANTHROPIC_API_KEY` set, take a photo of a page or note and Claude turns it into Markdown with the figures cut out and embedded, as a new page or appended to an existing one

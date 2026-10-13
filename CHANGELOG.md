@@ -2,6 +2,18 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.58.0
+
+### Added
+- **Restore from history** — each older revision on a page's History tab has a **Restore** button, and the comparison page has **Restore older version**. After a confirmation the page is set back to that revision and saved as a new revision (`wiki: restore page <slug> to <hash>`), so nothing is lost and a restore can be undone the same way. See [Usage → Page History](docs/usage.md#page-history).
+
+### Changed
+- **Helm chart on every tag** — the Helm Chart workflow no longer carries a `charts/**` path filter on tag pushes, making explicit that every release tag publishes a chart whose `version` and `appVersion` match the tag, so a deployment that follows the newest chart always gets the matching image.
+
+### Fixed
+- **Stale styles after an upgrade** — static files were served without cache headers or versions, so a browser (Safari and Home Screen apps in particular) could keep an old `style.css` with the new page markup and show a broken layout. CSS, JavaScript and icon URLs now carry a content hash (`?v=…`, cached for a year), and unversioned static requests get an ETag and are revalidated.
+- **Heading sizes** — headings inside page text (`# Heading`) were larger than the page title; they are now smaller.
+
 ## v0.57.1
 
 ### Added

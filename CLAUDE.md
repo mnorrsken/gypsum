@@ -43,7 +43,7 @@ endpoints, config keys, or behaviour changes.
 - `ci.yml` on push/PR; `release.yml` (tests, image, GitHub Release with
   binaries and the CHANGELOG section as notes) and `helm.yml` (chart to GHCR) on
   `v*` tags. Version comes only from git tags.
-- Deploying: the chart version is pinned in `~/dev/gitops/gypsum`
-  (`deploy/kustomization.yaml` and the README pin table). After the Release and
-  Helm Chart workflows pass, bump the pin there in its own commit and push;
-  Argo CD rolls it out. Nothing deploys without that bump.
+- Deploying: `~/dev/gitops/gypsum` follows the newest chart (no pin). Every tag
+  publishes a chart with `version` and `appVersion` set to the tag, so chart and
+  image always match. Argo CD caches the render per gitops commit (up to 24 h);
+  a hard refresh of the `gypsum` app rolls a release out at once.

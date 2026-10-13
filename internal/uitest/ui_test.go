@@ -106,7 +106,8 @@ func newFixture(t *testing.T) *fixture {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", h.Routes())
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServerFS(web.Static())))
+	wiki.SetAssetVersion(web.AssetVersion())
+	mux.Handle("/static/", http.StripPrefix("/static/", web.StaticHandler()))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -466,6 +467,37 @@ func TestLiveSearch(t *testing.T) {
 	}
 	if got := eval[string](t, b, `document.getElementById('search-results').textContent`); !strings.Contains(got, "Wide Test") {
 		t.Errorf("live search results do not list the page: %q", strings.TrimSpace(got))
+	}
+	if errs := b.takeErrors(); len(errs) > 0 {
+		t.Errorf("JavaScript errors: %v", errs)
+	}
+}
+
+func TestRestoreFromHistory(t *testing.T) {
+	f := newFixture(t)
+	b := newBrowser(t)
+
+	b.open(t, f.srv.URL+"/history/Wide_Test", 390)
+	if got := eval[string](t, b, `document.querySelector('.history-restore')?.textContent.trim() || ''`); got != "Current" {
+		t.Errorf("newest revision cell = %q, want Current", got)
+	}
+	// Accept the confirmation, then restore the second-newest revision ("edit 1").
+	eval[bool](t, b, `(window.confirm = () => true, true)`)
+	click(t, b, ".history-restore-btn")
+	if err := chromedp.Do(b.ctx, chromedp.Sleep(800*time.Millisecond), chromedp.WaitReady(chromedp.CSS("body"))); err != nil {
+		t.Fatal(err)
+	}
+	if path := eval[string](t, b, `location.pathname`); path != "/wiki/Wide_Test" {
+		t.Fatalf("after restore the browser is on %q, want the page", path)
+	}
+	text := eval[string](t, b, `document.querySelector('.wiki-content').textContent`)
+	if !strings.Contains(text, "edit 1") || strings.Contains(text, "edit 2") {
+		t.Errorf("page was not restored to the previous version: %q", text[max(0, len(text)-40):])
+	}
+
+	b.open(t, f.srv.URL+"/history/Wide_Test", 1280)
+	if msg := eval[string](t, b, `document.querySelector('.history-message').firstChild.textContent.trim()`); !strings.HasPrefix(msg, "wiki: restore page Wide_Test to ") {
+		t.Errorf("newest history entry = %q, want the restore", msg)
 	}
 	if errs := b.takeErrors(); len(errs) > 0 {
 		t.Errorf("JavaScript errors: %v", errs)

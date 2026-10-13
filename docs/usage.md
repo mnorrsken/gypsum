@@ -166,6 +166,8 @@ The original photo is not kept. The scan runs in the background; `/scan/{id}` sh
 
 Click the **History** tab to view the git commit log for a page. Select two revisions using the **Old** and **New** radio buttons, then click **Compare Selected** to see a colorized unified diff. The author column shows who made each change: the signed-in user for web edits, or the MCP client (for example `claude-code (MCP)`) for agent edits; see [MCP Server](mcp.md#commit-authors).
 
+To undo edits, click **Restore** on an older revision (the newest row is marked **Current**), or **Restore older version** below a comparison to go back to the older side. After a confirmation the page text is replaced by that revision and saved as a new revision named `wiki: restore page <slug> to <hash>`. Nothing is removed from the history, so a restore can be undone the same way. Restoring works for pages; skills are not covered yet.
+
 ## Git Sync Status
 
 When a git remote is configured (`GYPSUM_GIT_REMOTE_URL`), a status dot appears

@@ -25,6 +25,7 @@
           <th>Date</th>
           <th>Author</th>
           <th>Summary</th>
+          {{if .CanRestore}}<th class="history-restore-col"><span class="visually-hidden">Restore</span></th>{{end}}
         </tr>
       </thead>
       <tbody>
@@ -36,6 +37,15 @@
           <td class="history-date">{{$entry.Date.Format "2006-01-02 15:04"}}</td>
           <td class="history-author">{{$entry.Author}}</td>
           <td class="history-message">{{$entry.Message}}<span class="history-meta">{{$entry.Date.Format "2006-01-02 15:04"}} · {{$entry.Author}}</span></td>
+          {{if $.CanRestore}}
+          <td class="history-restore">
+            {{if eq $i 0}}<span class="history-current">Current</span>{{else}}
+            <button type="submit" class="secondary history-restore-btn" formaction="/restore/{{$.Page.Slug}}" formmethod="post"
+                    name="hash" value="{{$entry.Hash}}"
+                    onclick="return confirm('Restore this version? The current text is replaced, and the change is saved as a new revision you can undo.')">Restore</button>
+            {{end}}
+          </td>
+          {{end}}
         </tr>
         {{end}}
       </tbody>

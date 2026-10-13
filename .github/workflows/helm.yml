@@ -1,12 +1,12 @@
 name: Helm Chart
 run-name: Helm Chart ${{ github.ref_name }}
 
+# Every release tag publishes a chart (version and appVersion = the tag), even
+# without chart changes, so the chart always points at the matching image.
 on:
   push:
     tags:
       - 'v*'
-    paths:
-      - 'charts/**'
   pull_request:
     paths:
       - 'charts/**'

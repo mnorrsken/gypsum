@@ -958,14 +958,24 @@ label {
   margin-top: 0;
 }
 
+/* Headings in the text stay below the page title in size. */
+.wiki-content h1 {
+  font-size: 1.5em;
+  letter-spacing: -0.02em;
+}
+
 .wiki-content h2 {
   padding-bottom: 0.3em;
   border-bottom: 1px solid var(--border);
-  font-size: 1.45em;
+  font-size: 1.3em;
 }
 
 .wiki-content h3 {
-  font-size: 1.2em;
+  font-size: 1.12em;
+}
+
+.wiki-content h4 {
+  font-size: 1em;
 }
 
 .wiki-content p,
@@ -1314,6 +1324,23 @@ label {
 
 .history-radio-cell {
   text-align: center;
+}
+
+.history-restore-col,
+.history-restore {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.history-restore-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.history-current {
+  color: var(--muted);
+  font-size: 12.5px;
 }
 
 /* Date and author under the summary; shown only on narrow screens. */
@@ -2979,7 +3006,11 @@ label {
   .page-title-area h1,
   .page-header h1 {
     margin-bottom: 12px;
-    font-size: 24px;
+    font-size: 26px;
+  }
+
+  .wiki-content h1 {
+    font-size: 1.35em;
   }
 
   .page-tabs {
