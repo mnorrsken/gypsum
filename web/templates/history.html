@@ -35,7 +35,7 @@
           <td class="history-hash"><code>{{printf "%.7s" $entry.Hash}}</code></td>
           <td class="history-date">{{$entry.Date.Format "2006-01-02 15:04"}}</td>
           <td class="history-author">{{$entry.Author}}</td>
-          <td class="history-message">{{$entry.Message}}</td>
+          <td class="history-message">{{$entry.Message}}<span class="history-meta">{{$entry.Date.Format "2006-01-02 15:04"}} · {{$entry.Author}}</span></td>
         </tr>
         {{end}}
       </tbody>

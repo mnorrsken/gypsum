@@ -2,6 +2,15 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.56.1
+
+### Fixed
+- **Phone layout** — on narrow screens the top bar no longer runs off the right edge: the search field takes the space that is left, its Search button is hidden (Enter searches) and the icon buttons are smaller. The search field's desktop `min-width: 240px` no longer overrides the phone width.
+- **Wide content on phones** — wide tables and code blocks scroll sideways inside the page instead of widening the whole layout; table headers stay on one line, long links wrap, and page tabs stay on one line.
+- **History on phones** — the date and author move under the summary instead of being their own columns, so the table fits the screen.
+- **iOS zoom on input** — text fields and the editor use a 16px font on phones, so iOS Safari no longer zooms in when one gets focus.
+- **Share tab on new pages** — a page that does not exist yet no longer shows Share and History tabs, which led to "page not found".
+
 ## v0.56.0
 
 ### Added

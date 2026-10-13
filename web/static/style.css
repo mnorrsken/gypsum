@@ -321,6 +321,7 @@ a:hover {
 
 .content {
   padding: 24px 32px;
+  min-width: 0; /* let wide tables and code scroll instead of widening the grid */
 }
 
 article {
@@ -815,6 +816,9 @@ textarea {
   border-collapse: collapse;
   margin: 1em 0;
   width: auto;
+  display: block; /* scroll sideways when wider than the page */
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .wiki-content th,
@@ -1122,6 +1126,14 @@ textarea {
   text-align: center;
 }
 
+/* Date and author under the summary; shown only on narrow screens. */
+.history-meta {
+  display: none;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
 /* --- Pagination --- */
 
 .pagination {
@@ -1188,9 +1200,52 @@ textarea {
     padding: 16px;
   }
 
-  .search input {
+  /* Top bar: the search field takes the space left over, the icons stay. */
+  .topbar-inner {
+    gap: 8px;
+  }
+
+  .topbar-left {
+    flex-shrink: 0;
+  }
+
+  .topbar-right {
+    flex: 1;
     min-width: 0;
-    width: 120px;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .search {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .search input,
+  .search input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+
+  /* Enter or the keyboard's search key submits; live search runs anyway. */
+  .search button[type="submit"] {
+    display: none;
+  }
+
+  .lock-toggle,
+  .theme-toggle {
+    padding: 0 6px;
+  }
+
+  .wiki-content {
+    overflow-wrap: break-word;
+  }
+
+  /* Headers set the column widths; a wide table scrolls instead of
+     squeezing every column to a word per line. */
+  .wiki-content th {
+    white-space: nowrap;
   }
 
   .page-list {
@@ -1211,9 +1266,32 @@ textarea {
     display: none;
   }
 
+  /* History: drop the date and author columns, show them under the summary. */
+  .history-table th:nth-child(4),
+  .history-table td:nth-child(4),
   .history-table th:nth-child(5),
   .history-table td:nth-child(5) {
     display: none;
+  }
+
+  .history-table th,
+  .history-table td {
+    padding: 6px;
+  }
+
+  .history-radio-col {
+    width: auto;
+  }
+
+  .history-meta {
+    display: block;
+  }
+
+  /* 16px keeps iOS Safari from zooming in when a field gets focus. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: 16px;
   }
 
   .page-title-area h1 {
@@ -1226,17 +1304,18 @@ textarea {
 }
 
 @media (max-width: 480px) {
-  .search input {
-    width: 90px;
-  }
-
   .brand a {
     font-size: 16px;
+  }
+
+  .page-tabs {
+    overflow-x: auto;
   }
 
   .page-tabs a {
     padding: 5px 10px;
     font-size: 12px;
+    white-space: nowrap;
   }
 
   .page-actions {

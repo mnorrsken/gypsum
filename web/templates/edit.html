@@ -6,8 +6,10 @@
     <div class="page-tabs">
       <a href="/wiki/{{.Page.Slug}}">Page</a>
       <a href="/edit/{{.Page.Slug}}" class="active">Edit</a>
+      {{if not .IsNew}}
       <a href="/share/{{.Page.Slug}}">Share</a>
       <a href="/history/{{.Page.Slug}}">History</a>
+      {{end}}
     </div>
   </div>
   {{if .Query}}<p class="error">{{.Query}}</p>{{end}}
