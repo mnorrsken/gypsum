@@ -1,5 +1,8 @@
 [x-cloak] { display: none !important; }
 
+/* The hidden attribute wins over component display rules (buttons are flex). */
+[hidden] { display: none !important; }
+
 /* ==========================================================================
    Design tokens
    New code uses the short names (--bg, --surface, --accent ...). The
@@ -2691,6 +2694,140 @@ label {
   border-radius: var(--radius-sm);
 }
 
+/* The encryption and secret dialogs: the header stays, the form scrolls and
+   its buttons stick to the bottom, so they are always reachable. */
+.lock-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+}
+
+.lock-dialog-header {
+  flex: none;
+}
+
+.lock-dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-bottom: 88px; /* a focused field stops above the sticky buttons */
+}
+
+/* A scrolling flex column would otherwise squash its fields. */
+.lock-dialog-body > * {
+  flex-shrink: 0;
+}
+
+.secret-dialog label {
+  margin-top: 4px;
+}
+
+.secret-dialog input[type="text"],
+.secret-dialog input[type="url"],
+.secret-textarea {
+  margin: 6px 0 0;
+}
+
+.secret-textarea {
+  min-height: 5.5em;
+}
+
+.secret-image-row .button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.lock-dialog-actions {
+  position: sticky;
+  bottom: -16px;
+  z-index: 1;
+  margin: 4px -16px -16px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* Icon buttons in dialog headers, cards and tables. */
+.image-picker-close.icon-btn,
+.lock-dialog-close.icon-btn,
+.table-editor-close.icon-btn,
+.mw-import-close.icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--muted);
+}
+
+.image-picker-close.icon-btn:hover,
+.lock-dialog-close.icon-btn:hover,
+.table-editor-close.icon-btn:hover,
+.mw-import-close.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.secret-btn,
+.note-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.secret-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: var(--radius-full);
+}
+
+.secret-btn:hover {
+  color: var(--text);
+}
+
+.secret-btn .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.note-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: var(--radius-full);
+}
+
+.note-btn .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-delete.icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  color: var(--color-error-text);
+}
+
+.btn-delete.icon-btn:hover {
+  background: var(--color-error-bg);
+}
+
+.btn-delete .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Touch screens and phones have no hover: show the card actions all the time. */
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
+  .note-actions,
+  .secret-actions {
+    opacity: 1;
+  }
+}
+
 .image-picker-item {
   border-radius: var(--radius);
 }
@@ -3101,6 +3238,12 @@ label {
     font-size: 16px;
   }
 
+  .table-editor-footer,
+  .mw-import-footer,
+  .image-picker-toolbar {
+    flex-wrap: wrap;
+  }
+
   /* Dialogs slide up from the bottom as sheets. */
   .image-picker-overlay,
   .lock-dialog-overlay,
@@ -3115,7 +3258,8 @@ label {
   .mw-import-dialog {
     width: 100%;
     max-width: 100%;
-    max-height: 88vh;
+    max-height: 92vh;
+    max-height: 92dvh;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     border-bottom: none;
     padding-bottom: env(safe-area-inset-bottom);

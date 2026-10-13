@@ -87,7 +87,7 @@ password: s3cret
   <div class="image-picker-dialog">
     <div class="image-picker-header">
       <h3>Insert Image</h3>
-      <button type="button" class="image-picker-close" @click="open = false" aria-label="Close">&times;</button>
+      <button type="button" class="icon-btn image-picker-close" @click="open = false" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#x"/></svg></button>
     </div>
     <div class="image-picker-toolbar">
       <label class="button secondary">
@@ -109,14 +109,14 @@ password: s3cret
   <div class="table-editor-dialog">
     <div class="table-editor-header">
       <h3 id="table-editor-title">Table Editor</h3>
-      <button type="button" id="table-editor-close" class="table-editor-close" aria-label="Close">&times;</button>
+      <button type="button" id="table-editor-close" class="icon-btn table-editor-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#x"/></svg></button>
     </div>
     <div class="table-editor-body" id="table-editor-body"></div>
     <div class="table-editor-footer">
-      <button type="button" class="button secondary" id="table-add-col">+ Column</button>
-      <button type="button" class="button secondary" id="table-add-row">+ Row</button>
+      <button type="button" class="button secondary" id="table-add-col"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#plus"/></svg><span>Column</span></button>
+      <button type="button" class="button secondary" id="table-add-row"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#plus"/></svg><span>Row</span></button>
       <div class="te-spacer"></div>
-      <button type="button" id="table-editor-apply">Apply</button>
+      <button type="button" class="button primary" id="table-editor-apply">Apply</button>
       <button type="button" class="button secondary" id="table-editor-cancel">Cancel</button>
     </div>
   </div>
@@ -127,14 +127,14 @@ password: s3cret
   <div class="mw-import-dialog">
     <div class="mw-import-header">
       <h3>Import from MediaWiki</h3>
-      <button type="button" id="mw-import-close" class="mw-import-close" aria-label="Close">&times;</button>
+      <button type="button" id="mw-import-close" class="icon-btn mw-import-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#x"/></svg></button>
     </div>
     <p class="hint" style="padding: 0 16px;">Paste MediaWiki wikitext below. This will replace the current editor content.</p>
     <div class="mw-import-body">
       <textarea id="mw-import-input" rows="16" placeholder="Paste MediaWiki source text here..."></textarea>
     </div>
     <div class="mw-import-footer">
-      <button type="button" id="mw-import-convert">Convert &amp; Insert</button>
+      <button type="button" class="button primary" id="mw-import-convert">Convert &amp; Insert</button>
       <button type="button" class="button secondary" id="mw-import-cancel">Cancel</button>
       <span id="mw-import-status" class="mw-import-status"></span>
     </div>

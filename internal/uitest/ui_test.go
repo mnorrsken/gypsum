@@ -9,8 +9,11 @@
 package uitest
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -99,6 +102,24 @@ func newFixture(t *testing.T) *fixture {
 	save("Wide_Test", widePage+"\nedit 1\n")
 	save("Wide_Test", widePage+"\nedit 1\nedit 2\n")
 	store.SetDB(db)
+
+	// A note, a secret and uploads, so their cards and buttons render.
+	if _, err := store.CreateNote("Shopping list\nmilk, bread"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSecret(wiki.SecretEntry{Title: "Home router", URL: "https://router.example", Description: "Admin login"}, "{{secure_aes:QUJDREVGR0g=}}"); err != nil {
+		t.Fatal(err)
+	}
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, image.NewRGBA(image.Rect(0, 0, 40, 30))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveUpload("diagram.png", pngBuf.Bytes(), wiki.DefaultUploadConfig, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveUpload("manual.txt", []byte("pump manual"), wiki.DefaultUploadConfig, ""); err != nil {
+		t.Fatal(err)
+	}
 
 	h := wiki.NewHandler(store, wiki.NewMarkdownRenderer(), web.Templates(), commit, nil, db, wiki.AllMCPSections)
 	h.SetDocsDir(filepath.Join("..", "..", "docs"))
@@ -204,6 +225,12 @@ func (b *browser) open(t *testing.T, url string, width int64) {
 // openScheme is open with an explicit prefers-color-scheme ("light"/"dark").
 func (b *browser) openScheme(t *testing.T, url string, width int64, scheme string) {
 	t.Helper()
+	b.openSized(t, url, width, 844, scheme)
+}
+
+// openSized loads url in a width×height viewport.
+func (b *browser) openSized(t *testing.T, url string, width, height int64, scheme string) {
+	t.Helper()
 	opts := []chromedp.EmulateViewportOption{}
 	if width < 768 {
 		opts = append(opts, chromedp.EmulateMobile)
@@ -216,7 +243,7 @@ func (b *browser) openScheme(t *testing.T, url string, width int64, scheme strin
 		t.Fatalf("set color scheme: %v", err)
 	}
 	if err := chromedp.Do(ctx,
-		chromedp.EmulateViewport(width, 844, opts...),
+		chromedp.EmulateViewport(width, height, opts...),
 		chromedp.Navigate(url),
 		chromedp.WaitReady(chromedp.CSS("body")),
 		chromedp.Sleep(300*time.Millisecond), // let Alpine, htmx and mermaid run
@@ -501,5 +528,109 @@ func TestRestoreFromHistory(t *testing.T) {
 	}
 	if errs := b.takeErrors(); len(errs) > 0 {
 		t.Errorf("JavaScript errors: %v", errs)
+	}
+}
+
+// onScreen reports whether an element is fully inside the viewport and is the
+// topmost element at its centre (not hidden behind something else).
+func onScreen(t *testing.T, b *browser, selector string) bool {
+	t.Helper()
+	return eval[bool](t, b, fmt.Sprintf(`(() => {
+  const el = document.querySelector(%q);
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  if (r.width === 0 || r.top < 0 || r.left < 0 || r.bottom > innerHeight + 1 || r.right > innerWidth + 1) return false;
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return !!hit && (hit === el || el.contains(hit));
+})()`, selector))
+}
+
+func TestDialogsFitTheScreen(t *testing.T) {
+	f := newFixture(t)
+	b := newBrowser(t)
+
+	type dialog struct {
+		name, page, open string // open: JavaScript that opens the dialog
+		buttons            []string
+		lastField          string // must be reachable by scrolling the dialog
+	}
+	dialogs := []dialog{
+		{"new secret", "/secrets", `document.getElementById('secret-add-btn').click()`,
+			[]string{"#secret-submit", "#secret-cancel", "#secret-dialog-close"}, "#secret-field-description"},
+		{"encryption", "/wiki/Home", `document.getElementById('secure-lock-btn').click()`,
+			[]string{"#secure-lock-submit", "#secure-lock-cancel", "#secure-lock-close"}, ""},
+		{"image picker", "/edit/Wide_Test", `window.dispatchEvent(new CustomEvent('image-picker-open'))`,
+			[]string{".image-picker-close"}, ""},
+		{"table editor", "/edit/Wide_Test", `document.getElementById('table-editor-toggle').click()`,
+			[]string{"#table-editor-apply", "#table-editor-cancel", "#table-editor-close"}, ""},
+		{"mediawiki import", "/edit/Wide_Test", `document.getElementById('mediawiki-import-toggle').click()`,
+			[]string{"#mw-import-convert", "#mw-import-cancel", "#mw-import-close"}, ""},
+	}
+	sizes := []struct{ w, h int64 }{{390, 640}, {360, 560}, {1280, 700}}
+	for _, d := range dialogs {
+		for _, sz := range sizes {
+			t.Run(fmt.Sprintf("%s@%dx%d", d.name, sz.w, sz.h), func(t *testing.T) {
+				b.takeErrors()
+				b.openSized(t, f.srv.URL+d.page, sz.w, sz.h, "light")
+				eval[bool](t, b, d.open+`, true`)
+				if err := chromedp.Do(b.ctx, chromedp.Sleep(400*time.Millisecond)); err != nil {
+					t.Fatal(err)
+				}
+				for _, sel := range d.buttons {
+					if !onScreen(t, b, sel) {
+						t.Errorf("%s is not fully visible", sel)
+					}
+				}
+				if d.lastField != "" {
+					eval[bool](t, b, fmt.Sprintf(`(document.querySelector(%q).scrollIntoView({block: 'nearest'}), true)`, d.lastField))
+					if err := chromedp.Do(b.ctx, chromedp.Sleep(200*time.Millisecond)); err != nil {
+						t.Fatal(err)
+					}
+					if !onScreen(t, b, d.lastField) {
+						t.Errorf("%s cannot be scrolled into view", d.lastField)
+					}
+				}
+				if errs := b.takeErrors(); len(errs) > 0 {
+					t.Errorf("JavaScript errors: %v", errs)
+				}
+				if dir := os.Getenv("UI_SCREENSHOTS"); dir != "" {
+					img, err := chromedp.Run(b.ctx, chromedp.CaptureScreenshot())
+					if err != nil {
+						t.Fatal(err)
+					}
+					name := strings.ReplaceAll(d.name, " ", "-")
+					if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("dialog-%s@%dx%d.png", name, sz.w, sz.h)), img, 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestCardActionsVisibleOnPhones(t *testing.T) {
+	f := newFixture(t)
+	b := newBrowser(t)
+	visible := func(selector string) bool {
+		return eval[bool](t, b, fmt.Sprintf(`(() => { const el = document.querySelector(%q); if (!el) return false; let o = 1; for (let e = el; e; e = e.parentElement) o *= parseFloat(getComputedStyle(e).opacity); return o > 0.9 && el.getBoundingClientRect().width > 0; })()`, selector))
+	}
+	b.open(t, f.srv.URL+"/notes", 390)
+	for _, sel := range []string{".note-card .note-archive", ".note-card .note-delete"} {
+		if !visible(sel) {
+			t.Errorf("%s not visible on a phone", sel)
+		}
+	}
+	b.open(t, f.srv.URL+"/secrets", 390)
+	for _, sel := range []string{".secret-reveal", ".secret-copy", ".secret-edit", ".secret-delete"} {
+		if !visible(sel) {
+			t.Errorf("%s not visible on a phone", sel)
+		}
+	}
+	// No emoji or text glyphs left as button faces.
+	for _, page := range []string{"/notes", "/secrets", "/images", "/share/Wide_Test"} {
+		b.open(t, f.srv.URL+page, 390)
+		if bad := eval[string](t, b, `[...document.querySelectorAll('button')].map(x => x.textContent.trim()).filter(s => /[\u{1F300}-\u{1FAFF}✕✎×]/u.test(s)).join(' ')`); bad != "" {
+			t.Errorf("%s: emoji button faces left: %q", page, bad)
+		}
 	}
 }

@@ -13,8 +13,13 @@
   var HOLD_MS = (parseInt(list.dataset.hold || "60", 10) || 60) * 1000;
   var HUES = parseInt(list.dataset.hues || "12", 10) || 12;
   var MASK = "••••••••••••";
-  var COPY_ICON = "📋";
+  var ICONS = list.dataset.icons || "/static/icons.svg";
   var enc = new TextEncoder();
+
+  // iconSVG returns markup for one icon of the sprite.
+  function iconSVG(name) {
+    return '<svg class="icon" aria-hidden="true"><use href="' + ICONS + "#" + name + '"/></svg>';
+  }
   var revealTimers = new WeakMap();
 
   var filterInput = document.getElementById("secret-filter");
@@ -121,8 +126,8 @@
       await window.gypsumSecure.requireKey();
       var plain = await window.gypsumSecure.decrypt(ct, card.dataset.variant);
       await navigator.clipboard.writeText(plain);
-      btn.textContent = "✓";
-      setTimeout(function () { btn.textContent = COPY_ICON; }, 1500);
+      btn.innerHTML = iconSVG("check");
+      setTimeout(function () { btn.innerHTML = iconSVG("copy"); }, 1500);
     } catch (err) {
       console.error("secret copy failed:", err);
     }
@@ -220,15 +225,15 @@
     var actions = document.createElement("div");
     actions.className = "secret-actions";
     [
-      ["secret-reveal", "👁", "Reveal", "Reveal secret"],
-      ["secret-copy", COPY_ICON, "Copy to clipboard", "Copy secret"],
-      ["secret-edit", "✎", "Edit", "Edit secret"],
-      ["secret-delete", "🗑", "Delete", "Delete secret"],
+      ["secret-reveal", "eye", "Reveal", "Reveal secret"],
+      ["secret-copy", "copy", "Copy to clipboard", "Copy secret"],
+      ["secret-edit", "pencil", "Edit", "Edit secret"],
+      ["secret-delete", "trash-2", "Delete", "Delete secret"],
     ].forEach(function (spec) {
       var b = document.createElement("button");
       b.type = "button";
       b.className = "secret-btn " + spec[0];
-      b.textContent = spec[1];
+      b.innerHTML = iconSVG(spec[1]);
       b.title = spec[2];
       b.setAttribute("aria-label", spec[3]);
       actions.appendChild(b);

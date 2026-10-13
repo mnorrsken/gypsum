@@ -21,7 +21,8 @@ LUCIDE_VERSION  := 1.50.0
 # Lucide icons bundled into web/static/icons.svg (one <symbol> per icon).
 ICONS := menu search camera lock lock-open sun moon house file-text files clock \
 	network sticky-note key-round plus book-open graduation-cap star pencil \
-	share-2 history x chevron-right upload trash-2 image folder-open ellipsis
+	share-2 history x chevron-right upload trash-2 image folder-open ellipsis \
+	eye copy check archive archive-restore
 STATIC_DIR      := web/static
 
 .PHONY: help fmt tidy vet test ui-test build run clean docker-build docker-run deploy vendor-js vendor-icons

@@ -2,7 +2,7 @@
 <article>
   <div class="page-header">
     <h1>All Pages</h1>
-    <a class="edit-link" href="/edit/New_Page">+ New Page</a>
+    <a class="edit-link" href="/edit/New_Page"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#plus"/></svg><span>New page</span></a>
   </div>
   {{if .AllPages}}
     <ul class="page-list">
@@ -17,7 +17,7 @@
   {{if .Skills}}
   <div class="page-header" style="margin-top: 32px;">
     <h2>Skills</h2>
-    <a class="edit-link" href="/new-skill">+ New Skill</a>
+    <a class="edit-link" href="/new-skill"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#plus"/></svg><span>New skill</span></a>
   </div>
   <ul class="page-list">
     {{range .Skills}}

@@ -18,17 +18,17 @@
       <p>Anyone with this link can view this page:</p>
       <div class="share-link-row">
         <input type="text" readonly value="{{.ShareURL}}" id="share-url" class="share-url-input" />
-        <button type="button" class="btn" id="copy-btn" onclick="copyShareLink()">Copy</button>
+        <button type="button" class="button primary" id="copy-btn" onclick="copyShareLink()"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#copy"/></svg><span>Copy</span></button>
       </div>
       <p class="share-hint">Created: {{.ShareCreated}}</p>
       <div class="share-actions">
         <form method="POST" style="display:inline">
           <input type="hidden" name="action" value="regenerate" />
-          <button type="submit" class="btn btn-secondary">Regenerate link</button>
+          <button type="submit" class="secondary">Regenerate link</button>
         </form>
         <form method="POST" style="display:inline" onsubmit="return confirm('Revoke the public link? Anyone with the current link will no longer be able to access this page.')">
           <input type="hidden" name="action" value="revoke" />
-          <button type="submit" class="btn btn-danger">Revoke</button>
+          <button type="submit" class="danger">Revoke</button>
         </form>
       </div>
     </div>
@@ -38,7 +38,7 @@
       <p>Create a secret link to share this page publicly. Anyone with the link will be able to view it without logging in.</p>
       <form method="POST">
         <input type="hidden" name="action" value="create" />
-        <button type="submit" class="btn">Enable sharing</button>
+        <button type="submit"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#share-2"/></svg><span>Enable sharing</span></button>
       </form>
     </div>
     {{end}}
@@ -60,8 +60,9 @@ function copyShareLink() {
   var input = document.getElementById('share-url');
   navigator.clipboard.writeText(input.value).then(function() {
     var btn = document.getElementById('copy-btn');
-    btn.textContent = 'Copied!';
-    setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+    var label = btn.querySelector('span');
+    label.textContent = 'Copied!';
+    setTimeout(function() { label.textContent = 'Copy'; }, 1500);
   });
 }
 </script>

@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.58.1
+
+### Fixed
+- **Dialogs on phones** — the secret and encryption dialogs could not scroll, so a tall form hid its Save and Cancel buttons. Their form now scrolls inside the dialog with the buttons pinned to the bottom; the table editor and MediaWiki import footers wrap on narrow screens. The secret dialog's Secret field no longer collapses and its fields are spaced evenly.
+- **Hidden buttons showing** — elements with the `hidden` attribute (for example **Lock & forget** in the encryption dialog) were shown anyway because button styles set a display value; `hidden` now always wins.
+- **Old-style buttons** — secret actions, quick-note actions, file delete and dialog close buttons use icons instead of emoji, text or "×"; **New secret**, the share page buttons (Revoke is red again) and the editor dialogs' Apply / Convert buttons use the current button styles.
+- **Card actions on phones** — note and secret actions were only shown on mouse hover, so they did not show on phones; they are always visible on touch and small screens.
+
 ## v0.58.0
 
 ### Added

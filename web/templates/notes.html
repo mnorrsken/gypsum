@@ -17,7 +17,7 @@
   <p class="hint">No archived notes.</p>
   {{end}}
 
-  <div class="notes-grid" id="notes-grid" data-archived="{{if .NotesArchived}}1{{else}}0{{end}}">
+  <div class="notes-grid" id="notes-grid" data-icons="{{asset "icons.svg"}}" data-archived="{{if .NotesArchived}}1{{else}}0{{end}}">
     {{range .Notes}}
     <div class="note-card note-color-{{.Color}}" data-id="{{.ID}}">
       <textarea class="note-text" spellcheck="false" {{if $.NotesArchived}}readonly{{end}}>{{.Content}}</textarea>
@@ -25,11 +25,11 @@
         <span class="note-updated" data-ts="{{.Updated.Unix}}"></span>
         <span class="note-actions">
           {{if $.NotesArchived}}
-            <button type="button" class="note-btn note-restore" title="Restore to board">restore</button>
+            <button type="button" class="note-btn note-restore" title="Restore to board" aria-label="Restore to board"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#archive-restore"/></svg></button>
           {{else}}
-            <button type="button" class="note-btn note-archive" title="Archive note">archive</button>
+            <button type="button" class="note-btn note-archive" title="Archive note" aria-label="Archive note"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#archive"/></svg></button>
           {{end}}
-          <button type="button" class="note-btn note-delete" title="Delete permanently">delete</button>
+          <button type="button" class="note-btn note-delete" title="Delete permanently" aria-label="Delete permanently"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#trash-2"/></svg></button>
         </span>
       </div>
     </div>

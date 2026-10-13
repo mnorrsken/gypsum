@@ -8,6 +8,12 @@
   if (!grid) return;
 
   var archivedBoard = grid.dataset.archived === "1";
+  var ICONS = grid.dataset.icons || "/static/icons.svg";
+
+  // noteIcon returns markup for one icon of the sprite.
+  function noteIcon(name) {
+    return '<svg class="icon" aria-hidden="true"><use href="' + ICONS + "#" + name + '"/></svg>';
+  }
   var SAVE_DELAY = 2000;
   var COLORS = 8;
   var timers = new WeakMap();
@@ -147,12 +153,14 @@
     archive.type = "button";
     archive.className = "note-btn note-archive";
     archive.title = "Archive note";
-    archive.textContent = "archive";
+    archive.setAttribute("aria-label", "Archive note");
+    archive.innerHTML = noteIcon("archive");
     var del = document.createElement("button");
     del.type = "button";
     del.className = "note-btn note-delete";
     del.title = "Delete permanently";
-    del.textContent = "delete";
+    del.setAttribute("aria-label", "Delete permanently");
+    del.innerHTML = noteIcon("trash-2");
     actions.appendChild(archive);
     actions.appendChild(del);
     footer.appendChild(updated);

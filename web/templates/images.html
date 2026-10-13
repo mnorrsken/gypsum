@@ -29,10 +29,10 @@
           {{end}}
         </td>
         <td>
-          <button class="btn-delete" title="Delete image"
+          <button type="button" class="icon-btn btn-delete" title="Delete image" aria-label="Delete image"
                   hx-post="/images/delete" hx-vals='{"filename":"{{.Name}}"}'
                   hx-confirm="Delete this image?" hx-target="closest tr"
-                  hx-swap="outerHTML swap:0.3s">✕</button>
+                  hx-swap="outerHTML swap:0.3s"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#trash-2"/></svg></button>
         </td>
       </tr>
       {{end}}
@@ -66,10 +66,10 @@
           {{end}}
         </td>
         <td>
-          <button class="btn-delete" title="Delete file"
+          <button type="button" class="icon-btn btn-delete" title="Delete file" aria-label="Delete file"
                   hx-post="/files/delete" hx-vals='{"filename":"{{.Name}}"}'
                   hx-confirm="Delete this file?" hx-target="closest tr"
-                  hx-swap="outerHTML swap:0.3s">✕</button>
+                  hx-swap="outerHTML swap:0.3s"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#trash-2"/></svg></button>
         </td>
       </tr>
       {{end}}
