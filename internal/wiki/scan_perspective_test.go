@@ -85,6 +85,8 @@ func TestUsableQuad(t *testing.T) {
 		{"tiny", [4]Point{{10, 10}, {60, 10}, {60, 60}, {10, 60}}, false},
 		{"small receipt", [4]Point{{300, 300}, {420, 310}, {410, 640}, {290, 630}}, true},
 		{"self-crossing", [4]Point{{100, 80}, {650, 900}, {700, 120}, {60, 850}}, false},
+		{"triangle", [4]Point{{100, 100}, {400, 105}, {700, 110}, {300, 800}}, false},
+		{"low angle", cameraQuad(2100, 2970, 700, 800, 1000, 78, 8), true},
 	}
 	for _, tt := range tests {
 		if got := usableQuad(tt.q, 800, 1000); got != tt.want {
@@ -205,3 +207,109 @@ func colorDist(a, b color.RGBA) float64 {
 	dr, dg, db := float64(a.R)-float64(b.R), float64(a.G)-float64(b.G), float64(a.B)-float64(b.B)
 	return math.Sqrt(dr*dr + dg*dg + db*db)
 }
+
+// clipToFrame cuts the polygon to the w×h photo (Sutherland–Hodgman), giving
+// the outline of the part a camera sees.
+func clipToFrame(poly []Point, w, h float64) []Point {
+	edges := []struct {
+		inside func(Point) bool
+		line   [2]Point
+	}{
+		{func(p Point) bool { return p.X >= 0 }, [2]Point{{0, 0}, {0, 1}}},
+		{func(p Point) bool { return p.X <= w }, [2]Point{{w, 0}, {w, 1}}},
+		{func(p Point) bool { return p.Y >= 0 }, [2]Point{{0, 0}, {1, 0}}},
+		{func(p Point) bool { return p.Y <= h }, [2]Point{{0, h}, {1, h}}},
+	}
+	for _, e := range edges {
+		var out []Point
+		for i, cur := range poly {
+			prev := poly[(i+len(poly)-1)%len(poly)]
+			if e.inside(cur) != e.inside(prev) {
+				x, _ := lineIntersection([2]Point{prev, cur}, e.line)
+				out = append(out, x)
+			}
+			if e.inside(cur) {
+				out = append(out, cur)
+			}
+		}
+		poly = out
+	}
+	return poly
+}
+
+func TestQuadFromOutline(t *testing.T) {
+	const w, h = 1176.0, 1568.0
+	near := func(a, b [4]Point) bool {
+		for i := range a {
+			if math.Hypot(a[i].X-b[i].X, a[i].Y-b[i].Y) > 1 {
+				return false
+			}
+		}
+		return true
+	}
+	// A page at a low angle whose top-right corner is off the photo.
+	page := [4]Point{{135, 365}, {1386, 557}, {760, 943}, {160, 905}}
+	outline := clipToFrame(page[:], w, h)
+	if len(outline) != 5 {
+		t.Fatalf("test setup: outline %v", outline)
+	}
+	got, ok := quadFromOutline(outline, w, h)
+	if !ok || !near(got, page) {
+		t.Errorf("cut-off page: got %v %v, want %v", got, ok, page)
+	}
+	// Cut off at two sides, with a corner marked twice and an extra point
+	// along the top edge.
+	page = [4]Point{{-102, 671}, {1064, 569}, {946, 992}, {386, 1014}}
+	outline = clipToFrame(page[:], w, h)
+	outline = append(outline[:2], append([]Point{{outline[1].X + 4, outline[1].Y + 5}}, outline[2:]...)...)
+	mid := Point{(outline[0].X + outline[len(outline)-1].X) / 2, (outline[0].Y + outline[len(outline)-1].Y) / 2}
+	outline = append(outline, mid)
+	got, ok = quadFromOutline(outline, w, h)
+	if !ok {
+		t.Fatalf("messy outline %v not used", outline)
+	}
+	if a := alignCorners(got, page); !near(a, page) {
+		t.Errorf("messy outline: got %v, want %v", a, page)
+	}
+	// A page fully in the photo comes back as it is.
+	page = [4]Point{{300, 200}, {900, 260}, {850, 1100}, {280, 1050}}
+	if got, ok := quadFromOutline(page[:], w, h); !ok || !near(got, page) {
+		t.Errorf("whole page: got %v %v", got, ok)
+	}
+	// A side entirely off the photo leaves three sides: not usable.
+	page = [4]Point{{200, 900}, {1000, 900}, {1100, 1800}, {100, 1800}}
+	if _, ok := quadFromOutline(clipToFrame(page[:], w, h), w, h); ok {
+		t.Error("three sides gave corners")
+	}
+}
+
+func TestAlignCorners(t *testing.T) {
+	quad := [4]Point{{0, 0}, {10, 0}, {10, 20}, {0, 20}}
+	// Reading order starts at the bottom right (the page is upside down),
+	// with one guessed corner far off.
+	guess := [4]Point{{10, 21}, {-1, 19}, {0, 1}, {40, -30}}
+	want := [4]Point{quad[2], quad[3], quad[0], quad[1]}
+	if got := alignCorners(quad, guess); got != want {
+		t.Errorf("alignCorners = %v, want %v", got, want)
+	}
+}
+
+func TestStraightenFillsWhatIsOffThePhoto(t *testing.T) {
+	doc := quadrantDoc(300, 400)
+	// The bottom of the page runs off the bottom of the photo.
+	quad := [4]Point{{60, 40}, {420, 60}, {440, 760}, {40, 740}}
+	photo := photoOfDoc(t, doc, quad, 480, 640)
+	p := &scanPhoto{raw: photo, orientation: 1, sent: photo}
+	flat, err := p.straighten(quad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := flat.sent.Bounds()
+	if got := flat.sent.RGBAAt(b.Dx()/4, b.Dy()-3); got != (color.RGBA{255, 255, 255, 255}) {
+		t.Errorf("off-photo part is %v, want white", got)
+	}
+	if d := colorDist(flat.sent.RGBAAt(b.Dx()/4, b.Dy()/4), color.RGBA{220, 30, 30, 255}); d > 40 {
+		t.Errorf("visible part is %v, want red", flat.sent.RGBAAt(b.Dx()/4, b.Dy()/4))
+	}
+}
+

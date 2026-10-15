@@ -79,12 +79,137 @@ func readingOrder(pts [4]Point) [4]Point {
 	return pts
 }
 
+// quadFromOutline rebuilds the page's four corners from the outline of its
+// visible part. Models place a corner they cannot see (common when a page is
+// photographed at a low angle) on the photo's border, partway along an edge,
+// which bends the page into a triangle; but they trace the visible outline,
+// including where the page's edges cross the border, well. The outline's
+// edges that do not run along the border are the page's sides; extended,
+// they meet at the true corners, also outside the photo. It reports false
+// unless exactly four sides are found.
+func quadFromOutline(outline []Point, w, h float64) ([4]Point, bool) {
+	var quad [4]Point
+	tol := 0.01 * math.Max(w, h)
+	// Drop points right next to the previous one: models sometimes mark a
+	// corner twice, and the tiny edge between would count as a side.
+	var pts []Point
+	for _, p := range outline {
+		if len(pts) == 0 || math.Hypot(p.X-pts[len(pts)-1].X, p.Y-pts[len(pts)-1].Y) > 2*tol {
+			pts = append(pts, p)
+		}
+	}
+	for len(pts) > 1 && math.Hypot(pts[0].X-pts[len(pts)-1].X, pts[0].Y-pts[len(pts)-1].Y) <= 2*tol {
+		pts = pts[:len(pts)-1]
+	}
+	outline = pts
+	n := len(outline)
+	if n < 4 {
+		return quad, false
+	}
+	side := func(p Point) int { // which border p lies on, as a bit set
+		s := 0
+		if p.X <= tol {
+			s |= 1
+		}
+		if p.X >= w-tol {
+			s |= 2
+		}
+		if p.Y <= tol {
+			s |= 4
+		}
+		if p.Y >= h-tol {
+			s |= 8
+		}
+		return s
+	}
+	// The sides, merging neighbouring edges that point the same way (a
+	// model may add points along a straight edge).
+	var sides [][2]Point
+	for i := range outline {
+		a, b := outline[i], outline[(i+1)%n]
+		if side(a)&side(b) != 0 || a == b {
+			continue // along the border
+		}
+		if k := len(sides); k > 0 && sides[k-1][1] == a && angleBetween(sides[k-1], [2]Point{a, b}) < 10 {
+			sides[k-1][1] = b
+			continue
+		}
+		sides = append(sides, [2]Point{a, b})
+	}
+	if k := len(sides); k > 4 && sides[k-1][1] == sides[0][0] && angleBetween(sides[k-1], sides[0]) < 10 {
+		sides[0][0] = sides[k-1][0]
+		sides = sides[:k-1]
+	}
+	if len(sides) != 4 {
+		return quad, false
+	}
+	limit := 3 * math.Hypot(w, h)
+	for i := range quad {
+		p, ok := lineIntersection(sides[(i+3)%4], sides[i])
+		if !ok || math.Hypot(p.X-w/2, p.Y-h/2) > limit {
+			return quad, false
+		}
+		quad[i] = p
+	}
+	return quad, true
+}
+
+// angleBetween returns the angle in degrees between the directions of two
+// segments.
+func angleBetween(a, b [2]Point) float64 {
+	d := math.Abs(math.Atan2(a[1].Y-a[0].Y, a[1].X-a[0].X)-math.Atan2(b[1].Y-b[0].Y, b[1].X-b[0].X)) * 180 / math.Pi
+	if d > 180 {
+		d = 360 - d
+	}
+	return d
+}
+
+// lineIntersection returns where the lines through a and b cross.
+func lineIntersection(a, b [2]Point) (Point, bool) {
+	d1 := Point{a[1].X - a[0].X, a[1].Y - a[0].Y}
+	d2 := Point{b[1].X - b[0].X, b[1].Y - b[0].Y}
+	den := d1.X*d2.Y - d1.Y*d2.X
+	// Lines within about 3° of parallel give no usable corner.
+	if math.Abs(den) < 0.05*math.Hypot(d1.X, d1.Y)*math.Hypot(d2.X, d2.Y) {
+		return Point{}, false
+	}
+	t := ((b[0].X-a[0].X)*d2.Y - (b[0].Y-a[0].Y)*d2.X) / den
+	return Point{a[0].X + t*d1.X, a[0].Y + t*d1.Y}, true
+}
+
+// alignCorners turns quad, in outline order, into the reading order of
+// guess (the model's corners): it picks the rotation and direction that put
+// each corner nearest its guess.
+func alignCorners(quad, guess [4]Point) [4]Point {
+	best, bestD := quad, math.Inf(1)
+	for _, rev := range []bool{false, true} {
+		for start := 0; start < 4; start++ {
+			var q [4]Point
+			d := 0.0
+			for i := range q {
+				j := (start + i) % 4
+				if rev {
+					j = (start - i + 4) % 4
+				}
+				q[i] = quad[j]
+				d += math.Hypot(q[i].X-guess[i].X, q[i].Y-guess[i].Y)
+			}
+			if d < bestD {
+				best, bestD = q, d
+			}
+		}
+	}
+	return best
+}
+
 // usableQuad reports whether q (ordered TL, TR, BR, BL) is a convex outline
 // worth straightening in a w×h image: at least 2% of the photo (a receipt on
-// a table can be small), and not just the photo's own frame (an already flat,
-// cropped page needs no correction).
+// a table can be small), with no nearly flat corner, and not just the
+// photo's own frame (an already flat, cropped page needs no correction).
 func usableQuad(q [4]Point, w, h float64) bool {
-	// Convex: every turn along the outline goes the same way.
+	// Convex: every turn along the outline goes the same way. And no
+	// corner is nearly flat: that is a triangle with a corner placed along an
+	// edge, not a page.
 	sign := 0.0
 	for i := 0; i < 4; i++ {
 		a, b, c := q[i], q[(i+1)%4], q[(i+2)%4]
@@ -93,6 +218,9 @@ func usableQuad(q [4]Point, w, h float64) bool {
 			return false
 		}
 		sign = cross
+		if angleBetween([2]Point{a, b}, [2]Point{b, c}) < 12 {
+			return false
+		}
 	}
 	area := 0.0
 	for i := 0; i < 4; i++ {
@@ -225,6 +353,11 @@ func (p *scanPhoto) straighten(quad [4]Point) (*scanPhoto, error) {
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			up := applyHomography(back, Point{float64(x) + 0.5, float64(y) + 0.5})
+			if up.X < 0 || up.Y < 0 || up.X > upW || up.Y > upH {
+				// Part of the page that runs off the photo.
+				out.SetRGBA(x, y, color.RGBA{255, 255, 255, 255})
+				continue
+			}
 			src := uprightToRawPoint(up, p.orientation, rawW, rawH)
 			out.SetRGBA(x, y, bilinear(p.raw, src.X+float64(rb.Min.X)-0.5, src.Y+float64(rb.Min.Y)-0.5))
 		}

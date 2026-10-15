@@ -235,32 +235,45 @@ func (c *ClaudeAnalyzer) Analyze(ctx context.Context, jpegData []byte, req ScanR
 
 const cornerPrompt = `Find the document in this photo: a sheet of paper, a page of a book or manual, a receipt, a printed form, a screen or a whiteboard.
 
-If there is one, give the pixel coordinates of its four corners in this image, which is %d×%d pixels (x to the right, y down, origin top-left). Give the corners of the page itself, not of the text on it, in reading order: first the corner where the page's text starts (the page's own top-left as it is read, even if the page is turned or upside down in the photo), then its top-right, bottom-right and bottom-left. When a corner is hidden or outside the photo, give where it would be. When several documents are visible, give the largest one.
+If there is one, give pixel coordinates in this image, which is %d×%d pixels (x to the right, y down, origin top-left), of the page itself, not of the text on it. When several documents are visible, use the largest one.
+
+First trace the outline of the part of the page that is visible in the photo, as a polygon going clockwise: the page's corners that are in the photo, plus, where the page runs off the edge of the photo, the points where the page's edges cross the photo's border. A page fully in the photo has 4 points; a page cut off by the border has 5 to 8.
+
+Then give the page's four corners in reading order: first the corner where the page's text starts (the page's own top-left as it is read, even if the page is turned or upside down in the photo), then its top-right, bottom-right and bottom-left. For a corner outside the photo, give where it would be.
 
 Set "found" to false when the photo does not show a document (an object, a person, a scene), or when the document already fills the whole photo straight on with no table or background around it.`
 
+// cornerPoints is a JSON schema for a list of pixel points.
+var cornerPoints = map[string]any{
+	"type": "array",
+	"items": map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"x": map[string]any{"type": "integer"},
+			"y": map[string]any{"type": "integer"},
+		},
+		"required":             []string{"x", "y"},
+		"additionalProperties": false,
+	},
+}
+
+// The keys are sent sorted, and the model answers in that order: the
+// outline comes before page_corners on purpose, so the corners follow from
+// the traced outline.
 var cornerSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
-		"found": map[string]any{"type": "boolean"},
-		"corners": map[string]any{
-			"type": "array",
-			"items": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"x": map[string]any{"type": "integer"},
-					"y": map[string]any{"type": "integer"},
-				},
-				"required":             []string{"x", "y"},
-				"additionalProperties": false,
-			},
-		},
+		"found":        map[string]any{"type": "boolean"},
+		"outline":      cornerPoints,
+		"page_corners": cornerPoints,
 	},
-	"required":             []string{"found", "corners"},
+	"required":             []string{"found", "outline", "page_corners"},
 	"additionalProperties": false,
 }
 
-// FindDocument asks the corner model for the page outline.
+// FindDocument asks the corner model for the page outline. When the page
+// runs off the photo, its corners are rebuilt from the traced outline (see
+// quadFromOutline).
 func (c *ClaudeAnalyzer) FindDocument(ctx context.Context, jpegData []byte, width, height int) ([4]Point, bool, error) {
 	var corners [4]Point
 	if c.cornerModel == "" {
@@ -290,11 +303,11 @@ func (c *ClaudeAnalyzer) FindDocument(ctx context.Context, jpegData []byte, widt
 			text.WriteString(t.Text)
 		}
 	}
+	type point struct{ X, Y float64 }
 	var out struct {
-		Found   bool `json:"found"`
-		Corners []struct {
-			X, Y float64
-		} `json:"corners"`
+		Found   bool    `json:"found"`
+		Outline []point `json:"outline"`
+		Corners []point `json:"page_corners"`
 	}
 	if err := json.Unmarshal([]byte(text.String()), &out); err != nil {
 		return corners, false, fmt.Errorf("parsing page corners: %w", err)
@@ -304,6 +317,13 @@ func (c *ClaudeAnalyzer) FindDocument(ctx context.Context, jpegData []byte, widt
 	}
 	for i, p := range out.Corners {
 		corners[i] = Point{p.X, p.Y}
+	}
+	outline := make([]Point, len(out.Outline))
+	for i, p := range out.Outline {
+		outline[i] = Point{p.X, p.Y}
+	}
+	if quad, ok := quadFromOutline(outline, float64(width), float64(height)); ok {
+		corners = alignCorners(quad, corners)
 	}
 	return corners, true, nil
 }

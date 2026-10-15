@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.60.2
+
+### Fixed
+- **Pages photographed at a low angle** — when a page ran off the edge of the photo, the corner model put the hidden corner on the photo's border, partway along an edge, so the straightened page came out as a bent, triangle-like shape. The model now also traces the visible outline of the page, including where its edges cross the photo's border, and hidden corners are rebuilt where the extended edges meet. Parts of the page outside the photo come out white instead of smeared, and an outline with a nearly flat corner is not used. On generated low-angle photos (62–78° tilt) Haiku's worst corner went from 7–29% of the page diagonal to under 1% for most pages.
+
 ## v0.60.1
 
 ### Fixed

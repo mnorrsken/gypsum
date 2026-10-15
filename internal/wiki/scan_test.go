@@ -650,12 +650,15 @@ func TestScannerStraightensThePage(t *testing.T) {
 
 func TestClaudeFindDocumentRequest(t *testing.T) {
 	var got map[string]any
+	answer := `{"found":true,"outline":[{"x":10,"y":12},{"x":300,"y":20},{"x":290,"y":400},{"x":5,"y":390}],` +
+		`"page_corners":[{"x":10,"y":12},{"x":300,"y":20},{"x":290,"y":400},{"x":5,"y":390}]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&got)
+		text, _ := json.Marshal(answer)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","model":"claude-haiku-5-5",
 			"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},
-			"content":[{"type":"text","text":"{\"found\":true,\"corners\":[{\"x\":10,\"y\":12},{\"x\":300,\"y\":20},{\"x\":290,\"y\":400},{\"x\":5,\"y\":390}]}"}]}`))
+			"content":[{"type":"text","text":` + string(text) + `}]}`))
 	}))
 	defer srv.Close()
 
@@ -670,6 +673,15 @@ func TestClaudeFindDocumentRequest(t *testing.T) {
 	raw, _ := json.Marshal(got["messages"])
 	if !strings.Contains(string(raw), "320×420 pixels") || !strings.Contains(string(raw), "reading order") {
 		t.Errorf("prompt lacks the image size or reading order: %s", raw)
+	}
+
+	// A page cut off at the right: the corner the model put on the border
+	// is rebuilt from the outline's sides.
+	answer = `{"found":true,"outline":[{"x":20,"y":20},{"x":320,"y":40},{"x":320,"y":200},{"x":200,"y":400},{"x":10,"y":380}],` +
+		`"page_corners":[{"x":20,"y":20},{"x":320,"y":40},{"x":200,"y":400},{"x":10,"y":380}]}`
+	corners, _, _ = a.FindDocument(context.Background(), []byte{0xFF, 0xD8}, 320, 420)
+	if want := (Point{412.3, 46.15}); math.Abs(corners[1].X-want.X) > 1 || math.Abs(corners[1].Y-want.Y) > 1 {
+		t.Errorf("hidden corner = %v, want about %v", corners[1], want)
 	}
 
 	a.SetCornerModel("")
