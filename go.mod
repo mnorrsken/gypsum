@@ -5,14 +5,14 @@ go 1.26.0
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/anthropics/anthropic-sdk-go v1.80.0
-	github.com/chromedp/cdproto v0.157.8
+	github.com/chromedp/cdproto v0.157.9
 	github.com/chromedp/chromedp v0.21.0
 	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/yuin/goldmark v1.8.6
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	golang.org/x/image v0.47.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.61.0
 	modernc.org/sqlite v1.60.1
 )
 
