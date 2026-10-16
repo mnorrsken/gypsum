@@ -24,12 +24,14 @@ const scanMaxLinkPages = 1500
 // Longer pages only get their headings and the scan is appended.
 const scanMaxRewriteChars = 20000
 
-// scanJobTTL is how long finished scan jobs stay visible.
+// scanJobTTL is how long scan jobs stay visible, including a preview that
+// was never saved.
 const scanJobTTL = time.Hour
 
 // Scan job states.
 const (
 	scanRunning = "running"
+	scanReview  = "review" // read; the preview waits to be saved or discarded
 	scanDone    = "done"
 	scanFailed  = "failed"
 )
@@ -37,7 +39,7 @@ const (
 // ScanJob is one photo being turned into wiki content.
 type ScanJob struct {
 	ID        string
-	Status    string // running, done or failed
+	Status    string // running, review, done or failed
 	Step      string // what is happening now, for the progress view
 	Error     string
 	Target    string // page the scan was asked to extend; "" = new page
@@ -45,7 +47,7 @@ type ScanJob struct {
 	Title     string
 	Appended  bool // true when added to an existing page
 	Rewritten bool // true when the existing page was rewritten around the scan
-	Figures   int  // figures cut out and stored
+	Figures   int  // figures cut out (and stored, once saved)
 	Created   time.Time
 
 	Straightened bool   // the page was found in the photo and its perspective corrected
@@ -58,10 +60,35 @@ type ScanJob struct {
 	flat  bool // skip straightening
 	stop  context.CancelFunc
 
+	// In review: the page as it would be saved, with figures served from
+	// the job, and what is needed to save it. Nothing is stored before that.
+	Draft string
+	draft *scanDraft
+
 	// For a new page: where it could be linked from, and where it was linked.
 	Suggestions []ParentChoice
 	LinkedFrom  string
 	Author      string
+}
+
+// scanDraft is a read photo that is not saved yet.
+type scanDraft struct {
+	title    string // Claude's title; also names the figure files
+	markdown string // with %%FIGURE n%% markers
+	keywords []string
+	figures  map[int]scanFigure
+	rewrite  bool
+	original string // target page content when it was read
+	header   string // its "# Title" line
+	pageBody string // the body sent to Claude, for a rewrite
+	existing map[string]bool
+}
+
+// scanFigure is a figure cut out of the photo and styled, not stored yet.
+type scanFigure struct {
+	data    []byte
+	ext     string
+	caption string
 }
 
 // ParentChoice is a page offered as the parent of a newly scanned page.
@@ -71,9 +98,10 @@ type ParentChoice struct {
 	Reason string
 }
 
-// Scanner turns photos into wiki pages: the analyzer reads the photo, figures
-// are cut out and stored as images, and the content is saved as a new page or
-// appended to an existing one. Jobs run in the background and live in memory.
+// Scanner turns photos into wiki pages: the analyzer reads the photo and
+// figures are cut out; once the user saves the preview, the figures are
+// stored as images and the content is saved as a new page or added to an
+// existing one. Jobs run in the background and live in memory.
 type Scanner struct {
 	store      *PageStore
 	autoCommit *GitAutoCommitter
@@ -82,7 +110,7 @@ type Scanner struct {
 
 	mu        sync.Mutex
 	jobs      map[string]*ScanJob
-	pageLocks map[string]*sync.Mutex // serializes scans into the same page
+	pageLocks map[string]*sync.Mutex // serializes saves into the same page
 }
 
 // NewScanner creates a scanner that stores results through store.
@@ -120,24 +148,29 @@ func (s *Scanner) start(photo []byte, targetSlug, note, author string, flat bool
 				}
 			})
 		}
-		s.update(job.ID, func(j *ScanJob) { j.photo = nil }) // keep memory low once done
+		s.update(job.ID, func(j *ScanJob) { // keep memory low once done
+			if j.Status != scanReview {
+				j.photo = nil
+			}
+		})
 	}()
 	return job.ID
 }
 
-// RescanFlat stops a running scan before it saves anything and scans the same
-// photo again without straightening, for when the page outline was wrong. It
-// returns the new job's ID.
+// RescanFlat stops a scan that is running or waiting for review, so nothing
+// is saved, and scans the same photo again without straightening, for when
+// the page outline was wrong. It returns the new job's ID.
 func (s *Scanner) RescanFlat(id string) (string, error) {
 	s.mu.Lock()
 	j, ok := s.jobs[id]
-	if !ok || j.Status != scanRunning || j.photo == nil || j.ReplacedBy != "" {
+	if !ok || (j.Status != scanRunning && j.Status != scanReview) || j.photo == nil || j.ReplacedBy != "" {
 		s.mu.Unlock()
 		return "", fmt.Errorf("this scan can no longer be changed")
 	}
 	photo, target, note, author := j.photo, j.Target, j.note, j.Author
 	j.Status, j.Error = scanFailed, "Stopped; the photo is scanned again without straightening."
 	j.ReplacedBy = "pending" // keeps the stopped run from overwriting the message
+	j.photo, j.Draft, j.draft = nil, "", nil
 	j.stop()
 	s.mu.Unlock()
 
@@ -203,8 +236,6 @@ func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, 
 	req := ScanRequest{Width: photoImg.sent.Bounds().Dx(), Height: photoImg.sent.Bounds().Dy(), Note: note}
 	var original, header string // target page content and its "# Title" line
 	if targetSlug != "" {
-		s.step(id, "Waiting for other scans of this page")
-		defer s.lockPage(targetSlug)()
 		page, err := s.store.Load(KindPage, targetSlug)
 		if err != nil {
 			return fmt.Errorf("page not found: %s", targetSlug)
@@ -238,56 +269,146 @@ func (s *Scanner) run(ctx context.Context, id string, photo []byte, targetSlug, 
 	if ctx.Err() != nil {
 		return ctx.Err() // stopped (RescanFlat) or timed out: save nothing
 	}
-	s.step(id, "Saving figures")
+	s.step(id, "Cutting out figures")
 	title := strings.TrimSpace(result.Title)
 	if title == "" {
 		title = "Scan " + time.Now().Format("2006-01-02 15:04")
 	}
-	figureMarkdown := s.saveFigures(photoImg, result.Figures, title, author)
-	body := placeFigures(result.Markdown, figureMarkdown)
-
-	s.step(id, "Saving the page")
+	d := &scanDraft{title: title, markdown: result.Markdown, keywords: result.Keywords,
+		figures: cutFigures(photoImg, result.Figures), rewrite: result.Rewrite && req.PageBody != "",
+		original: original, header: header, pageBody: req.PageBody, existing: existing}
+	links := make(map[int]string, len(d.figures))
+	for fid, f := range d.figures {
+		links[fid] = fmt.Sprintf("![%s](/scan/%s/figure/%d)", figureLabel(f.caption), id, fid)
+	}
+	preview, title, _ := s.compose(d, targetSlug, links)
+	if strings.TrimSpace(preview) == "" {
+		return fmt.Errorf("Claude found nothing to add from this photo")
+	}
 	if targetSlug != "" {
-		body = keepExistingLinks(body, existing, targetSlug)
-		if strings.TrimSpace(body) == "" {
-			return fmt.Errorf("Claude found nothing to add from this photo")
+		title = req.AppendTitle
+	}
+	s.update(id, func(j *ScanJob) {
+		if j.ReplacedBy == "" {
+			j.Status, j.Title, j.Rewritten, j.Figures, j.Draft, j.draft = scanReview, title, d.rewrite, len(d.figures), preview, d
 		}
-		// The page lock keeps other scans out, but not edits in the browser.
-		if current, err := s.store.Load(KindPage, targetSlug); err != nil || current.Content != original {
-			return fmt.Errorf("the page was edited during the scan; scan again")
+	})
+	return nil
+}
+
+// compose builds what a draft saves with the given figure Markdown: the whole
+// page for a new page or a rewrite, or the part to append. For a new page it
+// also returns the free title and slug.
+func (s *Scanner) compose(d *scanDraft, targetSlug string, figures map[int]string) (content, title, slug string) {
+	body := placeFigures(d.markdown, figures)
+	if targetSlug != "" {
+		body = keepExistingLinks(body, d.existing, targetSlug)
+		if !d.rewrite {
+			return strings.TrimSpace(body), "", ""
 		}
-		rewrite := result.Rewrite && req.PageBody != ""
-		if rewrite {
-			body = restoreMissingRefs(req.PageBody, body)
-			content := strings.TrimSpace(body) + "\n"
-			if header != "" {
-				content = header + "\n\n" + content
-			}
+		content = strings.TrimSpace(restoreMissingRefs(d.pageBody, body)) + "\n"
+		if d.header != "" {
+			content = d.header + "\n\n" + content
+		}
+		return content, "", ""
+	}
+	title, slug = s.freeTitle(d.title)
+	body = keepExistingLinks(body, d.existing, slug)
+	if strings.TrimSpace(body) == "" {
+		return "", title, slug
+	}
+	return "# " + title + "\n\n" + strings.TrimSpace(body) + "\n", title, slug
+}
+
+// Save stores a reviewed scan: its figures, then the page, each committed.
+func (s *Scanner) Save(id string) error {
+	s.mu.Lock()
+	j, ok := s.jobs[id]
+	if !ok || j.Status != scanReview || j.draft == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("this scan was already saved or discarded")
+	}
+	d, target, author := j.draft, j.Target, j.Author
+	j.Status, j.Step, j.photo, j.Draft, j.draft = scanRunning, "Saving the page", nil, "", nil
+	s.mu.Unlock()
+
+	if err := s.save(id, d, target, author); err != nil {
+		log.Printf("scan %s: %v", id, err)
+		s.update(id, func(j *ScanJob) { j.Status, j.Error = scanFailed, err.Error() })
+		return err
+	}
+	return nil
+}
+
+func (s *Scanner) save(id string, d *scanDraft, targetSlug, author string) error {
+	if targetSlug != "" {
+		defer s.lockPage(targetSlug)()
+		current, err := s.store.Load(KindPage, targetSlug)
+		if err != nil {
+			return fmt.Errorf("page not found: %s", targetSlug)
+		}
+		// An append goes on whatever the page is now; a rewrite would undo
+		// edits made since the photo was read.
+		if d.rewrite && current.Content != d.original {
+			return fmt.Errorf("the page was edited after the scan; scan again")
+		}
+	}
+	figures := s.storeFigures(d.figures, d.title, author)
+	content, title, slug := s.compose(d, targetSlug, figures)
+	if strings.TrimSpace(content) == "" {
+		return fmt.Errorf("the pictures could not be stored, so there is nothing to add")
+	}
+
+	if targetSlug != "" {
+		if d.rewrite {
 			if err := s.store.Save(KindPage, targetSlug, content); err != nil {
 				return fmt.Errorf("saving page %s: %w", targetSlug, err)
 			}
-		} else if err := s.store.AppendToPage(targetSlug, body); err != nil {
+		} else if err := s.store.AppendToPage(targetSlug, content); err != nil {
 			return fmt.Errorf("adding to page %s: %w", targetSlug, err)
 		}
 		_ = s.autoCommit.CommitSave(KindPage, targetSlug, author)
 		s.update(id, func(j *ScanJob) {
-			j.Status, j.Slug, j.Title, j.Appended, j.Rewritten, j.Figures = scanDone, targetSlug, req.AppendTitle, true, rewrite, len(figureMarkdown)
+			j.Status, j.Slug, j.Appended, j.Figures = scanDone, targetSlug, true, len(figures)
 		})
 		return nil
 	}
 
-	title, slug := s.freeTitle(title)
-	body = keepExistingLinks(body, existing, slug)
-	if err := s.store.Save(KindPage, slug, "# "+title+"\n\n"+strings.TrimSpace(body)+"\n"); err != nil {
+	if err := s.store.Save(KindPage, slug, content); err != nil {
 		return fmt.Errorf("saving page %s: %w", slug, err)
 	}
 	_ = s.autoCommit.CommitSave(KindPage, slug, author)
 	// The user picks where the page is linked from on the result screen.
-	suggestions := s.parentChoices(title, slug, result.Keywords)
+	suggestions := s.parentChoices(title, slug, d.keywords)
 	s.update(id, func(j *ScanJob) {
-		j.Status, j.Slug, j.Title, j.Figures, j.Suggestions = scanDone, slug, title, len(figureMarkdown), suggestions
+		j.Status, j.Slug, j.Title, j.Figures, j.Suggestions = scanDone, slug, title, len(figures), suggestions
 	})
 	return nil
+}
+
+// Discard drops a scan waiting for review; nothing of it was stored. It
+// returns the page the scan was meant for, to scan again.
+func (s *Scanner) Discard(id string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok || j.Status != scanReview {
+		return "", fmt.Errorf("this scan was already saved or discarded")
+	}
+	delete(s.jobs, id)
+	return j.Target, nil
+}
+
+// DraftFigure returns a figure of a scan waiting for review.
+func (s *Scanner) DraftFigure(id string, fid int) ([]byte, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok || j.draft == nil {
+		return nil, false
+	}
+	f, ok := j.draft.figures[fid]
+	return f.data, ok
 }
 
 // straightenPage asks the finder for the page outline and returns the photo
@@ -347,11 +468,10 @@ func (s *Scanner) LinkFrom(id, parent string) error {
 	return nil
 }
 
-// saveFigures crops, restyles and stores each figure, returning the Markdown
-// that embeds it, keyed by figure id. Figures that fail are skipped.
-func (s *Scanner) saveFigures(photo *scanPhoto, figures []ScanFigure, title, author string) map[int]string {
-	out := make(map[int]string)
-	base := sanitizeImageBasename(title)
+// cutFigures crops and restyles each figure, keyed by figure id. Figures
+// that fail are skipped.
+func cutFigures(photo *scanPhoto, figures []ScanFigure) map[int]scanFigure {
+	out := make(map[int]scanFigure)
 	for _, f := range figures {
 		crop := photo.cropFigure(image.Rect(f.X0, f.Y0, f.X1, f.Y1))
 		if crop == nil {
@@ -363,15 +483,41 @@ func (s *Scanner) saveFigures(photo *scanPhoto, figures []ScanFigure, title, aut
 			log.Printf("scan: figure %d: %v", f.ID, err)
 			continue
 		}
-		sf, err := s.store.SaveUpload(fmt.Sprintf("%s-fig%d%s", base, f.ID, ext), data, s.uploadCfg, f.Caption)
+		out[f.ID] = scanFigure{data: data, ext: ext, caption: f.Caption}
+	}
+	return out
+}
+
+// storeFigures stores each cut-out figure as an image, returning the
+// Markdown that embeds it, keyed by figure id. Figures that fail are skipped.
+func (s *Scanner) storeFigures(figures map[int]scanFigure, title, author string) map[int]string {
+	out := make(map[int]string)
+	base := sanitizeImageBasename(title)
+	ids := make([]int, 0, len(figures))
+	for fid := range figures {
+		ids = append(ids, fid)
+	}
+	sort.Ints(ids)
+	for _, fid := range ids {
+		f := figures[fid]
+		sf, err := s.store.SaveUpload(fmt.Sprintf("%s-fig%d%s", base, fid, f.ext), f.data, s.uploadCfg, f.caption)
 		if err != nil {
-			log.Printf("scan: saving figure %d: %v", f.ID, err)
+			log.Printf("scan: saving figure %d: %v", fid, err)
 			continue
 		}
 		_ = s.autoCommit.CommitImageSave(sf.Name, author)
-		out[f.ID] = sf.Markdown
+		out[fid] = sf.Markdown
 	}
 	return out
+}
+
+// figureLabel is the alt text of a figure in the preview, as SaveUpload
+// would write it.
+func figureLabel(caption string) string {
+	if label := strings.TrimSpace(strings.NewReplacer("[", "", "]", "", "\n", " ").Replace(caption)); label != "" {
+		return label
+	}
+	return "figure"
 }
 
 var (

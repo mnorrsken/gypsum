@@ -2907,6 +2907,13 @@ label {
   font-size: 13px;
 }
 
+.scan-draft {
+  margin: 16px 0;
+  padding: 16px 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
 .scan-link {
   margin-top: 28px;
   padding-top: 20px;

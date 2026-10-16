@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -106,6 +107,14 @@ func (h *Handler) handleScanJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := TemplateData{Title: "Scan", ScanJob: &job, FormError: r.URL.Query().Get("error")}
+	if job.Status == scanReview {
+		html, err := h.renderer.Render(job.Draft)
+		if err != nil {
+			http.Error(w, "rendering the preview failed", http.StatusInternalServerError)
+			return
+		}
+		data.RenderedHTML = html
+	}
 	if job.Status == scanDone && !job.Appended && job.LinkedFrom == "" {
 		data.AllPages, _ = h.store.List(KindPage) // for typing another parent page
 	}
@@ -121,6 +130,58 @@ func (h *Handler) handleScanJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.render(w, "scan_job", data)
+}
+
+// handleScanSave serves POST /scan/{id}/save: store the previewed scan.
+func (h *Handler) handleScanSave(w http.ResponseWriter, r *http.Request) {
+	if h.scanner == nil {
+		http.NotFound(w, r)
+		return
+	}
+	id := r.PathValue("id")
+	_ = h.scanner.Save(id) // a failure is shown on the job's page
+	http.Redirect(w, r, "/scan/"+id, http.StatusSeeOther)
+}
+
+// handleScanDiscard serves POST /scan/{id}/discard: drop the previewed scan
+// and go back to the capture screen.
+func (h *Handler) handleScanDiscard(w http.ResponseWriter, r *http.Request) {
+	if h.scanner == nil {
+		http.NotFound(w, r)
+		return
+	}
+	target, err := h.scanner.Discard(r.PathValue("id"))
+	if err != nil {
+		http.Redirect(w, r, "/scan/"+r.PathValue("id"), http.StatusSeeOther)
+		return
+	}
+	dest := "/scan"
+	if target != "" {
+		dest += "?page=" + url.QueryEscape(target)
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
+}
+
+// handleScanFigure serves GET /scan/{id}/figure/{n}: a figure of a scan
+// that is not saved yet, for the preview.
+func (h *Handler) handleScanFigure(w http.ResponseWriter, r *http.Request) {
+	if h.scanner == nil {
+		http.NotFound(w, r)
+		return
+	}
+	n, err := strconv.Atoi(r.PathValue("n"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	data, ok := h.scanner.DraftFigure(r.PathValue("id"), n)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", http.DetectContentType(data))
+	w.Header().Set("Cache-Control", "private, max-age=3600") // fixed per job
+	_, _ = w.Write(data)
 }
 
 // handleScanLink serves POST /scan/{id}/link: link the scanned page from the

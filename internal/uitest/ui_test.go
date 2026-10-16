@@ -656,7 +656,21 @@ func TestScanResultOffersParents(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
+	// The preview comes first; nothing is saved until Save.
 	b.open(t, f.srv.URL+"/scan/"+id, 390)
+	if !eval[bool](t, b, `!!document.querySelector('.scan-draft p')`) {
+		t.Fatal("the scan preview is not shown")
+	}
+	if res := eval[overflowResult](t, b, fmt.Sprintf(overflowJS, 390)); res.ScrollWidth > 390 {
+		t.Errorf("preview page is %dpx wide: %v", res.ScrollWidth, res.Over)
+	}
+	if dir := os.Getenv("UI_SCREENSHOTS"); dir != "" {
+		b.screenshot(t, filepath.Join(dir, "scan-preview@390.jpg"))
+	}
+	click(t, b, `form[action$="/save"] button`)
+	if err := chromedp.Do(b.ctx, chromedp.Sleep(500*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
 	offered := eval[[]string](t, b, `[...document.querySelectorAll('.scan-parent')].map(b => b.value)`)
 	if len(offered) == 0 || offered[0] != "Wide_Test" {
 		t.Fatalf("offered parents = %v, want Wide_Test (it mentions the pump) first", offered)

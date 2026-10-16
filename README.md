@@ -67,6 +67,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Image uploads (paste, drag-and-drop, or picker) with size hints
 - File uploads — PDF, text, CSV, JSON and Office documents are stored in `files/`, linked from pages, and searchable (text of PDFs and text files is indexed, no OCR). Photos are scaled and stripped of EXIF/GPS data on upload
 - Photo scan to page — with `ANTHROPIC_API_KEY` set, take a photo of a page or note and Claude turns it into Markdown with the figures cut out and embedded, as a new page or appended to an existing one
+- Scan preview — a scan is shown as it would be saved and only reaches the git repo when you tap Save; a discarded retake leaves nothing behind
 - Page straightening in scans — a fast model finds the page corners in an angled photo; the page is cut out and its perspective corrected before reading, and each figure is stored as black and white, 4 gray levels, a small color palette or a photo
 - Upload from a phone: one-time upload links that Claude hands out through MCP (`create_upload_link`)
 - Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM and PBKDF2 key derivation, encrypted and decrypted entirely in the browser — the server never sees plaintext or the key

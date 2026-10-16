@@ -13,7 +13,7 @@
 <div id="scan-status"{{if eq .Status "running"}} hx-get="/scan/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   {{if eq .Status "running"}}
   <p class="scan-progress">{{.Step}}&hellip;</p>
-  <p class="hint">This usually takes under a minute. You can leave this page; the result is saved either way.</p>
+  <p class="hint">This usually takes under a minute. Nothing is saved until you have checked the result and tapped Save.</p>
   {{if .Preview}}
   <figure class="scan-preview">
     <img src="/scan/{{.ID}}/preview.jpg" alt="The photo with the found page outlined" />
@@ -23,6 +23,29 @@
     <button type="submit" class="secondary">Use the photo as it is</button>
   </form>
   {{end}}
+  {{else if eq .Status "review"}}
+  <p>{{if .Rewritten}}<a href="/wiki/{{.Target}}"><strong>{{.Title}}</strong></a> would be rewritten like this{{else if .Target}}This would be added to the end of <a href="/wiki/{{.Target}}"><strong>{{.Title}}</strong></a>{{else}}This would be the new page <strong>{{.Title}}</strong>{{end}}{{if .Figures}}, with {{.Figures}} picture{{if gt .Figures 1}}s{{end}} cut out{{end}}. Nothing is saved yet.</p>
+  <div class="wiki-content scan-draft">{{$.RenderedHTML}}</div>
+  {{if .Preview}}
+  <figure class="scan-preview scan-preview-small">
+    <img src="/scan/{{.ID}}/preview.jpg" alt="The photo with the found page outlined" />
+    <figcaption>Where the page was found in the photo</figcaption>
+  </figure>
+  {{end}}
+  <div class="scan-buttons">
+    <form method="post" action="/scan/{{.ID}}/save">
+      <button type="submit">Save page</button>
+    </form>
+    <form method="post" action="/scan/{{.ID}}/discard">
+      <button type="submit" class="secondary">Discard and scan again</button>
+    </form>
+    {{if .Preview}}
+    <form method="post" action="/scan/{{.ID}}/flat">
+      <button type="submit" class="secondary">Use the photo as it is</button>
+    </form>
+    {{end}}
+  </div>
+  <p class="hint">The preview is kept for an hour.</p>
   {{else if eq .Status "failed"}}
   {{if and .ReplacedBy (ne .ReplacedBy "pending")}}
   <p>{{.Error}}</p>

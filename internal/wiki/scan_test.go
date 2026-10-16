@@ -51,6 +51,19 @@ func waitScan(t *testing.T, s *Scanner, id string) ScanJob {
 	return ScanJob{}
 }
 
+// saveScan waits for a scan's preview, saves it and returns the job.
+func saveScan(t *testing.T, s *Scanner, id string) ScanJob {
+	t.Helper()
+	if job := waitScan(t, s, id); job.Status != scanReview {
+		t.Fatalf("job = %+v, want a preview", job)
+	}
+	if err := s.Save(id); err != nil {
+		t.Fatal(err)
+	}
+	job, _ := s.Job(id)
+	return job
+}
+
 // pagePhoto draws a white 400×300 "page" with a black box (the figure) at
 // (100,100)-(200,200).
 func pagePhoto(t *testing.T) []byte {
@@ -301,9 +314,29 @@ func TestScannerNewPage(t *testing.T) {
 	}}
 	s := NewScanner(store, nil, fake, DefaultUploadConfig)
 
-	job := waitScan(t, s, s.Start(pagePhoto(t), "", "dishwasher manual", "tester"))
-	if job.Status != scanDone || job.Slug != "Dishwasher_Filter" || job.Figures != 1 {
+	id := s.Start(pagePhoto(t), "", "dishwasher manual", "tester")
+	// The preview stores nothing: its figure is served from the job.
+	job := waitScan(t, s, id)
+	if job.Status != scanReview || job.Title != "Dishwasher Filter" || job.Figures != 1 ||
+		!strings.Contains(job.Draft, "![Filter](/scan/"+id+"/figure/1)") || !strings.HasPrefix(job.Draft, "# Dishwasher Filter\n") {
+		t.Fatalf("preview job = %+v", job)
+	}
+	if data, ok := s.DraftFigure(id, 1); !ok || len(data) == 0 {
+		t.Error("preview figure is missing")
+	}
+	if pages, _ := store.List(KindPage); len(pages) != 2 {
+		t.Fatalf("%d pages before saving, want 2", len(pages))
+	}
+	if images, _ := store.ListImages(); len(images) != 0 {
+		t.Fatalf("%d images before saving, want 0", len(images))
+	}
+
+	job = saveScan(t, s, id)
+	if job.Status != scanDone || job.Slug != "Dishwasher_Filter" || job.Figures != 1 || job.Draft != "" {
 		t.Fatalf("job = %+v", job)
+	}
+	if err := s.Save(id); err == nil {
+		t.Error("a scan was saved twice")
 	}
 	if fake.got.Note != "dishwasher manual" || fake.got.Width != 400 || strings.Join(fake.got.Pages, ",") != "Home,Manuals" {
 		t.Errorf("analyzer request = %+v", fake.got)
@@ -345,8 +378,21 @@ func TestScannerNewPage(t *testing.T) {
 		t.Error("linking from a missing page succeeded")
 	}
 
+	// A discarded scan leaves nothing behind.
+	id = s.Start(pagePhoto(t), "", "", "tester")
+	waitScan(t, s, id)
+	if target, err := s.Discard(id); err != nil || target != "" {
+		t.Fatalf("Discard = %q, %v", target, err)
+	}
+	if _, ok := s.Job(id); ok {
+		t.Error("discarded job is still listed")
+	}
+	if images, _ := store.ListImages(); len(images) != 1 {
+		t.Errorf("%d images after a discard, want 1", len(images))
+	}
+
 	// A second scan with the same title gets a new page, not an overwrite.
-	job = waitScan(t, s, s.Start(pagePhoto(t), "", "", "tester"))
+	job = saveScan(t, s, s.Start(pagePhoto(t), "", "", "tester"))
 	if job.Slug != "Dishwasher_Filter_2" {
 		t.Errorf("second scan slug = %q", job.Slug)
 	}
@@ -358,7 +404,7 @@ func TestScannerAppendAndFailure(t *testing.T) {
 	fake := &fakeAnalyzer{result: &ScanResult{Title: "Oven Manual", Markdown: "## Cleaning\n\nWipe it."}}
 	s := NewScanner(store, nil, fake, DefaultUploadConfig)
 
-	job := waitScan(t, s, s.Start(pagePhoto(t), "Oven", "", "tester"))
+	job := saveScan(t, s, s.Start(pagePhoto(t), "Oven", "", "tester"))
 	if job.Status != scanDone || !job.Appended || job.Slug != "Oven" {
 		t.Fatalf("job = %+v", job)
 	}
@@ -399,7 +445,7 @@ func TestScannerRewrite(t *testing.T) {
 	}}
 	s := NewScanner(store, nil, fake, DefaultUploadConfig)
 
-	job := waitScan(t, s, s.Start(pagePhoto(t), "Icons", "", "tester"))
+	job := saveScan(t, s, s.Start(pagePhoto(t), "Icons", "", "tester"))
 	if job.Status != scanDone || !job.Rewritten {
 		t.Fatalf("job = %+v", job)
 	}
@@ -415,12 +461,24 @@ func TestScannerRewrite(t *testing.T) {
 	// Pages with encrypted fields are only sent as headings and never rewritten.
 	_ = store.Save(KindPage, "Secret", "# Secret\n\n## Wifi\n\n{{secure_aes:abc=}}\n")
 	fake.result = &ScanResult{Title: "Secret", Rewrite: true, Markdown: "## Router\n\nA router."}
-	job = waitScan(t, s, s.Start(pagePhoto(t), "Secret", "", "tester"))
+	job = saveScan(t, s, s.Start(pagePhoto(t), "Secret", "", "tester"))
 	if fake.got.PageBody != "" || len(fake.got.Headings) != 2 || job.Rewritten {
 		t.Fatalf("secure page request = %+v, job = %+v", fake.got, job)
 	}
 	if page, _ := store.Load(KindPage, "Secret"); !strings.Contains(page.Content, "{{secure_aes:abc=}}\n\n## Router") {
 		t.Errorf("secure page content:\n%s", page.Content)
+	}
+
+	// A rewrite is not saved over edits made while it waited for review.
+	fake.result = &ScanResult{Title: "Pixel Icons", Rewrite: true, Markdown: "## Tank\n\nOnly tanks."}
+	id := s.Start(pagePhoto(t), "Icons", "", "tester")
+	waitScan(t, s, id)
+	_ = store.Save(KindPage, "Icons", c+"\nEdited.\n")
+	if err := s.Save(id); err == nil || !strings.Contains(err.Error(), "edited") {
+		t.Fatalf("Save over an edit = %v", err)
+	}
+	if page, _ := store.Load(KindPage, "Icons"); page.Content != c+"\nEdited.\n" {
+		t.Errorf("rewrite overwrote an edit:\n%s", page.Content)
 	}
 }
 
@@ -441,7 +499,7 @@ func (a *slowAnalyzer) Analyze(_ context.Context, _ []byte, req ScanRequest) (*S
 	return &ScanResult{Title: "List", Markdown: fmt.Sprintf("Item %d", n)}, nil
 }
 
-func TestScannerSerializesScansOfOnePage(t *testing.T) {
+func TestScannerKeepsBothScansOfOnePage(t *testing.T) {
 	store := NewPageStore(filepath.Join(t.TempDir(), "pages"))
 	_ = store.Save(KindPage, "List", "# List\n\nStart\n")
 	s := NewScanner(store, nil, &slowAnalyzer{}, DefaultUploadConfig)
@@ -450,6 +508,17 @@ func TestScannerSerializesScansOfOnePage(t *testing.T) {
 	b := s.Start(pagePhoto(t), "List", "", "tester")
 	waitScan(t, s, a)
 	waitScan(t, s, b)
+	var wg sync.WaitGroup
+	for _, id := range []string{a, b} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := s.Save(id); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
 	page, _ := store.Load(KindPage, "List")
 	if !strings.Contains(page.Content, "Item 1") || !strings.Contains(page.Content, "Item 2") {
 		t.Fatalf("a concurrent scan was lost:\n%s", page.Content)
@@ -480,13 +549,30 @@ func TestScanHandlers(t *testing.T) {
 	id := strings.TrimPrefix(rec.Header().Get("Location"), "/scan/")
 	waitScan(t, h.scanner, id)
 
+	// The preview shows the page as it would be saved, and the buttons.
 	req = httptest.NewRequest(http.MethodGet, "/scan/"+id, nil)
 	req.Header.Set("HX-Request", "true")
 	rec = httptest.NewRecorder()
 	routes.ServeHTTP(rec, req)
 	out := rec.Body.String()
-	if rec.Code != http.StatusOK || !strings.Contains(out, `href="/wiki/Note"`) || strings.Contains(out, "<html") || strings.Contains(out, "hx-trigger") {
-		t.Fatalf("status fragment: %d\n%s", rec.Code, out)
+	if rec.Code != http.StatusOK || !strings.Contains(out, "<p>Hello</p>") || !strings.Contains(out, `action="/scan/`+id+`/save"`) ||
+		!strings.Contains(out, `action="/scan/`+id+`/discard"`) || strings.Contains(out, "<html") || strings.Contains(out, "hx-trigger") {
+		t.Fatalf("preview fragment: %d\n%s", rec.Code, out)
+	}
+	if _, err := store.Load(KindPage, "Note"); err == nil {
+		t.Fatal("the page was saved before the preview was accepted")
+	}
+	rec = httptest.NewRecorder()
+	routes.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/scan/"+id+"/save", nil))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/scan/"+id {
+		t.Fatalf("save: status %d, location %q", rec.Code, rec.Header().Get("Location"))
+	}
+	req = httptest.NewRequest(http.MethodGet, "/scan/"+id, nil)
+	req.Header.Set("HX-Request", "true")
+	rec = httptest.NewRecorder()
+	routes.ServeHTTP(rec, req)
+	if out := rec.Body.String(); !strings.Contains(out, `href="/wiki/Note"`) {
+		t.Fatalf("result fragment:\n%s", out)
 	}
 
 	// The result screen offers parents; posting one links the page.
@@ -510,6 +596,18 @@ func TestScanHandlers(t *testing.T) {
 	routes.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/scan/"+id, nil))
 	if !strings.Contains(rec.Body.String(), "Linked from") {
 		t.Errorf("result page does not say where the page is linked from")
+	}
+
+	// Discarding goes back to the capture screen for the same page.
+	other := h.scanner.Start(pagePhoto(t), "Home", "", "tester")
+	waitScan(t, h.scanner, other)
+	rec = httptest.NewRecorder()
+	routes.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/scan/"+other+"/discard", nil))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/scan?page=Home" {
+		t.Fatalf("discard: status %d, location %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if home, _ := store.Load(KindPage, "Home"); strings.Contains(home.Content, "Hello") {
+		t.Errorf("a discarded scan changed Home:\n%s", home.Content)
 	}
 
 	body, ct = multipartPhoto(t, "IMG_1.HEIC", []byte("x"))
@@ -629,7 +727,7 @@ func TestScannerStraightensThePage(t *testing.T) {
 	s := NewScanner(store, nil, a, DefaultUploadConfig)
 
 	job := waitScan(t, s, s.Start(buf.Bytes(), "", "", "tester"))
-	if job.Status != scanDone || !job.Straightened {
+	if job.Status != scanReview || !job.Straightened {
 		t.Fatalf("job = %+v", job)
 	}
 	if _, err := jpeg.Decode(bytes.NewReader(job.Preview)); err != nil {
@@ -638,6 +736,18 @@ func TestScannerStraightensThePage(t *testing.T) {
 	// The reading pass got the straightened page, with A4 proportions.
 	if ratio := float64(a.gotH) / float64(a.gotW); math.Abs(ratio-594.0/420) > 0.05 {
 		t.Errorf("scan pass got a %dx%d image (ratio %.2f), want the straightened A4 page", a.gotW, a.gotH, ratio)
+	}
+
+	// A wrong outline can still be undone from the preview.
+	newID, err := s.RescanFlat(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job := waitScan(t, s, newID); job.Status != scanReview || job.Straightened || a.gotW != 900 {
+		t.Errorf("rescan from the preview = %+v (scan width %d)", job, a.gotW)
+	}
+	if old, _ := s.Job(job.ID); old.Status != scanFailed || old.Draft != "" {
+		t.Errorf("replaced preview = %+v", old)
 	}
 
 	// No usable outline (the photo's own frame): the photo is used as it is.
@@ -748,7 +858,7 @@ func TestRescanWithoutStraightening(t *testing.T) {
 	if rec.Code != http.StatusSeeOther || newID == "" || newID == id {
 		t.Fatalf("rescan: status %d, location %q", rec.Code, rec.Header().Get("Location"))
 	}
-	job := waitScan(t, s, newID)
+	job := saveScan(t, s, newID)
 	if job.Status != scanDone || job.Straightened || a.gotW != 900 {
 		t.Fatalf("rescan job = %+v (scan width %d), want the unstraightened photo", job, a.gotW)
 	}

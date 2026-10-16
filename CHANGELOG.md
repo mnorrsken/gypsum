@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.61.0
+
+### Added
+- **Preview before saving a scan** — a scan now stops at a preview of the page as it would be saved (the new page, the part to be added, or the rewritten page, with the cut-out pictures). **Save page** stores and commits it; **Discard and scan again** drops it, so retaking a photo no longer leaves saved and deleted pages and images in the git history. **Use the photo as it is** works from the preview too. Several scans of the same page can wait for review at once; a rewrite is not saved over edits made after the photo was read. See [Usage → Photo scans](docs/usage.md#photo-scans).
+
 ## v0.60.2
 
 ### Fixed
