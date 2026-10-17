@@ -164,8 +164,8 @@ Tools are grouped into sections (read, edit, delete, skills, notes) that can be 
 | `get_page_revision` | read | Page content at a specific git revision. |
 | `page_links` | read | Wiki links connected to a page. `direction: out`/`in`/`both` (default) for outgoing links, backlinks, or both. |
 | `link_graph` | read | Explore link structure. Modes: full `map` (default), `format: tree` outline, `slug`+`depth` neighborhood subgraph, or `orphans_only: true`. |
-| `create_page` | edit | Create a new page. `link_from`/`link_section` links it from a parent for discoverability; `format: mediawiki` imports wikitext. |
-| `edit_page` | edit | Update an existing page (see edit modes below); `format: mediawiki` on full-replace imports wikitext. |
+| `create_page` | edit | Create a new page. `link_from`/`link_section` links it from a parent for discoverability; `format: mediawiki` imports wikitext. The result ends with the page URL (`<GYPSUM_EXTERNAL_URL>/wiki/<slug>`). |
+| `edit_page` | edit | Update an existing page (see edit modes below); `format: mediawiki` on full-replace imports wikitext. The result ends with the page URL. |
 | `delete_page` | delete | Delete a page permanently. |
 | `delete_image` | delete | Delete an uploaded image by filename. |
 | `delete_file` | delete | Delete an uploaded document or image by filename. |

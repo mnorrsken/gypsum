@@ -295,6 +295,29 @@ func TestMCPCreateAndGetPage(t *testing.T) {
 	}
 }
 
+func TestMCPPageURLInResults(t *testing.T) {
+	handler, _ := newTestMCP(t)
+	handler.SetUploadLinks(NewUploadLinks(), "https://wiki.example.com/")
+
+	resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+		"name":      "create_page",
+		"arguments": map[string]any{"title": "Café Notes", "content": "x"},
+	})
+	text := toolResultText(t, resp)
+	if text != "Created page 'Café Notes' (slug: Café_Notes)\nURL: https://wiki.example.com/wiki/Caf%C3%A9_Notes" {
+		t.Fatalf("unexpected create result: %q", text)
+	}
+
+	resp = mcpCall(t, handler, 2, "tools/call", map[string]any{
+		"name":      "edit_page",
+		"arguments": map[string]any{"slug": "Café_Notes", "content": "y"},
+	})
+	text = toolResultText(t, resp)
+	if text != "Updated page 'Café_Notes'\nURL: https://wiki.example.com/wiki/Caf%C3%A9_Notes" {
+		t.Fatalf("unexpected edit result: %q", text)
+	}
+}
+
 func TestMCPCreatePageDuplicate(t *testing.T) {
 	handler, store := newTestMCP(t)
 	_ = store.Save(KindPage, "Existing", "content")

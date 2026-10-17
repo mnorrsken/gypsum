@@ -203,7 +203,7 @@ type MCPHandler struct {
 	metrics        *MCPMetrics         // optional; nil = no metrics
 	allowedOrigins []string            // Origin allowlist; loopback always permitted
 	uploads        *UploadLinks        // nil = create_upload_link unavailable
-	externalURL    string              // public base URL for upload links, no trailing slash
+	externalURL    string              // public base URL for upload and page links, no trailing slash
 }
 
 // SetUploadLinks enables create_upload_link, building links on externalURL.

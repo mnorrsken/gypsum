@@ -3,6 +3,7 @@ package wiki
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -204,7 +205,7 @@ func (m *MCPHandler) toolCreatePage(args map[string]any, author string) mcpCallT
 		section, _ := mcpArgString(args, "link_section")
 		msg += " " + m.addWikiLink(linkFrom, title, section, author)
 	}
-	return mcpText(msg)
+	return mcpText(msg + m.pageURLLine(slug))
 }
 
 func (m *MCPHandler) toolEditPage(args map[string]any, author string) mcpCallToolResult {
@@ -236,7 +237,16 @@ func (m *MCPHandler) toolEditPage(args map[string]any, author string) mcpCallToo
 		return mcpError("failed to save page: " + err.Error())
 	}
 	_ = m.autoCommit.CommitSave(KindPage, slug, author)
-	return mcpText(fmt.Sprintf("Updated page '%s'", slug))
+	return mcpText(fmt.Sprintf("Updated page '%s'", slug) + m.pageURLLine(slug))
+}
+
+// pageURLLine returns "\nURL: <externalURL>/wiki/<slug>" so the caller can open
+// the page, or "" when no external URL is configured.
+func (m *MCPHandler) pageURLLine(slug string) string {
+	if m.externalURL == "" {
+		return ""
+	}
+	return "\nURL: " + m.externalURL + "/wiki/" + url.PathEscape(slug)
 }
 
 func (m *MCPHandler) addWikiLink(parentRef, childTitle, section, author string) string {
