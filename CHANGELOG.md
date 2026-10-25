@@ -2,6 +2,13 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.61.1
+
+### Changed
+- **Page URL from `create_page` and `edit_page`** — the result now ends with the full page URL (`<GYPSUM_EXTERNAL_URL>/wiki/<slug>`), so a client can link to the page it just wrote. See [MCP](docs/mcp.md).
+- **Dependencies** — anthropic-sdk-go 1.84.0, modernc.org/sqlite 1.61.0, chromedp/cdproto 0.158.1, newer ledongthuc/pdf and indirect modules.
+- **Container image** — runtime base is now Alpine 3.24, and `brotli-libs` must be at least 1.2.1-r0.
+
 ## v0.61.0
 
 ### Added

@@ -16,12 +16,13 @@ ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/gypsum ./cmd/wiki
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 # git + ca-certificates are required at runtime; tini reaps orphaned processes
 # (see ENTRYPOINT); bash, curl and nano are added so the container can be
 # exec'd into for basic debugging (a shell, an HTTP client, and an editor).
-RUN apk add --no-cache git ca-certificates tini bash curl nano \
+# brotli-libs (pulled in by curl) must be at least 1.2.1-r0.
+RUN apk add --no-cache git ca-certificates tini bash curl nano 'brotli-libs>=1.2.1-r0' \
     && test -x /sbin/tini \
     && addgroup -g 1000 -S app \
     && adduser -u 1000 -S app -G app
