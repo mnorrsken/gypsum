@@ -32,6 +32,9 @@ jobs:
       - name: go test
         run: go test -race ./...
 
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
   build-and-push:
     name: Build and push container image
     runs-on: ubuntu-latest

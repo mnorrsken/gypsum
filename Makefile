@@ -25,13 +25,14 @@ ICONS := menu search camera lock lock-open sun moon house file-text files clock 
 	eye copy check archive archive-restore
 STATIC_DIR      := web/static
 
-.PHONY: help fmt tidy vet test ui-test build run clean docker-build docker-run deploy vendor-js vendor-icons
+.PHONY: help fmt tidy vet vuln test ui-test build run clean docker-build docker-run deploy vendor-js vendor-icons
 
 help:
 	@echo "Targets:"
 	@echo "  make fmt                        - Format Go source"
 	@echo "  make tidy                       - Tidy Go modules"
 	@echo "  make vet                        - Run go vet static analysis"
+	@echo "  make vuln                       - Run govulncheck"
 	@echo "  make test                       - Run unit tests"
 	@echo "  make ui-test                    - Run browser tests in headless Chrome (UI_SCREENSHOTS=dir saves screenshots)"
 	@echo "  make build                      - Build binaries to ./bin/"
@@ -51,6 +52,9 @@ tidy:
 
 vet:
 	go vet ./...
+
+vuln:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
 test:
 	go test ./...
