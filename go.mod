@@ -5,7 +5,7 @@ go 1.27
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/anthropics/anthropic-sdk-go v1.84.0
-	github.com/chromedp/cdproto v0.158.1
+	github.com/chromedp/cdproto v0.158.4
 	github.com/chromedp/chromedp v0.21.0
 	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
 	github.com/microcosm-cc/bluemonday v1.0.27
