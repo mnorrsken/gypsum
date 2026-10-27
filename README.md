@@ -61,7 +61,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Full-text search with FTS5 indexing, BM25 ranking, and highlighted snippets
 - Optional [semantic search](#semantic-search) that also finds pages by meaning and across languages, via any OpenAI-compatible embeddings API or a CPU embeddings server deployed by the Helm chart
 - Quick Notes — a whiteboard-style board of always-editable sticky notes with autosave, title-hashed colors, and archive; stored as plain markdown in git
-- Secrets vault — a searchable list of credentials with click-to-reveal (60s) and copy-without-showing; tiles use the linked site's own picture or a title-hashed two-letter mnemonic. Encrypted in the browser, stored as markdown in git, never exposed over MCP
+- Secrets vault — a searchable list of credentials with click-to-reveal (60s) and copy-without-showing; tiles use the linked site's own picture or a title-hashed two-letter mnemonic. Encrypted in the browser, stored as markdown in git, never exposed over MCP. Secrets can have tags; tag chips filter the list (all selected tags must match). Compact two-column card layout.
 - Interactive link graph
 - Page history with revision diffs and one-click restore of any older revision; MCP edits are committed under the calling client's name (e.g. `claude-code (MCP)`)
 - Image uploads (paste, drag-and-drop, or picker) with size hints

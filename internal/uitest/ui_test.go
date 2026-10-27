@@ -104,11 +104,14 @@ func newFixture(t *testing.T) *fixture {
 	save("Wide_Test", widePage+"\nedit 1\nedit 2\n")
 	store.SetDB(db)
 
-	// A note, a secret and uploads, so their cards and buttons render.
+	// A note, two tagged secrets and uploads, so their cards and buttons render.
 	if _, err := store.CreateNote("Shopping list\nmilk, bread"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CreateSecret(wiki.SecretEntry{Title: "Home router", URL: "https://router.example", Description: "Admin login"}, "{{secure_aes:QUJDREVGR0g=}}"); err != nil {
+	if _, err := store.CreateSecret(wiki.SecretEntry{Title: "Home router", URL: "https://router.example", Description: "Admin login", Tags: []string{"home", "network"}}, "{{secure_aes:QUJDREVGR0g=}}"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSecret(wiki.SecretEntry{Title: "Mail", Tags: []string{"work"}}, "{{secure_aes:QUJDREVGR0g=}}"); err != nil {
 		t.Fatal(err)
 	}
 	var pngBuf bytes.Buffer
@@ -637,6 +640,45 @@ func TestCardActionsVisibleOnPhones(t *testing.T) {
 		if bad := eval[string](t, b, `[...document.querySelectorAll('button')].map(x => x.textContent.trim()).filter(s => /[\u{1F300}-\u{1FAFF}✕✎×]/u.test(s)).join(' ')`); bad != "" {
 			t.Errorf("%s: emoji button faces left: %q", page, bad)
 		}
+	}
+}
+
+func TestSecretTagFilter(t *testing.T) {
+	f := newFixture(t)
+	b := newBrowser(t)
+	b.open(t, f.srv.URL+"/secrets", 1280)
+	shown := func() string {
+		return eval[string](t, b, `[...document.querySelectorAll('.secret-card:not([hidden]) .secret-title')].map(e => e.textContent).join(',')`)
+	}
+	if got := eval[string](t, b, `[...document.querySelectorAll('#secret-tag-bar .secret-tag')].map(e => e.textContent).join(',')`); got != "home,network,work" {
+		t.Fatalf("tag bar = %q", got)
+	}
+	click(t, b, `#secret-tag-bar .secret-tag[data-tag="work"]`)
+	if got := shown(); got != "Mail" {
+		t.Errorf("after selecting work, shown = %q", got)
+	}
+	// A tag on a card toggles the same filter; work and network together match nothing.
+	click(t, b, `.secret-card .secret-tag[data-tag="work"]`)
+	click(t, b, `#secret-tag-bar .secret-tag[data-tag="network"]`)
+	if got := shown(); got != "Home router" {
+		t.Errorf("after swapping to network, shown = %q", got)
+	}
+	click(t, b, `#secret-tag-bar .secret-tag[data-tag="work"]`)
+	if got := shown(); got != "" || !eval[bool](t, b, `!document.getElementById('secrets-empty').hidden`) {
+		t.Errorf("work+network shown = %q, want none and the empty message", got)
+	}
+
+	// Editing tags while locked saves them and refreshes the tag bar.
+	click(t, b, `#secret-tag-bar .secret-tag[data-tag="work"]`)
+	click(t, b, `#secret-tag-bar .secret-tag[data-tag="network"]`)
+	click(t, b, `.secret-card[data-title="Mail"] .secret-edit`)
+	eval[bool](t, b, `(() => { document.getElementById('secret-field-tags').value = 'Work, Mail Server'; return true; })()`)
+	click(t, b, `#secret-submit`)
+	if got := eval[string](t, b, `[...document.querySelectorAll('#secret-tag-bar .secret-tag')].map(e => e.textContent).join(',')`); got != "home,mail-server,network,work" {
+		t.Errorf("tag bar after edit = %q", got)
+	}
+	if errs := b.takeErrors(); len(errs) > 0 {
+		t.Errorf("JavaScript errors: %v", errs)
 	}
 }
 

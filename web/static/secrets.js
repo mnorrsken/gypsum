@@ -24,6 +24,8 @@
 
   var filterInput = document.getElementById("secret-filter");
   var emptyMsg = document.getElementById("secrets-empty");
+  var tagBar = document.getElementById("secret-tag-bar");
+  var activeTags = new Set(); // tags a card must all carry to stay visible
 
   // ── Title-derived presentation (mirrors secrets.go) ──────────────────
 
@@ -54,6 +56,44 @@
     return Array.from(s).slice(0, n).join("");
   }
 
+  // ── Tags ─────────────────────────────────────────────────────────────
+
+  // cardTags returns the tags stored on a card ("a,b" in data-tags).
+  function cardTags(card) {
+    return (card.dataset.tags || "").split(",").filter(Boolean);
+  }
+
+  // renderTagBar lists every tag in use as a toggle above the cards. Selected
+  // tags that no card carries any more are dropped.
+  function renderTagBar() {
+    var all = new Set();
+    list.querySelectorAll(".secret-card").forEach(function (card) {
+      cardTags(card).forEach(function (t) { all.add(t); });
+    });
+    activeTags.forEach(function (t) { if (!all.has(t)) activeTags.delete(t); });
+    tagBar.textContent = "";
+    Array.from(all).sort().forEach(function (t) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "secret-tag";
+      b.dataset.tag = t;
+      b.textContent = t;
+      tagBar.appendChild(b);
+    });
+    tagBar.hidden = all.size === 0;
+  }
+
+  function toggleTag(tag) {
+    if (activeTags.has(tag)) activeTags.delete(tag);
+    else activeTags.add(tag);
+    applyFilter();
+  }
+
+  tagBar.addEventListener("click", function (e) {
+    var b = e.target.closest(".secret-tag");
+    if (b) toggleTag(b.dataset.tag);
+  });
+
   // ── Filtering ────────────────────────────────────────────────────────
 
   function applyFilter() {
@@ -63,9 +103,16 @@
     var visible = 0;
     cards.forEach(function (card) {
       var hay = (card.dataset.search || "").toLowerCase();
-      var match = terms.every(function (t) { return hay.indexOf(t) >= 0; });
+      var tags = cardTags(card);
+      var match = terms.every(function (t) { return hay.indexOf(t) >= 0; }) &&
+        Array.from(activeTags).every(function (t) { return tags.indexOf(t) >= 0; });
       card.hidden = !match;
       if (match) visible++;
+    });
+    document.querySelectorAll(".secret-tag").forEach(function (b) {
+      var on = activeTags.has(b.dataset.tag);
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
     });
     if (emptyMsg) {
       emptyMsg.hidden = visible > 0;
@@ -149,11 +196,12 @@
 
   // ── Card rendering ───────────────────────────────────────────────────
 
-  // syncCard applies a card's dataset (title, url, description, image) to its
-  // rendered elements, so create and edit share one rendering path.
+  // syncCard applies a card's dataset (title, url, description, image, tags)
+  // to its rendered elements, so create and edit share one rendering path.
   function syncCard(card) {
     var title = card.dataset.title || "Untitled";
-    card.dataset.search = [title, card.dataset.description || "", card.dataset.url || ""].join(" ");
+    card.dataset.search = [title, card.dataset.description || "", card.dataset.url || ""]
+      .concat(cardTags(card)).join(" ");
 
     card.querySelector(".secret-title").textContent = title;
 
@@ -191,16 +239,27 @@
       link.remove();
     }
 
-    var desc = card.querySelector(".secret-desc");
-    if (card.dataset.description) {
-      if (!desc) {
-        desc = document.createElement("p");
+    var meta = card.querySelector(".secret-meta");
+    if (meta) meta.remove();
+    var tags = cardTags(card);
+    if (tags.length || card.dataset.description) {
+      meta = document.createElement("div");
+      meta.className = "secret-meta";
+      tags.forEach(function (t) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "secret-tag";
+        b.dataset.tag = t;
+        b.textContent = t;
+        meta.appendChild(b);
+      });
+      if (card.dataset.description) {
+        var desc = document.createElement("span");
         desc.className = "secret-desc";
-        card.querySelector(".secret-main").appendChild(desc);
+        desc.textContent = card.dataset.description;
+        meta.appendChild(desc);
       }
-      desc.textContent = card.dataset.description;
-    } else if (desc) {
-      desc.remove();
+      card.querySelector(".secret-main").appendChild(meta);
     }
   }
 
@@ -279,6 +338,7 @@
   var fURL = document.getElementById("secret-field-url");
   var fDesc = document.getElementById("secret-field-description");
   var fImage = document.getElementById("secret-field-image");
+  var fTags = document.getElementById("secret-field-tags");
   var imagePreview = document.getElementById("secret-image-preview");
   var secretHint = document.getElementById("secret-secret-hint");
   var errorEl = document.getElementById("secret-error");
@@ -320,6 +380,7 @@
       fURL.value = card.dataset.url || "";
       fDesc.value = card.dataset.description || "";
       fImage.value = card.dataset.image || "";
+      fTags.value = cardTags(card).join(", ");
       // Prefill the plaintext only when the vault is already unlocked —
       // editing a description should not force a passphrase prompt.
       if (window.gypsumSecure.isUnlocked() && card.dataset.ciphertext) {
@@ -419,6 +480,7 @@
     body.set("url", fURL.value.trim());
     body.set("description", fDesc.value.trim());
     body.set("image", fImage.value.trim());
+    body.set("tags", fTags.value);
 
     var reEncrypt = !editingCard || (plaintext !== originalSecret && plaintext.trim() !== "");
     if (reEncrypt) {
@@ -468,6 +530,7 @@
     card.dataset.url = fURL.value.trim();
     card.dataset.description = fDesc.value.trim();
     card.dataset.image = data.image || "";
+    card.dataset.tags = (data.tags || []).join(",");
     if (macro) {
       var m = /^\{\{secure_aes(2?):([A-Za-z0-9+/=]+)\}\}$/.exec(macro);
       if (m) {
@@ -478,6 +541,7 @@
     mask(card);
     syncCard(card);
     insertSorted(card);
+    renderTagBar();
     applyFilter();
 
     if (!card.dataset.image && card.dataset.url) {
@@ -494,6 +558,11 @@
   list.addEventListener("click", function (e) {
     var card = e.target.closest(".secret-card");
     if (!card) return;
+    var tag = e.target.closest(".secret-tag");
+    if (tag) {
+      toggleTag(tag.dataset.tag);
+      return;
+    }
     var btn = e.target.closest(".secret-btn");
 
     if (!btn) {
@@ -511,6 +580,7 @@
       fetch("/secrets/delete/" + card.dataset.id, { method: "POST" }).then(function (r) {
         if (r.ok) {
           card.remove();
+          renderTagBar();
           applyFilter();
         }
       });
@@ -526,5 +596,6 @@
     reveal(pre.closest(".secret-card"));
   });
 
+  renderTagBar();
   applyFilter();
 })();

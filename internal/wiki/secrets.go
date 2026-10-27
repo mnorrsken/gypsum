@@ -50,6 +50,7 @@ type SecretEntry struct {
 	Description string    `json:"description,omitempty"`
 	URL         string    `json:"url,omitempty"`
 	Image       string    `json:"image,omitempty"` // filename under images/, "" = none
+	Tags        []string  `json:"tags,omitempty"`  // lowercase, sorted, no duplicates
 	Ciphertext  string    `json:"-"`               // base64 payload of the secure macro
 	Variant     string    `json:"-"`               // "" = secure_aes, "2" = secure_aes2
 	Encrypted   bool      `json:"-"`               // false when the stored body is not a secure macro
@@ -123,6 +124,24 @@ func SecretColor(title string) int {
 	return int(h.Sum32() % SecretColorCount)
 }
 
+// ParseSecretTags turns a comma-separated tag list into the stored form:
+// trimmed, lowercased, inner whitespace collapsed to "-", deduplicated and
+// sorted.
+func ParseSecretTags(s string) []string {
+	seen := map[string]bool{}
+	var tags []string
+	for _, part := range strings.Split(s, ",") {
+		tag := strings.ToLower(strings.Join(strings.Fields(part), "-"))
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	return tags
+}
+
 // ── Secret file format ─────────────────────────────────────────────────
 //
 // A secret is stored as a small markdown file: "key: value" header lines, a
@@ -132,6 +151,7 @@ func SecretColor(title string) int {
 //	title: Big Secret thing
 //	url: https://example.com/login
 //	image: secret-20260824-153042-a1b2c3d4.png
+//	tags: prod, work
 //	description: Prod admin credentials
 //
 //	{{secure_aes2:BASE64...}}
@@ -164,6 +184,8 @@ func ParseSecret(id, raw string) SecretEntry {
 			s.URL = value
 		case "image":
 			s.Image = value
+		case "tags":
+			s.Tags = ParseSecretTags(value)
 		}
 	}
 	body := strings.TrimSpace(strings.Join(lines[min(i, len(lines)):], "\n"))
@@ -191,6 +213,7 @@ func (s SecretEntry) Marshal(body string) string {
 	writeField("title", s.Title)
 	writeField("url", s.URL)
 	writeField("image", s.Image)
+	writeField("tags", strings.Join(s.Tags, ", "))
 	writeField("description", s.Description)
 	b.WriteString("\n")
 	b.WriteString(strings.TrimSpace(body))

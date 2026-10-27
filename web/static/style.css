@@ -2391,7 +2391,7 @@ label {
 }
 
 .secret-filter-row {
-  margin: 0.75rem 0 1rem;
+  margin: 0.75rem 0 0.6rem;
 }
 
 .secret-filter {
@@ -2410,16 +2410,51 @@ label {
   box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
-.secrets-list {
+.secret-tag-bar {
   display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 0.75rem;
+}
+
+.secret-tag-bar[hidden] {
+  display: none;
+}
+
+.secret-tag {
+  padding: 1px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.secret-tag:hover {
+  color: var(--text);
+}
+
+.secret-tag.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* Two columns once there is room for two readable cards. */
+.secrets-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: 0.6rem;
 }
 
 .secret-card {
   display: flex;
-  gap: 1rem;
-  padding: 0.9rem;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.6rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -2431,12 +2466,12 @@ label {
 
 .secret-tile {
   flex: 0 0 auto;
-  width: 96px;
-  height: 96px;
+  width: 52px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 18px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--secret-color-0);
   color: var(--secret-ink);
@@ -2456,7 +2491,7 @@ label {
 .secret-tile.secret-color-11 { background: var(--secret-color-11); }
 
 .secret-mnemonic {
-  font-size: 2.4rem;
+  font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -2474,18 +2509,18 @@ label {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .secret-head {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.5rem;
 }
 
 .secret-title {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 0.98rem;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2500,7 +2535,7 @@ label {
 .secret-actions {
   margin-left: auto;
   display: flex;
-  gap: 0.3rem;
+  gap: 0;
   opacity: 0.35;
   transition: opacity 0.15s ease;
 }
@@ -2526,8 +2561,7 @@ label {
 
 .secret-value {
   margin: 0;
-  min-height: 3.4rem;
-  padding: 0.6rem 0.7rem;
+  padding: 0.3rem 0.55rem;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.9rem;
   color: var(--color-text-muted);
@@ -2553,9 +2587,18 @@ label {
   user-select: all;
 }
 
+.secret-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
 .secret-desc {
   margin: 0;
-  font-size: 0.85rem;
+  min-width: 0;
+  font-size: 0.82rem;
   color: var(--color-text-muted);
 }
 
@@ -2626,18 +2669,14 @@ label {
 }
 
 @media (max-width: 600px) {
-  .secret-card {
-    flex-direction: column;
-  }
-
   .secret-tile {
-    width: 64px;
-    height: 64px;
-    border-radius: 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
   }
 
   .secret-mnemonic {
-    font-size: 1.6rem;
+    font-size: 1.05rem;
   }
 }
 
@@ -2776,8 +2815,8 @@ label {
 }
 
 .secret-btn {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border-radius: var(--radius-full);
 }
@@ -2787,8 +2826,8 @@ label {
 }
 
 .secret-btn .icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .note-btn {

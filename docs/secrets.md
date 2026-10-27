@@ -2,7 +2,8 @@
 
 The Secrets vault is an opinionated view for credentials: a searchable list where
 each entry is a title, an encrypted block of text, and — optionally — a
-description, a link, and a picture of the site it belongs to. Open **Secrets**
+description, tags, a link, and a picture of the site it belongs to. Entries sit
+in two columns on wide screens and one on phones. Open **Secrets**
 in the sidebar.
 
 It uses exactly the same encryption as inline [`{{secure:...}}`](usage.md) fields:
@@ -12,9 +13,14 @@ stores ciphertext and never holds the key or the plaintext.
 ## Using the vault
 
 - **Filter as you type.** The filter box narrows the list on every keystroke,
-  matching against title, description and URL. Multiple words all have to match.
-  Filtering happens in the browser — no query is sent to the server. `Esc`
-  clears the box.
+  matching against title, description, URL and tags. Multiple words all have to
+  match. Filtering happens in the browser — no query is sent to the server.
+  `Esc` clears the box.
+- **Tags.** Give a secret comma-separated tags in the edit dialog. They are
+  stored lowercase, sorted, with spaces turned into `-` ("Mail Server" →
+  `mail-server`). Every tag in use is listed above the cards; click one (there
+  or on a card) to show only secrets with that tag, click more to narrow
+  further, and click again to clear it.
 - **Reveal.** Click the eye (or the masked value itself) to decrypt a secret in
   place. It re-masks itself after 60 seconds, the same hold as a secure field on
   a wiki page. Clicking again hides it immediately, and everything re-masks when
@@ -28,7 +34,7 @@ stores ciphertext and never holds the key or the plaintext.
 
 ## Tiles
 
-Each entry gets a 96px tile, in this order of preference:
+Each entry gets a small square tile, in this order of preference:
 
 1. **An image you name.** Any file in the wiki's image library — put its
    filename in the Image field (upload it first on the [Images](usage.md) page).
@@ -62,6 +68,7 @@ data/repo/secrets/20260824-231630.md
 title: Big Secret thing
 url: https://github.com
 image: secret-20260824-231630-e8d9aa8f.png
+tags: prod, work
 description: Prod admin credentials
 
 {{secure_aes2:VTVKJhK82GvRfv8IWgQx/EtUH0oKp4TCkwIOiR1lkOamu7K4F4A/8BQbjeMwHu43GbZpXw4h}}

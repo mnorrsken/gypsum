@@ -41,6 +41,7 @@ func secretFormEntry(r *http.Request) SecretEntry {
 		Description: strings.TrimSpace(r.FormValue("description")),
 		URL:         strings.TrimSpace(r.FormValue("url")),
 		Image:       strings.TrimSpace(r.FormValue("image")),
+		Tags:        ParseSecretTags(r.FormValue("tags")),
 	}
 }
 
@@ -53,6 +54,7 @@ func secretJSON(id string, entry SecretEntry) map[string]any {
 		"mnemonic": SecretMnemonic(entry.Title),
 		"color":    SecretColor(entry.Title),
 		"image":    entry.Image,
+		"tags":     entry.Tags,
 	}
 }
 

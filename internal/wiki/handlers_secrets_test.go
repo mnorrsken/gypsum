@@ -25,14 +25,16 @@ func TestSecretHTTPRoundTrip(t *testing.T) {
 		"secret":      {testMacro},
 		"url":         {"https://example.com"},
 		"description": {"prod creds"},
+		"tags":        {"Work, prod"},
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, body=%s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ID       string `json:"id"`
-		Mnemonic string `json:"mnemonic"`
-		Color    int    `json:"color"`
+		ID       string   `json:"id"`
+		Mnemonic string   `json:"mnemonic"`
+		Color    int      `json:"color"`
+		Tags     []string `json:"tags"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create response: %v", err)
@@ -42,6 +44,9 @@ func TestSecretHTTPRoundTrip(t *testing.T) {
 	}
 	if created.Mnemonic != "BS" || created.Color != SecretColor("Big Secret thing") {
 		t.Errorf("derived fields = %q / %d", created.Mnemonic, created.Color)
+	}
+	if strings.Join(created.Tags, ",") != "prod,work" {
+		t.Errorf("tags = %q", created.Tags)
 	}
 
 	stored, err := h.store.LoadSecret(created.ID)
@@ -64,6 +69,9 @@ func TestSecretHTTPRoundTrip(t *testing.T) {
 	stored, _ = h.store.LoadSecret(created.ID)
 	if stored.Title != "Renamed" {
 		t.Errorf("title after save = %q", stored.Title)
+	}
+	if len(stored.Tags) != 0 {
+		t.Errorf("tags after save without tags = %q", stored.Tags)
 	}
 	if stored.Ciphertext != "QUJDREVGRw==" {
 		t.Errorf("ciphertext changed on metadata-only save: %q", stored.Ciphertext)
@@ -224,6 +232,7 @@ func TestSecretsVaultRenders(t *testing.T) {
 
 	id, _ := store.CreateSecret(SecretEntry{
 		Title: "Big Secret thing", URL: "https://example.com", Description: "prod creds",
+		Tags: []string{"prod", "work"},
 	}, testMacro)
 
 	req := httptest.NewRequest(http.MethodGet, "/secrets", nil)
@@ -240,6 +249,8 @@ func TestSecretsVaultRenders(t *testing.T) {
 		">BS<",
 		"/static/secrets.js",
 		"secret-filter",
+		`data-tags="prod,work"`,
+		`data-tag="work"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("vault page missing %q", want)

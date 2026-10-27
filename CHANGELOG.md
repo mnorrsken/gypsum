@@ -2,6 +2,14 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.62.0
+
+### Added
+- **Secret tags** — a secret can have tags: a `tags:` header line in the secret file and a comma-separated field in the edit dialog. Tags are stored lowercase, sorted and without duplicates, with spaces turned into `-`. A tag bar above the cards and the tag chips on each card toggle a filter; when several tags are selected, a secret must have all of them. The text filter also searches tags. See [Secrets](docs/secrets.md).
+
+### Changed
+- **Compact vault layout** — the Secrets page now shows two columns of smaller cards, with the masked value on one line and the tags and description on one line. See [Secrets](docs/secrets.md).
+
 ## v0.61.1
 
 ### Changed

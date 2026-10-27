@@ -49,6 +49,7 @@ func TestParseSecret(t *testing.T) {
 	raw := "title: Big Secret thing\n" +
 		"url: https://example.com/login\n" +
 		"image: secret-20260824-120000-abcd1234.png\n" +
+		"tags: work, prod\n" +
 		"description: Prod admin credentials\n" +
 		"unknown: ignored\n" +
 		"\n" +
@@ -67,6 +68,9 @@ func TestParseSecret(t *testing.T) {
 	if s.Description != "Prod admin credentials" {
 		t.Errorf("Description = %q", s.Description)
 	}
+	if strings.Join(s.Tags, ",") != "prod,work" {
+		t.Errorf("Tags = %q", s.Tags)
+	}
 	if !s.Encrypted || s.Variant != "2" || s.Ciphertext != "QUJDREVG" {
 		t.Errorf("body parsed as encrypted=%v variant=%q ct=%q", s.Encrypted, s.Variant, s.Ciphertext)
 	}
@@ -75,6 +79,19 @@ func TestParseSecret(t *testing.T) {
 	}
 	if want := SecretCreatedFromID("20260824-120000"); !s.Created.Equal(want) {
 		t.Errorf("Created = %v, want %v", s.Created, want)
+	}
+}
+
+func TestParseSecretTags(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"", ""},
+		{" , ,", ""},
+		{"Work, home", "home,work"},
+		{"home router, HOME  Router,work", "home-router,work"},
+	} {
+		if got := strings.Join(ParseSecretTags(tc.in), ","); got != tc.want {
+			t.Errorf("ParseSecretTags(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
 
@@ -106,10 +123,12 @@ func TestSecretMarshalRoundTrip(t *testing.T) {
 		Title:       "Big Secret thing",
 		URL:         "https://example.com",
 		Description: "note",
+		Tags:        []string{"home", "work"},
 	}
 	raw := entry.Marshal("{{secure_aes2:QUJD}}")
 	back := ParseSecret("20260824-120000", raw)
-	if back.Title != entry.Title || back.URL != entry.URL || back.Description != entry.Description {
+	if back.Title != entry.Title || back.URL != entry.URL || back.Description != entry.Description ||
+		strings.Join(back.Tags, ",") != "home,work" {
 		t.Fatalf("round trip lost fields: %+v", back)
 	}
 	if back.SecureMacro() != "{{secure_aes2:QUJD}}" {
