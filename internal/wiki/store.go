@@ -333,7 +333,7 @@ func (s *PageStore) Save(kind DocKind, slug, content string) error {
 	return nil
 }
 
-// Delete removes a document from disk and the FTS index.
+// Delete removes a document from disk, the FTS index and its share link.
 func (s *PageStore) Delete(kind DocKind, slug string) error {
 	fullPath := filepath.Join(s.docDir(kind), MarkdownFilename(slug))
 	if err := os.Remove(fullPath); err != nil {
@@ -348,6 +348,8 @@ func (s *PageStore) Delete(kind DocKind, slug string) error {
 		default:
 			_ = s.db.RemovePage(slug)
 		}
+		// A share link must not come back to life if the slug is reused.
+		_ = s.db.DeleteShare(kind, slug)
 	}
 	if s.semantic != nil {
 		s.semantic.Remove(kind, slug)

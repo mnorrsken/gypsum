@@ -73,6 +73,10 @@ type TemplateData struct {
 	ShareToken    string           // non-empty if page has an active share link
 	ShareURL      string           // full public URL for the share link
 	ShareCreated  string           // human-readable creation time
+	Kind          DocKind          // what the share and history views are for: a page or a skill
+	OGURL         string           // public view: canonical URL for link previews
+	OGDescription string           // public view: preview text
+	OGImage       string           // public view: absolute preview image URL
 	DocPages      []PageLink       // documentation pages from docs/
 	Skills        []SkillListEntry // skill pages with tags
 	SkillTags     []string         // tags for the current skill being viewed
@@ -242,6 +246,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/edit-skill/", h.handleEditSkill)
 	mux.HandleFunc("/delete-skill/", h.handleDeleteSkill)
 	mux.HandleFunc("/skill-history/", h.handleSkillHistory)
+	mux.HandleFunc("/share-skill/", h.handleShareSkill)
 	mux.HandleFunc("GET /notes", h.handleNotesBoard)
 	mux.HandleFunc("GET /notes/archived", h.handleNotesBoard)
 	mux.HandleFunc("POST /notes/create", h.handleNoteCreate)

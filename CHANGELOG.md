@@ -2,6 +2,22 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.63.0
+
+### Added
+- **Skill sharing** — a Share tab on skills creates a secret public link, the same way as for pages. Settings are at `/share-skill/<slug>`, the link is `/public/<token>`. See [Skills](docs/skills.md).
+- **Link previews** — public pages have Open Graph tags (title, first 200 characters of text, first non-SVG image), so chat apps such as Discord show a preview. See [Usage](docs/usage.md).
+- **Images on public pages** — images a shared page shows load without login at `/public/<token>/<image>`; other images under `/images/` still need login. See [Usage](docs/usage.md).
+
+### Changed
+- **Deleting removes the share link** — `delete_page` and `delete_skill` over MCP now remove the public share link, so reusing a slug does not bring an old link back. See [MCP](docs/mcp.md).
+
+### Fixed
+- **Skill history screen** — it now shows the skill tabs rather than page tabs.
+
+### Notes
+- The `shares` table gets a `kind` column, migrated automatically at startup; existing links keep working. Older binaries cannot read the new table correctly, so a rollback could serve the wrong document when a page and a skill share a slug.
+
 ## v0.62.0
 
 ### Added

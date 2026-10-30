@@ -441,10 +441,6 @@ func (h *Handler) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.autoCommit.CommitDelete(KindPage, slug, UsernameFromRequest(r))
-	// Clean up any share link for this page.
-	if h.db != nil {
-		_ = h.db.DeleteShare(slug)
-	}
 	if isHTMX(r) {
 		w.Header().Set("HX-Redirect", "/pages")
 		w.WriteHeader(http.StatusOK)

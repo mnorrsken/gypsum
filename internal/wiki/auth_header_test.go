@@ -160,7 +160,7 @@ func TestHeaderAuthDoesNotSkipRegularPaths(t *testing.T) {
 	cfg := HeaderAuthConfig{UserHeader: "X-User"}
 	mw := HeaderAuth(cfg)(echoHandler)
 
-	paths := []string{"/wiki/Home", "/edit/Home", "/pages", "/search", "/share/Home"}
+	paths := []string{"/wiki/Home", "/edit/Home", "/pages", "/search", "/share/Home", "/share-skill/Home"}
 
 	for _, path := range paths {
 		w := httptest.NewRecorder()

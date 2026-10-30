@@ -103,6 +103,9 @@ func newFixture(t *testing.T) *fixture {
 	save("Wide_Test", widePage+"\nedit 1\n")
 	save("Wide_Test", widePage+"\nedit 1\nedit 2\n")
 	store.SetDB(db)
+	if err := store.Save(wiki.KindSkill, "Pump_Check", "# Pump Check\n\nCheck the pump.\n\nTags: pump\n"); err != nil {
+		t.Fatal(err)
+	}
 
 	// A note, two tagged secrets and uploads, so their cards and buttons render.
 	if _, err := store.CreateNote("Shopping list\nmilk, bread"); err != nil {
@@ -142,7 +145,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	hashes := strings.Fields(string(out))
-	share, err := db.CreateShare("Wide_Test")
+	share, err := db.CreateShare(wiki.KindPage, "Wide_Test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,6 +314,8 @@ func (f *fixture) pages() []string {
 		"/notes",
 		"/secrets",
 		"/skills",
+		"/skills/Pump_Check",
+		"/share-skill/Pump_Check",
 		"/docs/usage",
 		"/scan",
 		"/scan?page=Wide_Test",

@@ -1,13 +1,21 @@
 {{define "content"}}
+{{$noun := .Kind.Label}}
 <article>
   <div class="page-title-area">
     <h1>{{.Page.Title}}</h1>
     <hr class="title-rule" />
     <div class="page-tabs">
+      {{if eq $noun "skill"}}
+      <a href="/skills/{{.Page.Slug}}">Skill</a>
+      <a href="/edit-skill/{{.Page.Slug}}">Edit</a>
+      <a href="/share-skill/{{.Page.Slug}}" class="active">Share</a>
+      <a href="/skill-history/{{.Page.Slug}}">History</a>
+      {{else}}
       <a href="/wiki/{{.Page.Slug}}">Page</a>
       <a href="/edit/{{.Page.Slug}}">Edit</a>
       <a href="/share/{{.Page.Slug}}" class="active">Share</a>
       <a href="/history/{{.Page.Slug}}">History</a>
+      {{end}}
     </div>
   </div>
 
@@ -15,7 +23,7 @@
     {{if .ShareToken}}
     <div class="share-status share-active">
       <h3>Public sharing is enabled</h3>
-      <p>Anyone with this link can view this page:</p>
+      <p>Anyone with this link can view this {{$noun}}:</p>
       <div class="share-link-row">
         <input type="text" readonly value="{{.ShareURL}}" id="share-url" class="share-url-input" />
         <button type="button" class="button primary" id="copy-btn" onclick="copyShareLink()"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#copy"/></svg><span>Copy</span></button>
@@ -26,7 +34,7 @@
           <input type="hidden" name="action" value="regenerate" />
           <button type="submit" class="secondary">Regenerate link</button>
         </form>
-        <form method="POST" style="display:inline" onsubmit="return confirm('Revoke the public link? Anyone with the current link will no longer be able to access this page.')">
+        <form method="POST" style="display:inline" onsubmit="return confirm('Revoke the public link? Anyone with the current link will no longer be able to access this {{$noun}}.')">
           <input type="hidden" name="action" value="revoke" />
           <button type="submit" class="danger">Revoke</button>
         </form>
@@ -35,7 +43,7 @@
     {{else}}
     <div class="share-status share-inactive">
       <h3>Public sharing is disabled</h3>
-      <p>Create a secret link to share this page publicly. Anyone with the link will be able to view it without logging in.</p>
+      <p>Create a secret link to share this {{$noun}} publicly. Anyone with the link will be able to view it without logging in.</p>
       <form method="POST">
         <input type="hidden" name="action" value="create" />
         <button type="submit"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#share-2"/></svg><span>Enable sharing</span></button>
@@ -50,6 +58,8 @@
         <li>Links to other wiki pages are displayed as plain text.</li>
         <li>Encrypted (secure) fields are hidden on public pages.</li>
         <li>The page is rendered without sidebars or navigation menus.</li>
+        <li>Images shown on the page load through the public link, without logging in. Other uploaded images stay private.</li>
+        <li>Chat apps such as Discord show a preview with the title, the start of the text and the first image. They may keep it for a while after you revoke the link.</li>
       </ul>
     </div>
   </div>

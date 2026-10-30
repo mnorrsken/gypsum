@@ -193,5 +193,6 @@ func (h *Handler) handleSkillHistory(w http.ResponseWriter, r *http.Request) {
 		Title:   TitleFromSlug(slug) + " — History",
 		Page:    &Page{Slug: slug, Title: TitleFromSlug(slug)},
 		History: entries,
+		Kind:    KindSkill,
 	})
 }

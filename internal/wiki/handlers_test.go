@@ -3,6 +3,7 @@ package wiki
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mnorrsken/gypsum/web"
 )
@@ -437,6 +439,159 @@ func TestBuildShareURL(t *testing.T) {
 	got = buildShareURL(req, "abc123")
 	if got != "https://wiki.example.com/public/abc123" {
 		t.Fatalf("unexpected URL with proto header: %s", got)
+	}
+}
+
+func TestShareSkillPublicLink(t *testing.T) {
+	db := openTestDB(t)
+	store := NewPageStore(t.TempDir())
+	store.SetDB(db)
+	h := NewHandler(store, NewMarkdownRenderer(), web.Templates(), NewGitAutoCommitter(t.TempDir(), nil), nil, db, AllMCPSections)
+	handler := h.Routes()
+
+	// A page with the same slug must not be what the skill's link serves.
+	if err := store.Save(KindPage, "Same_Slug", "# The page\n\npage body\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(KindSkill, "Same_Slug", "# The skill\n\nskill body\n"); err != nil {
+		t.Fatal(err)
+	}
+	do := func(method, path string, body io.Reader) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, body)
+		if body != nil {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := do(http.MethodPost, "/share-skill/Same_Slug", strings.NewReader("action=create")); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/share-skill/Same_Slug" {
+		t.Fatalf("create: status %d, location %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if share, err := db.GetShare(KindPage, "Same_Slug"); err != nil || share != nil {
+		t.Fatalf("page share = %+v, %v, want none", share, err)
+	}
+	share, err := db.GetShare(KindSkill, "Same_Slug")
+	if err != nil || share == nil {
+		t.Fatalf("skill share = %+v, %v", share, err)
+	}
+
+	rec := do(http.MethodGet, "/share-skill/Same_Slug", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "/public/"+share.Token) || !strings.Contains(rec.Body.String(), "view this skill") {
+		t.Fatalf("share view: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	rec = do(http.MethodGet, "/public/"+share.Token, nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "skill body") || strings.Contains(rec.Body.String(), "page body") {
+		t.Fatalf("public view: status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	if rec := do(http.MethodPost, "/delete-skill/Same_Slug", nil); rec.Code != http.StatusFound {
+		t.Fatalf("delete: status %d", rec.Code)
+	}
+	if rec := do(http.MethodGet, "/public/"+share.Token, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("public view after delete: status %d, want 404", rec.Code)
+	}
+	if share, err := db.GetShare(KindSkill, "Same_Slug"); err != nil || share != nil {
+		t.Fatalf("skill share after delete = %+v, %v, want none", share, err)
+	}
+	if rec := do(http.MethodGet, "/share-skill/Missing", nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("share view of missing skill: status %d, want 404", rec.Code)
+	}
+}
+
+func TestPublicImagesAndPreview(t *testing.T) {
+	db := openTestDB(t)
+	store := NewPageStore(t.TempDir())
+	h := NewHandler(store, NewMarkdownRenderer(), web.Templates(), nil, nil, db, AllMCPSections)
+	handler := h.Routes()
+
+	if err := os.MkdirAll(store.ImagesDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"shown.png", "my pic.png", "drawing.svg", "fenced.png", "other.png"} {
+		if err := os.WriteFile(filepath.Join(store.ImagesDir(), name), []byte("image "+name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	content := "# R&D \"plan\"\n\n![d](/images/drawing.svg)\n\nIntro text. {{secure_aes:QUJDREVGR0g=}}\n\n" +
+		"![a](/images/shown.png)\n\n![b|300](/images/my%20pic.png)\n\n```\n![c](/images/fenced.png)\n```\n"
+	if err := store.Save(KindPage, "Shared", content); err != nil {
+		t.Fatal(err)
+	}
+	share, err := db.CreateShare(KindPage, "Shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := "/public/" + share.Token
+	get := func(path string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "wiki.example.com"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := get(base)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("public view: status %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`src="` + base + `/shown.png"`,
+		`src="` + base + `/my%20pic.png"`,
+		`property="og:title" content="R&amp;D &#34;plan&#34;"`,
+		`property="og:url" content="http://wiki.example.com` + base + `"`,
+		`property="og:description" content="Intro text."`,
+		`property="og:image" content="http://wiki.example.com` + base + `/shown.png"`,
+		`name="twitter:card" content="summary_large_image"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("public view lacks %s\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `src="/images/`) {
+		t.Errorf("public view still has a private image URL:\n%s", body)
+	}
+
+	tests := []struct {
+		path string
+		want int
+	}{
+		{base + "/shown.png", http.StatusOK},
+		{base + "/my%20pic.png", http.StatusOK},
+		{base + "/drawing.svg", http.StatusOK},
+		{base + "/other.png", http.StatusNotFound},
+		{base + "/fenced.png", http.StatusNotFound},
+		{base + "/..%2Fother.png", http.StatusNotFound},
+		{"/public/wrong-token/shown.png", http.StatusNotFound},
+	}
+	for _, tc := range tests {
+		if rec := get(tc.path); rec.Code != tc.want {
+			t.Errorf("%s: status %d, want %d", tc.path, rec.Code, tc.want)
+		}
+	}
+	if csp := get(base + "/drawing.svg").Header().Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") {
+		t.Errorf("image CSP = %q, want sandbox", csp)
+	}
+
+	if err := db.DeleteShare(KindPage, "Shared"); err != nil {
+		t.Fatal(err)
+	}
+	if rec := get(base + "/shown.png"); rec.Code != http.StatusNotFound {
+		t.Errorf("image after revoke: status %d, want 404", rec.Code)
+	}
+}
+
+func TestPreviewTextCutsAtWord(t *testing.T) {
+	got := previewText(strings.Repeat("word ", 100))
+	if utf8.RuneCountInString(got) > ogDescriptionMaxRunes+1 || !strings.HasSuffix(got, "word…") {
+		t.Fatalf("previewText = %q", got)
+	}
+	if got := previewText("  short\n text "); got != "short text" {
+		t.Fatalf("previewText = %q", got)
 	}
 }
 

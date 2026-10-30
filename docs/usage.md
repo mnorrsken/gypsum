@@ -220,7 +220,11 @@ Click "Import MediaWiki" in the editor to paste MediaWiki wikitext and convert i
 
 ## Public Page Sharing
 
-Share any page via the **Share** tab. Public pages are rendered in a minimal read-only layout without sidebars, editing, or navigation. Wiki links become plain text and encrypted fields are hidden. Links can be revoked or regenerated at any time.
+Share any page or [skill](skills.md) via the **Share** tab. Public pages are rendered in a minimal read-only layout without sidebars, editing, or navigation. Wiki links become plain text and encrypted fields are hidden. Links can be revoked or regenerated at any time.
+
+Uploaded images shown on the page load through the link, as `/public/<token>/<image>`, so viewers do not need to log in. Only images the page actually shows are served this way; other images under `/images/` still need a login.
+
+The page has [Open Graph](https://ogp.me/) tags, so chat apps such as Discord show a preview with the title, the first 200 characters of text and the first image (SVG images are skipped). The app fetches the link and may keep the preview for a while after you revoke it.
 
 ## Printing
 

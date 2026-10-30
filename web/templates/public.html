@@ -5,6 +5,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{.Title}} - Gypsum</title>
+  <meta property="og:site_name" content="Gypsum" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="{{.Title}}" />
+  <meta property="og:url" content="{{.OGURL}}" />
+  {{if .OGDescription}}<meta property="og:description" content="{{.OGDescription}}" />{{end}}
+  {{if .OGImage}}<meta property="og:image" content="{{.OGImage}}" />
+  <meta name="twitter:card" content="summary_large_image" />{{end}}
   <link rel="icon" href="{{asset "icon.svg"}}" type="image/svg+xml" />
   <link rel="stylesheet" href="{{asset "style.css"}}" />
   <script>

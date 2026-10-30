@@ -73,7 +73,7 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Inline encrypted fields (`{{secure:secret}}`) with AES-256-GCM and PBKDF2 key derivation, encrypted and decrypted entirely in the browser — the server never sees plaintext or the key
 - Visual table editor
 - MediaWiki import
-- Public page sharing via secret links — shared pages are HTML-sanitized for anonymous viewers
+- Public sharing of pages and skills via secret links — shared documents are HTML-sanitized for anonymous viewers, the images they show load without login, and Open Graph tags give link previews in chat apps
 - Git-backed storage with optional remote sync and a top-bar status indicator (green/amber/red) that surfaces fetch/push failures; git runs non-interactively with bounded timeouts and process-group cleanup (see [Git Execution](docs/configuration.md))
 - App-like UI — top bar and icon sidebar on desktop; on phones a slide-in drawer, bottom tab bar and bottom-sheet dialogs. Installable as an app ("Add to Home Screen")
 - Dark/light theme that follows the system until you choose, print-friendly pages

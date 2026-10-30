@@ -34,6 +34,10 @@ The sections serve specific purposes:
 - **Instructions** — the actual steps to follow. Keep these concrete and actionable.
 - **Tags:** line — a comma-separated list at the very end. Tag matches are weighted much higher than content matches in search, so choose tags that match how you'd describe the task.
 
+## Sharing a Skill
+
+The **Share** tab on a skill creates a secret public link, the same way as for a page. See [Public Page Sharing](usage.md#public-page-sharing). Deleting the skill removes its link.
+
 ## MCP Tools
 
 | Tool | Description |

@@ -47,7 +47,7 @@ access_control:
 | `/mcp` | OAuth-protected MCP endpoint (has its own auth) |
 | `/.well-known/oauth*` | OAuth discovery documents |
 | `/oauth/*` | OAuth authorization and token endpoints |
-| `/public/*` | Publicly shared pages (secret-link access) |
+| `/public/*` | Publicly shared pages and skills and the images they show (secret-link access) |
 | `/upload/*` | Optional. One-time upload links; the secret token in the URL is the credential. Without the bypass the link still works, but the browser that opens it must be logged in (a link opened from the Claude app may ask you to log in again). |
 | `/static/*` | CSS, JS, and other static assets (needed by public pages) |
 | `/healthz`, `/readyz` | Kubernetes health probes (served on a separate port, but bypass is harmless) |

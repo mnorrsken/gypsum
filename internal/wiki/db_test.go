@@ -1,6 +1,7 @@
 package wiki
 
 import (
+	"database/sql"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -24,7 +25,7 @@ func openTestDB(t *testing.T) *DB {
 func TestCreateAndGetShare(t *testing.T) {
 	db := openTestDB(t)
 
-	share, err := db.CreateShare("My_Page")
+	share, err := db.CreateShare(KindPage, "My_Page")
 	if err != nil {
 		t.Fatalf("CreateShare: %v", err)
 	}
@@ -35,7 +36,7 @@ func TestCreateAndGetShare(t *testing.T) {
 		t.Fatalf("token length = %d, want 64", len(share.Token))
 	}
 
-	got, err := db.GetShare("My_Page")
+	got, err := db.GetShare(KindPage, "My_Page")
 	if err != nil {
 		t.Fatalf("GetShare: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestCreateAndGetShare(t *testing.T) {
 func TestGetShareByToken(t *testing.T) {
 	db := openTestDB(t)
 
-	share, err := db.CreateShare("Test_Page")
+	share, err := db.CreateShare(KindPage, "Test_Page")
 	if err != nil {
 		t.Fatalf("CreateShare: %v", err)
 	}
@@ -82,7 +83,7 @@ func TestGetShareByTokenNotFound(t *testing.T) {
 func TestGetShareNotFound(t *testing.T) {
 	db := openTestDB(t)
 
-	got, err := db.GetShare("Nonexistent")
+	got, err := db.GetShare(KindPage, "Nonexistent")
 	if err != nil {
 		t.Fatalf("GetShare: %v", err)
 	}
@@ -94,15 +95,15 @@ func TestGetShareNotFound(t *testing.T) {
 func TestDeleteShare(t *testing.T) {
 	db := openTestDB(t)
 
-	if _, err := db.CreateShare("Delete_Me"); err != nil {
+	if _, err := db.CreateShare(KindPage, "Delete_Me"); err != nil {
 		t.Fatalf("CreateShare: %v", err)
 	}
 
-	if err := db.DeleteShare("Delete_Me"); err != nil {
+	if err := db.DeleteShare(KindPage, "Delete_Me"); err != nil {
 		t.Fatalf("DeleteShare: %v", err)
 	}
 
-	got, err := db.GetShare("Delete_Me")
+	got, err := db.GetShare(KindPage, "Delete_Me")
 	if err != nil {
 		t.Fatalf("GetShare: %v", err)
 	}
@@ -115,7 +116,7 @@ func TestDeleteShareNonexistent(t *testing.T) {
 	db := openTestDB(t)
 
 	// Should not error even if no row exists.
-	if err := db.DeleteShare("Never_Created"); err != nil {
+	if err := db.DeleteShare(KindPage, "Never_Created"); err != nil {
 		t.Fatalf("DeleteShare: %v", err)
 	}
 }
@@ -123,12 +124,12 @@ func TestDeleteShareNonexistent(t *testing.T) {
 func TestCreateShareReplacesExisting(t *testing.T) {
 	db := openTestDB(t)
 
-	first, err := db.CreateShare("Page")
+	first, err := db.CreateShare(KindPage, "Page")
 	if err != nil {
 		t.Fatalf("CreateShare (1st): %v", err)
 	}
 
-	second, err := db.CreateShare("Page")
+	second, err := db.CreateShare(KindPage, "Page")
 	if err != nil {
 		t.Fatalf("CreateShare (2nd): %v", err)
 	}
@@ -156,14 +157,70 @@ func TestCreateShareReplacesExisting(t *testing.T) {
 	}
 }
 
+func TestSharesKeptApartByKind(t *testing.T) {
+	db := openTestDB(t)
+
+	page, err := db.CreateShare(KindPage, "Same_Slug")
+	if err != nil {
+		t.Fatalf("CreateShare page: %v", err)
+	}
+	skill, err := db.CreateShare(KindSkill, "Same_Slug")
+	if err != nil {
+		t.Fatalf("CreateShare skill: %v", err)
+	}
+
+	got, err := db.GetShareByToken(skill.Token)
+	if err != nil || got == nil || got.Kind != KindSkill {
+		t.Fatalf("GetShareByToken(skill) = %+v, %v", got, err)
+	}
+	if err := db.DeleteShare(KindSkill, "Same_Slug"); err != nil {
+		t.Fatalf("DeleteShare: %v", err)
+	}
+	got, err = db.GetShare(KindPage, "Same_Slug")
+	if err != nil || got == nil || got.Token != page.Token {
+		t.Fatalf("page share after skill delete = %+v, %v", got, err)
+	}
+}
+
+func TestOpenDBMigratesOldSharesTable(t *testing.T) {
+	dir := t.TempDir()
+	old, err := sql.Open("sqlite", filepath.Join(dir, "gypsum.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(`
+		CREATE TABLE shares (
+			slug       TEXT PRIMARY KEY,
+			token      TEXT NOT NULL UNIQUE,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		INSERT INTO shares (slug, token) VALUES ('Old_Page', 'old-token');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+
+	for range 2 { // the second open must find nothing left to migrate
+		db, err := OpenDB(dir)
+		if err != nil {
+			t.Fatalf("OpenDB: %v", err)
+		}
+		got, err := db.GetShareByToken("old-token")
+		db.Close()
+		if err != nil || got == nil || got.Kind != KindPage || got.Slug != "Old_Page" {
+			t.Fatalf("migrated share = %+v, %v", got, err)
+		}
+	}
+}
+
 func TestMultipleSharesDifferentPages(t *testing.T) {
 	db := openTestDB(t)
 
-	s1, err := db.CreateShare("Page_A")
+	s1, err := db.CreateShare(KindPage, "Page_A")
 	if err != nil {
 		t.Fatalf("CreateShare A: %v", err)
 	}
-	s2, err := db.CreateShare("Page_B")
+	s2, err := db.CreateShare(KindPage, "Page_B")
 	if err != nil {
 		t.Fatalf("CreateShare B: %v", err)
 	}
@@ -172,8 +229,8 @@ func TestMultipleSharesDifferentPages(t *testing.T) {
 		t.Fatal("different pages should get different tokens")
 	}
 
-	gotA, _ := db.GetShare("Page_A")
-	gotB, _ := db.GetShare("Page_B")
+	gotA, _ := db.GetShare(KindPage, "Page_A")
+	gotB, _ := db.GetShare(KindPage, "Page_B")
 	if gotA == nil || gotB == nil {
 		t.Fatal("both shares should exist")
 	}

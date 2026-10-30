@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mnorrsken/gypsum/web"
 )
 
 func TestRestorePageRevision(t *testing.T) {
@@ -69,5 +71,39 @@ func TestRestorePageRevision(t *testing.T) {
 	}
 	if rec := restore("0123456789abcdef0123456789abcdef01234567"); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown revision: status %d, want 404", rec.Code)
+	}
+}
+
+func TestHistoryTabsMatchKind(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dataDir := t.TempDir()
+	store := NewPageStore(filepath.Join(dataDir, "pages"))
+	commit := NewGitAutoCommitter(dataDir, nil)
+	h := NewHandler(store, NewMarkdownRenderer(), web.Templates(), commit, nil, nil, AllMCPSections)
+	routes := h.Routes()
+
+	tests := []struct {
+		kind       DocKind
+		path       string
+		want, deny string
+	}{
+		{KindPage, "/history/Same_Slug", `href="/share/Same_Slug"`, `href="/share-skill/Same_Slug"`},
+		{KindSkill, "/skill-history/Same_Slug", `href="/share-skill/Same_Slug"`, `href="/share/Same_Slug"`},
+	}
+	for _, tc := range tests {
+		if err := store.Save(tc.kind, "Same_Slug", "# Same Slug\n"); err != nil {
+			t.Fatal(err)
+		}
+		if err := commit.CommitSave(tc.kind, "Same_Slug", "tester"); err != nil {
+			t.Fatal(err)
+		}
+		rec := httptest.NewRecorder()
+		routes.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		body := rec.Body.String()
+		if rec.Code != http.StatusOK || !strings.Contains(body, tc.want) || strings.Contains(body, tc.deny) {
+			t.Errorf("%s: status %d, want link %s and not %s\n%s", tc.path, rec.Code, tc.want, tc.deny, body)
+		}
 	}
 }

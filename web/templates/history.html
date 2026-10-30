@@ -4,10 +4,17 @@
     <h1>{{.Page.Title}}</h1>
     <hr class="title-rule" />
     <div class="page-tabs">
+      {{if eq .Kind.Label "skill"}}
+      <a href="/skills/{{.Page.Slug}}">Skill</a>
+      <a href="/edit-skill/{{.Page.Slug}}">Edit</a>
+      <a href="/share-skill/{{.Page.Slug}}">Share</a>
+      <a href="/skill-history/{{.Page.Slug}}" class="active">History</a>
+      {{else}}
       <a href="/wiki/{{.Page.Slug}}">Page</a>
       <a href="/edit/{{.Page.Slug}}">Edit</a>
       <a href="/share/{{.Page.Slug}}">Share</a>
       <a href="/history/{{.Page.Slug}}" class="active">History</a>
+      {{end}}
     </div>
   </div>
 

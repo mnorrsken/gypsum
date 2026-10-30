@@ -402,6 +402,40 @@ func TestMCPDeletePageNotFound(t *testing.T) {
 	toolResultIsError(t, resp)
 }
 
+func TestMCPDeleteRemovesShareLink(t *testing.T) {
+	tests := []struct {
+		tool string
+		kind DocKind
+	}{
+		{"delete_page", KindPage},
+		{"delete_skill", KindSkill},
+	}
+	for _, tc := range tests {
+		t.Run(tc.tool, func(t *testing.T) {
+			handler, store := newTestMCP(t)
+			db := openTestDB(t)
+			store.SetDB(db)
+			if err := store.Save(tc.kind, "Shared", "# Shared\n"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.CreateShare(tc.kind, "Shared"); err != nil {
+				t.Fatal(err)
+			}
+
+			resp := mcpCall(t, handler, 1, "tools/call", map[string]any{
+				"name":      tc.tool,
+				"arguments": map[string]any{"slug": "Shared"},
+			})
+			toolResultText(t, resp)
+
+			share, err := db.GetShare(tc.kind, "Shared")
+			if err != nil || share != nil {
+				t.Fatalf("share after delete = %+v, %v, want none", share, err)
+			}
+		})
+	}
+}
+
 func TestMCPSearchPages(t *testing.T) {
 	handler, store := newTestMCP(t)
 	_ = store.Save(KindPage, "Alpha", "contains keyword gypsum here")

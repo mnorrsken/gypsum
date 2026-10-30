@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -35,9 +36,11 @@ func OpenDB(dataDir string) (*DB, error) {
 	}
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS shares (
-			slug       TEXT PRIMARY KEY,
+			kind       TEXT NOT NULL,
+			slug       TEXT NOT NULL,
 			token      TEXT NOT NULL UNIQUE,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (kind, slug)
 		);
 		CREATE TABLE IF NOT EXISTS oauth_tokens (
 			token      TEXT PRIMARY KEY,
@@ -98,6 +101,10 @@ func OpenDB(dataDir string) (*DB, error) {
 	}
 
 	d := &DB{db: db}
+	if err := d.migrateShareKinds(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	d.migrateOAuthTokens(dataDir)
 	return d, nil
 }
@@ -131,19 +138,20 @@ func (d *DB) SetConfig(key, value string) error {
 
 // ---------- Share operations ----------
 
-// Share represents a public share link for a wiki page.
+// Share represents a public share link for a wiki page or skill.
 type Share struct {
+	Kind      DocKind
 	Slug      string
 	Token     string
 	CreatedAt time.Time
 }
 
-// GetShare returns the share for a page slug, or nil if none exists.
-func (d *DB) GetShare(slug string) (*Share, error) {
+// GetShare returns the share for a document, or nil if none exists.
+func (d *DB) GetShare(kind DocKind, slug string) (*Share, error) {
 	var s Share
 	err := d.db.QueryRow(
-		"SELECT slug, token, created_at FROM shares WHERE slug = ?", slug,
-	).Scan(&s.Slug, &s.Token, &s.CreatedAt)
+		"SELECT kind, slug, token, created_at FROM shares WHERE kind = ? AND slug = ?", kind, slug,
+	).Scan(&s.Kind, &s.Slug, &s.Token, &s.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -154,32 +162,71 @@ func (d *DB) GetShare(slug string) (*Share, error) {
 func (d *DB) GetShareByToken(token string) (*Share, error) {
 	var s Share
 	err := d.db.QueryRow(
-		"SELECT slug, token, created_at FROM shares WHERE token = ?", token,
-	).Scan(&s.Slug, &s.Token, &s.CreatedAt)
+		"SELECT kind, slug, token, created_at FROM shares WHERE token = ?", token,
+	).Scan(&s.Kind, &s.Slug, &s.Token, &s.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &s, err
 }
 
-// CreateShare creates (or replaces) a share link for the given page slug.
-func (d *DB) CreateShare(slug string) (*Share, error) {
+// CreateShare creates (or replaces) a share link for the given document.
+func (d *DB) CreateShare(kind DocKind, slug string) (*Share, error) {
 	token := generateShareToken()
 	now := time.Now()
 	_, err := d.db.Exec(
-		"INSERT OR REPLACE INTO shares (slug, token, created_at) VALUES (?, ?, ?)",
-		slug, token, now,
+		"INSERT OR REPLACE INTO shares (kind, slug, token, created_at) VALUES (?, ?, ?, ?)",
+		kind, slug, token, now,
 	)
 	if err != nil {
 		return nil, err
 	}
-	return &Share{Slug: slug, Token: token, CreatedAt: now}, nil
+	return &Share{Kind: kind, Slug: slug, Token: token, CreatedAt: now}, nil
 }
 
-// DeleteShare removes the share link for a page slug.
-func (d *DB) DeleteShare(slug string) error {
-	_, err := d.db.Exec("DELETE FROM shares WHERE slug = ?", slug)
+// DeleteShare removes the share link for a document.
+func (d *DB) DeleteShare(kind DocKind, slug string) error {
+	_, err := d.db.Exec("DELETE FROM shares WHERE kind = ? AND slug = ?", kind, slug)
 	return err
+}
+
+// migrateShareKinds upgrades a shares table from before skills could be shared.
+// It was keyed by slug alone, and every row in it is a page.
+func (d *DB) migrateShareKinds() error {
+	var hasKind bool
+	if err := d.db.QueryRow(
+		"SELECT COUNT(*) > 0 FROM pragma_table_info('shares') WHERE name = 'kind'",
+	).Scan(&hasKind); err != nil {
+		return fmt.Errorf("checking shares table: %w", err)
+	}
+	if hasKind {
+		return nil
+	}
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("migrating shares table: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`
+		ALTER TABLE shares RENAME TO shares_old;
+		CREATE TABLE shares (
+			kind       TEXT NOT NULL,
+			slug       TEXT NOT NULL,
+			token      TEXT NOT NULL UNIQUE,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (kind, slug)
+		);
+		INSERT INTO shares (kind, slug, token, created_at)
+			SELECT 'pages', slug, token, created_at FROM shares_old;
+		DROP TABLE shares_old;
+	`); err != nil {
+		return fmt.Errorf("migrating shares table: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migrating shares table: %w", err)
+	}
+	return nil
 }
 
 func generateShareToken() string {

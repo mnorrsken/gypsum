@@ -166,7 +166,7 @@ Tools are grouped into sections (read, edit, delete, skills, notes) that can be 
 | `link_graph` | read | Explore link structure. Modes: full `map` (default), `format: tree` outline, `slug`+`depth` neighborhood subgraph, or `orphans_only: true`. |
 | `create_page` | edit | Create a new page. `link_from`/`link_section` links it from a parent for discoverability; `format: mediawiki` imports wikitext. The result ends with the page URL (`<GYPSUM_EXTERNAL_URL>/wiki/<slug>`). |
 | `edit_page` | edit | Update an existing page (see edit modes below); `format: mediawiki` on full-replace imports wikitext. The result ends with the page URL. |
-| `delete_page` | delete | Delete a page permanently. |
+| `delete_page` | delete | Delete a page permanently, along with its public share link. |
 | `delete_image` | delete | Delete an uploaded image by filename. |
 | `delete_file` | delete | Delete an uploaded document or image by filename. |
 | `create_upload_link` | edit | Return a one-time upload URL (`<GYPSUM_EXTERNAL_URL>/upload/<token>`), optionally tied to a `page`. See [Uploading files](#uploading-files). |
@@ -180,7 +180,7 @@ Tools are grouped into sections (read, edit, delete, skills, notes) that can be 
 | `get_skill` | skills | Read a skill's markdown by exact slug (supports `section` and `sections_only`). |
 | `create_skill` | skills | Create a new skill. |
 | `edit_skill` | skills | Update an existing skill (same edit modes as `edit_page`). |
-| `delete_skill` | skills | Delete a skill. |
+| `delete_skill` | skills | Delete a skill, along with its public share link. |
 
 See [Skills](skills.md) for how to create and use skills with LLMs.
 
