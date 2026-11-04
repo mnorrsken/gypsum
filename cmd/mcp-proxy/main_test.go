@@ -6,11 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 )
@@ -318,36 +316,16 @@ func TestExchangeCodeEmptyToken(t *testing.T) {
 
 // ── Proxy mode: Authorization header injection ────────────────────────────────
 
-// captureProxy runs the proxy loop against a test server for a single request,
-// with the given GYPSUM_TOKEN, and returns what the server received.
+// captureProxy runs the proxy loop against mcpEndpoint for a single request
+// with the given token and returns what the proxy wrote to stdout.
 func captureProxy(t *testing.T, token string, mcpEndpoint string) string {
 	t.Helper()
-	old := os.Getenv("GYPSUM_TOKEN")
-	if token != "" {
-		os.Setenv("GYPSUM_TOKEN", token)
-	} else {
-		os.Unsetenv("GYPSUM_TOKEN")
+	var out bytes.Buffer
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}` + "\n")
+	if err := proxy(in, &out, mcpEndpoint, token); err != nil {
+		t.Fatalf("proxy: %v", err)
 	}
-	defer os.Setenv("GYPSUM_TOKEN", old)
-
-	// Build a minimal JSON-RPC message.
-	msg := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
-
-	// Run proxy logic inline (not via main) to avoid os.Exit.
-	tok := os.Getenv("GYPSUM_TOKEN")
-	client := &http.Client{}
-	req, _ := http.NewRequest(http.MethodPost, mcpEndpoint, bytes.NewReader([]byte(msg)))
-	req.Header.Set("Content-Type", "application/json")
-	if tok != "" {
-		req.Header.Set("Authorization", "Bearer "+tok)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("proxy request: %v", err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	return string(body)
+	return out.String()
 }
 
 func TestProxyAddsAuthorizationHeader(t *testing.T) {
@@ -377,6 +355,66 @@ func TestProxyNoAuthorizationHeaderWhenNoToken(t *testing.T) {
 	captureProxy(t, "", srv.URL)
 	if gotAuth != "" {
 		t.Fatalf("expected no Authorization header, got %q", gotAuth)
+	}
+}
+
+// ── Proxy mode: failures still answer the request ───────────────────────────
+
+func TestProxyAnswersRequestOnFailure(t *testing.T) {
+	unauthorized := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+	}))
+	defer unauthorized.Close()
+	badGateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "<html>502 Bad Gateway</html>", http.StatusBadGateway)
+	}))
+	defer badGateway.Close()
+	rpcError := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, `{"jsonrpc":"2.0","id":7,"error":{"code":-32600,"message":"bad version"}}`)
+	}))
+	defer rpcError.Close()
+
+	tests := []struct {
+		name     string
+		endpoint string
+		in       string
+		want     string // substring of the error message, "" means no output
+		wantID   string
+	}{
+		{"401 numeric id", unauthorized.URL, `{"jsonrpc":"2.0","id":7,"method":"tools/list"}`, "server returned 401: invalid token", "7"},
+		{"502 string id", badGateway.URL, `{"jsonrpc":"2.0","id":"a-1","method":"ping"}`, "server returned 502", `"a-1"`},
+		{"network error", "http://127.0.0.1:1/mcp", `{"jsonrpc":"2.0","id":3,"method":"ping"}`, "request failed", "3"},
+		{"notification gets no reply", unauthorized.URL, `{"jsonrpc":"2.0","method":"notifications/initialized"}`, "", ""},
+		{"server JSON-RPC error relayed", rpcError.URL, `{"jsonrpc":"2.0","id":7,"method":"ping"}`, "bad version", "7"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := proxy(strings.NewReader(tt.in+"\n"), &out, tt.endpoint, ""); err != nil {
+				t.Fatalf("proxy: %v", err)
+			}
+			if tt.want == "" {
+				if out.Len() != 0 {
+					t.Fatalf("expected no output, got %q", out.String())
+				}
+				return
+			}
+			var resp struct {
+				JSONRPC string          `json:"jsonrpc"`
+				ID      json.RawMessage `json:"id"`
+				Error   struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+				t.Fatalf("output is not one JSON-RPC message: %q", out.String())
+			}
+			if resp.JSONRPC != "2.0" || string(resp.ID) != tt.wantID || !strings.Contains(resp.Error.Message, tt.want) {
+				t.Fatalf("unexpected response: %s", out.String())
+			}
+		})
 	}
 }
 

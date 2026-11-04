@@ -2,6 +2,11 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## v0.63.1
+
+### Fixed
+- **mcp-proxy hang on failed requests** — when a forwarded request fails (network error, a 401 or 5xx reply that is not a JSON-RPC error, an unreadable reply body, or a request that cannot be built), the proxy now answers with a JSON-RPC error (code -32603, same id, for example "server returned 401: unauthorized") instead of only logging to stderr. Before, the MCP host waited for a reply and hung until its own timeout. Notifications still get no reply. Fixes #64.
+
 ## v0.63.0
 
 ### Added

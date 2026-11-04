@@ -63,13 +63,18 @@ func runProxy() {
 		printUsage()
 		os.Exit(1)
 	}
-	endpoint := os.Args[1]
-	token := os.Getenv("GYPSUM_TOKEN")
+	if err := proxy(os.Stdin, os.Stdout, os.Args[1], os.Getenv("GYPSUM_TOKEN")); err != nil {
+		log.Fatalf("stdin read error: %v", err)
+	}
+}
 
+// proxy forwards each JSON-RPC line from in to endpoint and writes the
+// responses to out until in is exhausted.
+func proxy(in io.Reader, out io.Writer, endpoint, token string) error {
 	client := &http.Client{}
 	var sessionID string
 
-	scanner := bufio.NewScanner(os.Stdin)
+	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 
 	for scanner.Scan() {
@@ -78,9 +83,20 @@ func runProxy() {
 			continue
 		}
 
+		// fail logs a transport problem and, when line is a request, answers
+		// it with a JSON-RPC error so the host does not wait for a reply that
+		// never comes.
+		fail := func(format string, args ...any) {
+			msg := fmt.Sprintf(format, args...)
+			log.Print(msg)
+			if resp := errorResponse(line, msg); resp != nil {
+				writeLine(out, resp)
+			}
+		}
+
 		req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(line))
 		if err != nil {
-			log.Printf("failed to create request: %v", err)
+			fail("failed to create request: %v", err)
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
@@ -98,7 +114,7 @@ func runProxy() {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("request failed: %v", err)
+			fail("request failed: %v", err)
 			continue
 		}
 
@@ -116,43 +132,60 @@ func runProxy() {
 		// Non-OK responses may still be valid JSON-RPC: since 2026-07-28 the
 		// server reports unsupported protocol versions, header mismatches and
 		// unknown methods as JSON-RPC errors on 400/404, and the client needs to
-		// see them to negotiate. Anything else (e.g. 401) goes to stderr so the
-		// stdout stream stays clean.
+		// see them to negotiate. Anything else (e.g. 401, or a 502 from a
+		// reverse proxy) is logged and answered with a synthetic JSON-RPC error.
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if isJSONRPCError(body) {
-				writeLine(body)
+				writeLine(out, body)
 				continue
 			}
-			log.Printf("server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 			if resp.StatusCode == http.StatusUnauthorized {
 				log.Printf("hint: run 'mcp-proxy auth <wiki-url>' to obtain a fresh token")
 			}
+			fail("server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 			continue
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			log.Printf("failed to read response: %v", err)
+			fail("failed to read response: %v", err)
 			continue
 		}
 
-		writeLine(body)
+		writeLine(out, body)
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Fatalf("stdin read error: %v", err)
-	}
+	return scanner.Err()
 }
 
-// writeLine relays one JSON-RPC message to stdout. The server's json.Encoder
+// errorResponse builds a JSON-RPC internal error (-32603) answering line, or
+// returns nil when line is not a request (a notification or a response has no
+// id, and must not be answered).
+func errorResponse(line []byte, message string) []byte {
+	var msg struct {
+		ID     json.RawMessage `json:"id"`
+		Method string          `json:"method"`
+	}
+	if json.Unmarshal(line, &msg) != nil || msg.Method == "" || len(msg.ID) == 0 || string(msg.ID) == "null" {
+		return nil
+	}
+	resp, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      msg.ID,
+		"error":   map[string]any{"code": -32603, "message": message},
+	})
+	return resp
+}
+
+// writeLine relays one JSON-RPC message to out. The server's json.Encoder
 // already appends a newline, so add one only if it is missing.
-func writeLine(body []byte) {
-	os.Stdout.Write(body)
+func writeLine(out io.Writer, body []byte) {
+	out.Write(body)
 	if len(body) > 0 && body[len(body)-1] != '\n' {
-		os.Stdout.Write([]byte{'\n'})
+		out.Write([]byte{'\n'})
 	}
 }
 
