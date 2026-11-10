@@ -16,6 +16,10 @@ import (
 func newTestOAuthServer(t *testing.T, password string) *OAuthServer {
 	t.Helper()
 	db := openTestDB(t)
+	// The client the authorize tests log in as.
+	if err := db.SaveOAuthClient("test", []string{"http://localhost/cb"}); err != nil {
+		t.Fatal(err)
+	}
 	return NewOAuthServer(password, "https://wiki.example.com", time.Hour, db)
 }
 
@@ -158,6 +162,113 @@ func TestHandleRegisterInvalidBody(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestHandleRegisterRejectsBadRedirectURIs(t *testing.T) {
+	o := newTestOAuthServer(t, "pass")
+
+	for _, uris := range []string{
+		`[]`,
+		`["http://evil.example.com/cb"]`,
+		`["javascript:alert(1)"]`,
+		`["/relative"]`,
+		`["https://ok.example.com/cb#frag"]`,
+	} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/oauth/register", strings.NewReader(`{"redirect_uris":`+uris+`}`))
+		o.HandleRegister(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("redirect_uris %s: status = %d, want 400", uris, w.Code)
+		}
+	}
+}
+
+// --- redirect URI check ---
+
+func TestAuthorizeRefusesUnregisteredRedirect(t *testing.T) {
+	o := newTestOAuthServer(t, "pass")
+	if err := o.db.SaveOAuthClient("web", []string{"https://app.example.com/cb"}); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		client, redirect string
+		want             int
+	}{
+		{"test", "http://localhost/cb", http.StatusFound},
+		{"test", "http://localhost:53124/cb", http.StatusFound}, // loopback: any port
+		{"test", "http://localhost/other", http.StatusBadRequest},
+		{"test", "https://evil.example.com/cb", http.StatusBadRequest},
+		{"web", "https://app.example.com/cb", http.StatusFound},
+		{"web", "https://app.example.com:8443/cb", http.StatusBadRequest},
+		{"web", "https://app.example.com/cb?x=1", http.StatusBadRequest},
+		{"unknown", "http://localhost/cb", http.StatusBadRequest},
+		{"test", "", http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		form := url.Values{
+			"client_id":      {tt.client},
+			"redirect_uri":   {tt.redirect},
+			"code_challenge": {"abc"},
+			"password":       {"pass"},
+		}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/oauth/authorize", strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		o.HandleAuthorize(w, r)
+		if w.Code != tt.want {
+			t.Errorf("client %q redirect %q: status = %d, want %d", tt.client, tt.redirect, w.Code, tt.want)
+		}
+		if tt.want != http.StatusFound && w.Header().Get("Location") != "" {
+			t.Errorf("client %q redirect %q: refused login must not redirect", tt.client, tt.redirect)
+		}
+
+		w = httptest.NewRecorder()
+		q := url.Values{"response_type": {"code"}, "code_challenge": {"abc"}, "code_challenge_method": {"S256"},
+			"client_id": {tt.client}, "redirect_uri": {tt.redirect}}
+		o.HandleAuthorize(w, httptest.NewRequest("GET", "/oauth/authorize?"+q.Encode(), nil))
+		if shown := w.Code == http.StatusOK; shown != (tt.want == http.StatusFound) {
+			t.Errorf("client %q redirect %q: login form status = %d", tt.client, tt.redirect, w.Code)
+		}
+	}
+}
+
+func TestAuthorizeLocksOutAfterWrongPasswords(t *testing.T) {
+	o := newTestOAuthServer(t, "pass")
+	now := time.Now()
+	o.logins.now = func() time.Time { return now }
+
+	login := func(addr, password string) int {
+		t.Helper()
+		form := url.Values{
+			"client_id":      {"test"},
+			"redirect_uri":   {"http://localhost/cb"},
+			"code_challenge": {"abc"},
+			"password":       {password},
+		}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/oauth/authorize", strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.RemoteAddr = addr
+		o.HandleAuthorize(w, r)
+		return w.Code
+	}
+
+	for i := range loginMaxFails {
+		if code := login("203.0.113.7:1000", "wrong"); code != http.StatusUnauthorized {
+			t.Fatalf("wrong password %d: status = %d, want 401", i+1, code)
+		}
+	}
+	if code := login("203.0.113.7:2000", "pass"); code != http.StatusTooManyRequests {
+		t.Fatalf("locked out address with the right password: status = %d, want 429", code)
+	}
+	if code := login("203.0.113.8:1000", "pass"); code != http.StatusFound {
+		t.Fatalf("other address: status = %d, want 302", code)
+	}
+	now = now.Add(loginLockout + time.Second)
+	if code := login("203.0.113.7:1000", "pass"); code != http.StatusFound {
+		t.Fatalf("after the lockout: status = %d, want 302", code)
 	}
 }
 

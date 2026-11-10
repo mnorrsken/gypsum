@@ -335,6 +335,37 @@ func TestMCPCreatePageDuplicate(t *testing.T) {
 	}
 }
 
+func TestMCPRefusesNewPlainSecure(t *testing.T) {
+	handler, store := newTestMCP(t)
+	// A page that already holds an unencrypted block must stay editable.
+	_ = store.Save(KindPage, "Old", "# Old\n\nkey: {{secure:already-here}}\n")
+
+	call := func(name string, args map[string]any) jsonRPCResponse {
+		t.Helper()
+		return mcpCall(t, handler, 1, "tools/call", map[string]any{"name": name, "arguments": args})
+	}
+
+	refused := []struct {
+		name string
+		args map[string]any
+	}{
+		{"create_page", map[string]any{"title": "New", "content": "pw: {{secure:hunter2}}"}},
+		{"edit_page", map[string]any{"slug": "Old", "content": "more: {{secure:another}}", "append": true}},
+		{"create_skill", map[string]any{"title": "New Skill", "content": "pw: {{secure:hunter2}}"}},
+	}
+	for _, tt := range refused {
+		if errText := toolResultIsError(t, call(tt.name, tt.args)); !strings.Contains(errText, "web editor") {
+			t.Errorf("%s: error = %q, want the plaintext refusal", tt.name, errText)
+		}
+	}
+	if _, err := store.Load(KindPage, "New"); err == nil {
+		t.Error("refused page was saved")
+	}
+
+	toolResultText(t, call("edit_page", map[string]any{"slug": "Old", "content": "a new line", "append": true}))
+	toolResultText(t, call("create_page", map[string]any{"title": "Doc", "content": "Syntax: \\{{secure:example}}"}))
+}
+
 func TestMCPEditPage(t *testing.T) {
 	handler, store := newTestMCP(t)
 	_ = store.Save(KindPage, "MyPage", "old content")

@@ -179,6 +179,15 @@ func main() {
 	handler.SetMCPAllowedOrigins(wiki.ParseMCPOrigins(
 		os.Getenv("GYPSUM_MCP_ALLOWED_ORIGINS"), os.Getenv("GYPSUM_EXTERNAL_URL")))
 
+	// Rate limits and login lockout count per client address. Behind a reverse
+	// proxy that is only known from X-Forwarded-For, which is believed only
+	// when the request comes from one of these proxies.
+	trustedProxies, err := wiki.ParseTrustedProxies(os.Getenv("GYPSUM_TRUSTED_PROXIES"))
+	if err != nil {
+		log.Fatalf("invalid GYPSUM_TRUSTED_PROXIES: %v", err)
+	}
+	handler.SetTrustedProxies(trustedProxies)
+
 	mux := http.NewServeMux()
 	mux.Handle("/", handler.Routes())
 	mux.Handle("/static/", http.StripPrefix("/static/", web.StaticHandler()))

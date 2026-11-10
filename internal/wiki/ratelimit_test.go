@@ -221,3 +221,43 @@ func TestRateLimiterNewVisitorGetsFullBurst(t *testing.T) {
 		t.Fatal("new visitor: should be denied after burst")
 	}
 }
+
+func TestClientKey(t *testing.T) {
+	trust, err := ParseTrustedProxies("10.42.0.0/16, 192.168.1.5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseTrustedProxies("10.42.0.0/16, not-an-address"); err == nil {
+		t.Error("ParseTrustedProxies accepted a bad entry")
+	}
+
+	tests := []struct {
+		name   string
+		trust  ProxyTrust
+		remote string
+		xff    string
+		want   string
+	}{
+		{"no proxies: header ignored", nil, "203.0.113.7:1234", "198.51.100.1", "203.0.113.7"},
+		{"untrusted sender: header ignored", trust, "203.0.113.7:1234", "198.51.100.1", "203.0.113.7"},
+		{"trusted proxy: client from header", trust, "10.42.0.9:1234", "198.51.100.1", "198.51.100.1"},
+		{"forged entries on the left are skipped", trust, "10.42.0.9:1234", "1.1.1.1, 198.51.100.1", "198.51.100.1"},
+		{"chain of trusted proxies", trust, "10.42.0.9:1234", "198.51.100.1, 192.168.1.5", "198.51.100.1"},
+		{"trusted proxy without header", trust, "10.42.0.9:1234", "", "10.42.0.9"},
+		{"bad header entry", trust, "10.42.0.9:1234", "garbage", "10.42.0.9"},
+		{"ipv6 counted per /64", nil, "[2001:db8:1:2:aaaa::1]:1234", "", "2001:db8:1:2::/64"},
+		{"ipv4-mapped proxy address", trust, "[::ffff:10.42.0.9]:1234", "198.51.100.1", "198.51.100.1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/", nil)
+			r.RemoteAddr = tt.remote
+			if tt.xff != "" {
+				r.Header.Set("X-Forwarded-For", tt.xff)
+			}
+			if got := tt.trust.ClientKey(r); got != tt.want {
+				t.Errorf("ClientKey = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

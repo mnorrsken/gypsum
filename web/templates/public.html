@@ -14,7 +14,7 @@
   <meta name="twitter:card" content="summary_large_image" />{{end}}
   <link rel="icon" href="{{asset "icon.svg"}}" type="image/svg+xml" />
   <link rel="stylesheet" href="{{asset "style.css"}}" />
-  <script>
+  <script nonce="{{.CSPNonce}}">
     (function() {
       var t = null;
       try { t = localStorage.getItem('theme'); } catch (_) {}
@@ -49,7 +49,7 @@
     </article>
   </main>
 
-  <script>
+  <script nonce="{{.CSPNonce}}">
   (function() {
     var themeBtn = document.getElementById("theme-toggle");
     themeBtn.addEventListener("click", function() {

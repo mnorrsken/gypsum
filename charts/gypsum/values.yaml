@@ -229,6 +229,15 @@ auth:
   # If set, the group header must contain this group.
   requiredGroup: ""
 
+# Reverse proxies in front of gypsum, as IP addresses or CIDR ranges (e.g. the
+# pod network when the ingress controller runs in the cluster: 10.42.0.0/16).
+# Rate limits and the login lockout count per client address. Behind a proxy
+# every visitor has the proxy's address, so without this they all count as one
+# client. A request from a listed proxy is counted under the client address in
+# its X-Forwarded-For header; the header is ignored from anyone else.
+# Accepts a list or a comma-separated string.
+trustedProxies: []
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

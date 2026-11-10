@@ -61,6 +61,8 @@ upgrades its blocks to `secure_aes2`. See
 [Configuration → Encryption](configuration.md#encryption) for the salt and bulk
 migration.
 
+Only the web editor encrypts. An AI assistant working over MCP cannot add a new `{{secure:...}}` block; it is asked to have you add the secret in the editor. Existing blocks are kept as they are.
+
 The passphrase is entered once via the lock icon in the top bar and can be
 remembered on the device (the derived keys are stored in `localStorage`). The
 server never sees the passphrase, the derived key, or any plaintext.
@@ -220,7 +222,9 @@ Click "Import MediaWiki" in the editor to paste MediaWiki wikitext and convert i
 
 ## Public Page Sharing
 
-Share any page or [skill](skills.md) via the **Share** tab. Public pages are rendered in a minimal read-only layout without sidebars, editing, or navigation. Wiki links become plain text and encrypted fields are hidden. Links can be revoked or regenerated at any time.
+Share any page or [skill](skills.md) via the **Share** tab. Public pages are rendered in a minimal read-only layout without sidebars, editing, or navigation. Wiki links become plain text and encrypted fields are hidden. Links can be revoked or regenerated at any time. A `{{secure:...}}` block that is still unencrypted is never shown on a public page: it is removed from the page and from the link preview, also inside code blocks and diagrams.
+
+Responses under `/public/` send `X-Robots-Tag: noindex, nofollow`, `Cache-Control: no-cache` (a revoked link stops working at once, also for cached copies) and a Content-Security-Policy that only lets the wiki's own scripts run. If a reverse proxy also sets a CSP on these paths, both apply.
 
 Uploaded images shown on the page load through the link, as `/public/<token>/<image>`, so viewers do not need to log in. Only images the page actually shows are served this way; other images under `/images/` still need a login.
 

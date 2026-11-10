@@ -741,6 +741,28 @@ func TestRenderMermaidBlock(t *testing.T) {
 	}
 }
 
+func TestRenderPublicStripsPlainSecure(t *testing.T) {
+	r := NewMarkdownRenderer()
+	src := "Password: {{secure:hunter2}} end\n\n" +
+		"{{secure:\nmulti\nline\n}}\n\n" +
+		"`{{secure:in-code}}`\n\n" +
+		"```mermaid\nflowchart TD\n    A[\"{{secure:in-diagram}}\"] --> B\n```\n\n" +
+		"Escaped: \\{{secure:example}}\n"
+	out, err := r.RenderPublic(src)
+	if err != nil {
+		t.Fatalf("RenderPublic failed: %v", err)
+	}
+	html := string(out)
+	for _, secret := range []string{"hunter2", "multi", "in-code", "in-diagram"} {
+		if strings.Contains(html, secret) {
+			t.Errorf("public render shows unencrypted secret %q: %s", secret, html)
+		}
+	}
+	if !strings.Contains(html, "{{secure:example}}") {
+		t.Errorf("escaped macro should stay as literal text, got: %s", html)
+	}
+}
+
 func TestRenderPublicMermaidBlock(t *testing.T) {
 	r := NewMarkdownRenderer()
 	out, err := r.RenderPublic("```mermaid\nflowchart TD\n    A --> B\n```\n")

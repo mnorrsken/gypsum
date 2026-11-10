@@ -27,6 +27,17 @@ type Handler struct {
 	uploadCfg   UploadConfig // upload size limit and photo resizing
 	uploads     *UploadLinks // single-use upload links minted over MCP
 	scanner     *Scanner     // nil = photo scanning disabled
+	proxies     ProxyTrust   // reverse proxies whose X-Forwarded-For is believed
+}
+
+// SetTrustedProxies sets the reverse proxies whose X-Forwarded-For header
+// names the real client, for rate limits and login lockout. Build the list
+// with ParseTrustedProxies and call this before Routes.
+func (h *Handler) SetTrustedProxies(proxies ProxyTrust) {
+	h.proxies = proxies
+	if h.oauth != nil {
+		h.oauth.proxies = proxies
+	}
 }
 
 // SetMCPAllowedOrigins sets the Origin allowlist enforced on /mcp. Build it
@@ -92,6 +103,7 @@ type TemplateData struct {
 	ScanEnabled   bool             // show the photo scan button
 	ScanJob       *ScanJob         // scan progress view
 	FormError     string           // error from the last form post, shown on the page
+	CSPNonce      string           // public view: nonce that lets the inline scripts run
 }
 
 func NewHandler(store *PageStore, renderer *MarkdownRenderer, templates fs.FS, autoCommitter *GitAutoCommitter, oauth *OAuthServer, db *DB, mcpSections map[MCPSection]bool) *Handler {
@@ -266,6 +278,7 @@ func (h *Handler) Routes() http.Handler {
 
 	// Rate limiter for MCP and OAuth endpoints: 30 requests/sec per IP, burst of 60.
 	mcpRL := NewRateLimiter(30, 60, time.Second)
+	mcpRL.proxies = h.proxies
 
 	if h.oauth != nil {
 		// OAuth discovery endpoints (must be bypassed in Authelia / reverse proxy)
@@ -273,6 +286,7 @@ func (h *Handler) Routes() http.Handler {
 		mux.HandleFunc("GET /.well-known/oauth-authorization-server", h.oauth.HandleAuthServerMeta)
 		// OAuth authorization flow — stricter rate limit to prevent brute-force.
 		oauthRL := NewRateLimiter(5, 10, time.Second)
+		oauthRL.proxies = h.proxies
 		mux.HandleFunc("/oauth/authorize", RateLimitFunc(oauthRL, h.oauth.HandleAuthorize))
 		mux.HandleFunc("POST /oauth/token", RateLimitFunc(oauthRL, h.oauth.HandleToken))
 		mux.HandleFunc("POST /oauth/register", RateLimitFunc(oauthRL, h.oauth.HandleRegister))

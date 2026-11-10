@@ -15,14 +15,14 @@ const wikiFormattingGuide = "Wiki formatting conventions: " +
 	"(1) If the page starts with a level-1 heading (# Title), that heading becomes the page title displayed in the browser — it is not rendered again in the body. " +
 	"(2) Use [[Page Title]] to link to other wiki pages; the title is auto-converted to a slug (spaces → underscores). Linking to a non-existent page will let users create it. " +
 	"(3) Images: use ![alt text](/images/filename.ext) — optional size hints: ![alt|500](/images/f.png) for max-width 500px, ![alt|50%](/images/f.png) for 50%, ![alt|800x400](/images/f.png) for explicit dimensions. " +
-	"(4) Secure/encrypted fields: use {{secure:plaintext}} for inline secrets. For multiline secrets, put {{secure: and }} on their own lines. On save, these are encrypted to {{secure_aes:...}} — never modify secure_aes blocks directly. " +
+	"(4) Encrypted fields: {{secure_aes:...}} and {{secure_aes2:...}} blocks hold secrets encrypted in the user's browser — keep them exactly as they are. Secrets cannot be encrypted from here: content with a new {{secure:...}} block is refused, so ask the user to add the secret in the web editor. " +
 	"(5) Diagrams: a fenced code block tagged mermaid renders as a Mermaid diagram — flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt and the rest. Prefer a diagram over ASCII art when documenting a flow, an architecture or a sequence of calls. To show mermaid syntax literally instead of rendering it, wrap the example in a longer (four-backtick) fence. " +
 	"(6) Files: link an uploaded document as [label](/files/filename.pdf). Use create_upload_link to let the user upload a photo or file."
 
 const wikiContentGuide = "Start with '# Page Title' as the first line to set the display title. " +
 	"Use [[Page Title]] for wiki links. " +
 	"Reference images as ![alt](/images/filename.ext). " +
-	"Use {{secure:secret}} for encrypted inline fields. " +
+	"Keep {{secure_aes:...}} blocks unchanged and never add a {{secure:...}} block. " +
 	"Fence a code block with mermaid to draw a diagram instead of ASCII art."
 
 // ── JSON-RPC 2.0 types ─────────────────────────────────────────────────

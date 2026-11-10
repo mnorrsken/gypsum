@@ -11,6 +11,8 @@ Gypsum has a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Pro
 
 Both endpoints are identical. `{{secure_aes:...}}` ciphertext is passed through unchanged in both directions, so AI assistants can read and edit pages that contain encrypted fields without corrupting them.
 
+Only the web editor can encrypt a secret. `create_page`, `edit_page`, `create_skill` and `edit_skill` refuse content that adds a new `{{secure:...}}` block; the error asks the assistant to have you add the secret in the web editor. Blocks already in a page do not block edits, and an escaped `\{{secure:...}}` is still allowed as literal text.
+
 MCP is only exposed when OAuth is configured — if `GYPSUM_OAUTH_ENABLED` is not set, the `/mcp` endpoint is not registered.
 
 ## Protocol Versions
@@ -99,6 +101,12 @@ GYPSUM_OAUTH_ENABLED=true
 GYPSUM_OAUTH_PASSWORD=your-password
 GYPSUM_EXTERNAL_URL=https://your-wiki.example.com
 ```
+
+A client must register before it can log in (`POST /oauth/register`, with its redirect URIs). Registrations are stored in the database. `/oauth/authorize` only accepts a `redirect_uri` the client registered, with an exact match; for loopback URIs such as `http://localhost` the port may differ. Redirect URIs must be absolute and have no fragment, `http` is only allowed for loopback, and a client may register at most 10. An unknown client or an unregistered redirect gives an error page, with no redirect. The login page shows the host the browser is sent to after sign-in.
+
+After 5 wrong passwords from one client address within 15 minutes, that address is locked out of the login for 15 minutes (HTTP 429), even with the right password. See [`GYPSUM_TRUSTED_PROXIES`](configuration.md#oauth-variables) for how the client address is found behind a reverse proxy.
+
+**Upgrading:** clients that connected before registrations were stored are not in the database. Their access tokens keep working until they expire. When such a client has to log in again, remove it and add it again in the application, so it registers. `mcp-proxy auth` registers on every run and needs nothing.
 
 If you're using Authelia, add bypass rules for the OAuth and MCP paths — see [Authentication](authentication.md).
 

@@ -7,9 +7,12 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -34,6 +37,9 @@ type OAuthServer struct {
 
 	mu    sync.Mutex
 	codes map[string]pendingCode
+
+	proxies ProxyTrust  // reverse proxies whose X-Forwarded-For is believed
+	logins  *loginGuard // locks out an address after repeated wrong passwords
 }
 
 type pendingCode struct {
@@ -50,6 +56,7 @@ type loginFormData struct {
 	CodeChallengeMethod string
 	State               string
 	Error               string
+	RedirectHost        string // where the browser is sent after login, shown to the user
 }
 
 // NewOAuthServer creates an OAuthServer. externalURL must not have a trailing slash.
@@ -62,6 +69,7 @@ func NewOAuthServer(password, externalURL string, tokenTTL time.Duration, db *DB
 		externalURL: strings.TrimRight(externalURL, "/"),
 		db:          db,
 		codes:       make(map[string]pendingCode),
+		logins:      newLoginGuard(),
 	}
 	go o.purgeExpiredLoop()
 	return o
@@ -137,17 +145,23 @@ func (o *OAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		ResponseTypes           []string `json:"response_types"`
 		TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":             "invalid_client_metadata",
-			"error_description": "cannot parse request body",
-		})
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
+		oauthRegisterError(w, "invalid_client_metadata", "cannot parse request body")
+		return
+	}
+	if err := validateRedirectURIs(req.RedirectURIs); err != nil {
+		oauthRegisterError(w, "invalid_redirect_uri", err.Error())
 		return
 	}
 
 	clientID := "gypsum-" + oauthGenerateToken()[:16]
+	if err := o.db.SaveOAuthClient(clientID, req.RedirectURIs); err != nil {
+		log.Printf("oauth: failed to store client: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "server_error"})
+		return
+	}
 
 	if len(req.GrantTypes) == 0 {
 		req.GrantTypes = []string{"authorization_code"}
@@ -168,6 +182,101 @@ func (o *OAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func oauthRegisterError(w http.ResponseWriter, errCode, description string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":             errCode,
+		"error_description": description,
+	})
+}
+
+// maxRedirectURIs and maxRedirectURILen bound what one client may register.
+const (
+	maxRedirectURIs   = 10
+	maxRedirectURILen = 2048
+)
+
+// validateRedirectURIs checks the redirect URIs of a client registration:
+// absolute URLs without a fragment, and plain http only towards loopback.
+func validateRedirectURIs(uris []string) error {
+	if len(uris) == 0 {
+		return errors.New("redirect_uris is required")
+	}
+	if len(uris) > maxRedirectURIs {
+		return fmt.Errorf("at most %d redirect_uris are allowed", maxRedirectURIs)
+	}
+	for _, raw := range uris {
+		u, err := url.Parse(raw)
+		if err != nil || len(raw) > maxRedirectURILen || u.Scheme == "" || u.Fragment != "" {
+			return fmt.Errorf("invalid redirect uri %q", raw)
+		}
+		switch strings.ToLower(u.Scheme) {
+		case "javascript", "data", "vbscript", "file", "blob":
+			return fmt.Errorf("redirect uri scheme %q is not allowed", u.Scheme)
+		case "http":
+			if !isLoopbackHost(u.Hostname()) {
+				return fmt.Errorf("redirect uri %q must use https", raw)
+			}
+		}
+	}
+	return nil
+}
+
+// isLoopbackHost reports whether host is localhost or a loopback address.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
+}
+
+// redirectAllowed reports whether redirectURI is one the client registered.
+// The match is exact, except that the port of a loopback http URI may differ:
+// native apps listen on a new port for every login (RFC 8252, section 7.3).
+func (o *OAuthServer) redirectAllowed(clientID, redirectURI string) bool {
+	registered, ok := o.db.OAuthClientRedirectURIs(clientID)
+	if !ok || redirectURI == "" {
+		return false
+	}
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		return false
+	}
+	for _, reg := range registered {
+		if reg == redirectURI {
+			return true
+		}
+		ru, err := url.Parse(reg)
+		if err != nil || ru.Scheme != "http" || u.Scheme != "http" || !isLoopbackHost(ru.Hostname()) {
+			continue
+		}
+		if strings.EqualFold(ru.Hostname(), u.Hostname()) && ru.Path == u.Path &&
+			ru.RawQuery == u.RawQuery && u.Fragment == "" && u.User == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// redirectRefusal is shown instead of the login form when the client or its
+// redirect URI is not registered. The browser is never sent to that URI.
+const redirectRefusal = "This application is not registered with this wiki, or it asked to send you to an address it did not register. " +
+	"Remove the wiki connection in the application and add it again."
+
+// redirectHost is the part of a redirect URI the login form shows the user.
+func redirectHost(redirectURI string) string {
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		return redirectURI
+	}
+	if u.Host == "" {
+		return u.Scheme + ":"
+	}
+	return u.Host
+}
+
 // HandleAuthorize serves GET and POST /oauth/authorize.
 // GET renders the login form; POST validates the password and issues an auth code.
 func (o *OAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +295,11 @@ func (o *OAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "missing code_challenge", http.StatusBadRequest)
 			return
 		}
-		o.serveLoginForm(w, loginFormData{
+		if !o.redirectAllowed(q.Get("client_id"), q.Get("redirect_uri")) {
+			http.Error(w, redirectRefusal, http.StatusBadRequest)
+			return
+		}
+		o.serveLoginForm(w, http.StatusOK, loginFormData{
 			ClientID:            q.Get("client_id"),
 			RedirectURI:         q.Get("redirect_uri"),
 			CodeChallenge:       q.Get("code_challenge"),
@@ -256,11 +369,10 @@ func (o *OAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (o *OAuthServer) serveLoginForm(w http.ResponseWriter, data loginFormData) {
+func (o *OAuthServer) serveLoginForm(w http.ResponseWriter, status int, data loginFormData) {
+	data.RedirectHost = redirectHost(data.RedirectURI)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if data.Error != "" {
-		w.WriteHeader(http.StatusUnauthorized)
-	}
+	w.WriteHeader(status)
 	_ = oauthLoginTmpl.Execute(w, data)
 }
 
@@ -282,17 +394,34 @@ func (o *OAuthServer) processLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if subtle.ConstantTimeCompare([]byte(password), []byte(o.password)) != 1 {
-		o.serveLoginForm(w, loginFormData{
-			ClientID:            clientID,
-			RedirectURI:         redirectURI,
-			CodeChallenge:       codeChallenge,
-			CodeChallengeMethod: codeChallengeMethod,
-			State:               state,
-			Error:               "Incorrect password.",
-		})
+	if !o.redirectAllowed(clientID, redirectURI) {
+		http.Error(w, redirectRefusal, http.StatusBadRequest)
 		return
 	}
+
+	form := loginFormData{
+		ClientID:            clientID,
+		RedirectURI:         redirectURI,
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: codeChallengeMethod,
+		State:               state,
+	}
+	addr := o.proxies.ClientKey(r)
+	if wait := o.logins.Locked(addr); wait > 0 {
+		form.Error = fmt.Sprintf("Too many wrong passwords. Try again in %d minutes.", int(wait.Minutes())+1)
+		o.serveLoginForm(w, http.StatusTooManyRequests, form)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(password), []byte(o.password)) != 1 {
+		if o.logins.Fail(addr) {
+			log.Printf("oauth: %s locked out after repeated wrong passwords", addr)
+		}
+		form.Error = "Incorrect password."
+		o.serveLoginForm(w, http.StatusUnauthorized, form)
+		return
+	}
+	o.logins.Reset(addr)
+	o.db.TouchOAuthClient(clientID)
 
 	// Issue authorization code
 	code := oauthGenerateToken()
@@ -389,6 +518,7 @@ var oauthLoginTmpl = template.Must(template.New("oauth-login").Parse(`<!DOCTYPE 
 <body>
   <h1>Authorize Gypsum</h1>
   <p class="sub">An application ({{.ClientID}}) is requesting access to your wiki.</p>
+  <p class="sub">After you sign in you are sent to <strong>{{.RedirectHost}}</strong>. Continue only if you started this yourself and know that address.</p>
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
   <form method="POST">
     <input type="hidden" name="client_id"             value="{{.ClientID}}">

@@ -40,6 +40,10 @@ access_control:
       policy: one_factor
 ```
 
+### Trusted proxies
+
+Set `GYPSUM_TRUSTED_PROXIES` (Helm: `trustedProxies`) to the address or range of your reverse proxy, e.g. `10.42.0.0/16` for Traefik in the cluster. Without it, rate limits and the OAuth login lockout see every visitor as the proxy's address, so they count as one client. See [Configuration](configuration.md#trusted-proxies).
+
 ### What each bypass covers
 
 | Path | Reason |

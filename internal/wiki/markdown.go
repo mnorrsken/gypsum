@@ -352,7 +352,13 @@ func (r *MarkdownRenderer) Render(source string) (template.HTML, error) {
 // RenderPublic renders markdown for public (shared) pages:
 // - Wiki links [[Page]] become plain text (not clickable)
 // - Secure macros {{secure_aes:...}} are stripped entirely
+// - Unencrypted {{secure:...}} blocks are stripped entirely
 func (r *MarkdownRenderer) RenderPublic(source string) (template.HTML, error) {
+	// A {{secure:...}} block that was never encrypted (the browser editor does
+	// that, so one written another way stays plaintext) must not be shown.
+	// Code blocks and diagrams are included: the editor encrypts there too.
+	source = stripPlainSecure(source)
+
 	source, mermaidDiagrams := extractMermaidBlocks(source)
 
 	// Convert wiki links to plain text (no links), skipping code regions.

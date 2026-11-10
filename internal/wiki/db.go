@@ -46,6 +46,12 @@ func OpenDB(dataDir string) (*DB, error) {
 			token      TEXT PRIMARY KEY,
 			expires_at DATETIME NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS oauth_clients (
+			client_id     TEXT PRIMARY KEY,
+			redirect_uris TEXT NOT NULL,
+			created_at    DATETIME NOT NULL,
+			used_at       DATETIME
+		);
 		CREATE TABLE IF NOT EXISTS app_config (
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -269,6 +275,58 @@ func (d *DB) PurgeExpiredOAuthTokens() (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// ---------- OAuth client operations ----------
+
+// maxOAuthClients caps the registered clients kept. Registration is open to
+// anyone, so the table must not grow without bound.
+const maxOAuthClients = 500
+
+// SaveOAuthClient stores a registered client and its redirect URIs. When the
+// table is full it drops the oldest clients, those that never completed a
+// login first, so junk registrations cannot push out a client in use.
+func (d *DB) SaveOAuthClient(clientID string, redirectURIs []string) error {
+	uris, err := json.Marshal(redirectURIs)
+	if err != nil {
+		return fmt.Errorf("encoding redirect uris: %w", err)
+	}
+	if _, err := d.db.Exec(
+		"INSERT OR REPLACE INTO oauth_clients (client_id, redirect_uris, created_at) VALUES (?, ?, ?)",
+		clientID, string(uris), time.Now(),
+	); err != nil {
+		return fmt.Errorf("saving oauth client: %w", err)
+	}
+	if _, err := d.db.Exec(`
+		DELETE FROM oauth_clients WHERE client_id IN (
+			SELECT client_id FROM oauth_clients
+			ORDER BY used_at IS NOT NULL DESC, COALESCE(used_at, created_at) DESC, rowid DESC
+			LIMIT -1 OFFSET ?
+		)`, maxOAuthClients); err != nil {
+		return fmt.Errorf("trimming oauth clients: %w", err)
+	}
+	return nil
+}
+
+// OAuthClientRedirectURIs returns the redirect URIs a client registered and
+// whether the client is known.
+func (d *DB) OAuthClientRedirectURIs(clientID string) ([]string, bool) {
+	var raw string
+	if err := d.db.QueryRow(
+		"SELECT redirect_uris FROM oauth_clients WHERE client_id = ?", clientID,
+	).Scan(&raw); err != nil {
+		return nil, false
+	}
+	var uris []string
+	if err := json.Unmarshal([]byte(raw), &uris); err != nil {
+		return nil, false
+	}
+	return uris, true
+}
+
+// TouchOAuthClient records that a client completed a login.
+func (d *DB) TouchOAuthClient(clientID string) {
+	_, _ = d.db.Exec("UPDATE oauth_clients SET used_at = ? WHERE client_id = ?", time.Now(), clientID)
 }
 
 // migrateOAuthTokens imports tokens from the legacy oauth_tokens.json file

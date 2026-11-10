@@ -486,6 +486,17 @@ func TestShareSkillPublicLink(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "skill body") || strings.Contains(rec.Body.String(), "page body") {
 		t.Fatalf("public view: status %d, body %s", rec.Code, rec.Body.String())
 	}
+	csp := rec.Header().Get("Content-Security-Policy")
+	nonce, _, _ := strings.Cut(strings.SplitN(csp+"'nonce-", "'nonce-", 2)[1], "'")
+	if nonce == "" || !strings.Contains(rec.Body.String(), `<script nonce="`+nonce+`">`) || strings.Contains(rec.Body.String(), "<script>") {
+		t.Errorf("public view: inline scripts must carry the nonce of the policy %q", csp)
+	}
+	if got := rec.Header().Get("X-Robots-Tag"); !strings.Contains(got, "noindex") {
+		t.Errorf("public view: X-Robots-Tag = %q, want noindex", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("public view: Cache-Control = %q, want no-cache", got)
+	}
 
 	if rec := do(http.MethodPost, "/delete-skill/Same_Slug", nil); rec.Code != http.StatusFound {
 		t.Fatalf("delete: status %d", rec.Code)

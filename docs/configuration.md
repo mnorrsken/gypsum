@@ -167,7 +167,14 @@ These are required when enabling the OAuth-protected external MCP endpoint.
 | `GYPSUM_OAUTH_ENABLED` | _(empty)_ | Set to `true` to enable the `/mcp/external` endpoint. |
 | `GYPSUM_OAUTH_PASSWORD` | _(required)_ | Single-user password for the OAuth login page. |
 | `GYPSUM_EXTERNAL_URL` | _(required)_ | Public base URL with no trailing slash, e.g. `https://wiki.example.com`. Used for OAuth discovery documents, upload links, and the page URLs that `create_page` and `edit_page` return. |
+| `GYPSUM_TRUSTED_PROXIES` | _(empty)_ | Comma-separated IP addresses and CIDR ranges of the reverse proxies in front of Gypsum, e.g. `10.42.0.0/16` (the pod network when Traefik runs in the cluster). See [Trusted proxies](#trusted-proxies). An invalid value stops the server at startup. |
 | `GYPSUM_OAUTH_TOKEN_TTL` | `24h` | Access token lifetime as a Go duration string (e.g. `2160h` for 90 days). Valid units: `s`, `m`, `h`. Note: `d` is **not** supported — use hours instead. |
+
+### Trusted proxies
+
+Rate limits (MCP: 30 requests per second per client; OAuth endpoints: 5 per second) and the login lockout count per client address. Without `GYPSUM_TRUSTED_PROXIES` the address is that of the connection, so behind a reverse proxy all visitors count as one client.
+
+When a request comes from a listed proxy, the client address is taken from `X-Forwarded-For`: the last entry that is not itself a listed proxy. The header is ignored for requests from any other address. IPv6 clients are counted per /64.
 
 ## Docker Variables
 

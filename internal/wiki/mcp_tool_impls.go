@@ -195,6 +195,9 @@ func (m *MCPHandler) toolCreatePage(args map[string]any, author string) mcpCallT
 		return mcpError("page already exists: " + slug)
 	}
 
+	if addsPlainSecure("", content) {
+		return mcpError(plainSecureRefusal)
+	}
 	if err := m.store.Save(KindPage, slug, content); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
@@ -233,6 +236,9 @@ func (m *MCPHandler) toolEditPage(args map[string]any, author string) mcpCallToo
 		finalContent = c
 	}
 
+	if addsPlainSecure(page.Content, finalContent) {
+		return mcpError(plainSecureRefusal)
+	}
 	if err := m.store.Save(KindPage, slug, finalContent); err != nil {
 		return mcpError("failed to save page: " + err.Error())
 	}
@@ -621,6 +627,9 @@ func (m *MCPHandler) toolCreateSkill(args map[string]any, author string) mcpCall
 		return mcpError("skill already exists: " + slug)
 	}
 
+	if addsPlainSecure("", content) {
+		return mcpError(plainSecureRefusal)
+	}
 	if err := m.store.Save(KindSkill, slug, content); err != nil {
 		return mcpError("failed to save skill: " + err.Error())
 	}
@@ -640,6 +649,9 @@ func (m *MCPHandler) toolEditSkill(args map[string]any, author string) mcpCallTo
 	finalContent, res := applyEditMode(skill.Content, args)
 	if res != nil {
 		return *res
+	}
+	if addsPlainSecure(skill.Content, finalContent) {
+		return mcpError(plainSecureRefusal)
 	}
 	if err := m.store.Save(KindSkill, slug, finalContent); err != nil {
 		return mcpError("failed to save skill: " + err.Error())
@@ -988,6 +1000,12 @@ func mcpJSON(v any) mcpCallToolResult {
 		Content: []mcpContent{{Type: "text", Text: string(data)}},
 	}
 }
+
+// plainSecureRefusal is the error for a write that would store a secret as
+// plaintext.
+const plainSecureRefusal = "content has a {{secure:...}} block, which only the web editor can encrypt; " +
+	"saved from here the secret would be stored as plaintext. Leave the secret out and ask the user to add it " +
+	"in the web editor. To show the syntax as literal text, escape it: \\{{secure:...}}"
 
 func mcpError(msg string) mcpCallToolResult {
 	return mcpCallToolResult{

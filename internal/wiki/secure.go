@@ -29,6 +29,33 @@ var secureAes2MacroRe = regexp.MustCompile(`\{\{secure_aes2:([\w+/=]+)\}\}`)
 // An optional leading backslash is captured so \{{secure:...}} can be skipped.
 var secureMacroRe = regexp.MustCompile(`(?s)(\\?)\{\{secure:(.*?)\}\}`)
 
+// stripPlainSecure removes every {{secure:...}} block from markdown. An
+// escaped \{{secure:...}} is literal text and stays.
+func stripPlainSecure(markdown string) string {
+	return secureMacroRe.ReplaceAllStringFunc(markdown, func(match string) string {
+		if strings.HasPrefix(match, `\`) {
+			return match
+		}
+		return ""
+	})
+}
+
+// addsPlainSecure reports whether updated holds a {{secure:...}} block that
+// old does not. Only the browser editor can encrypt these, so content saved
+// any other way would keep the secret as plaintext.
+func addsPlainSecure(old, updated string) bool {
+	known := make(map[string]bool)
+	for _, m := range secureMacroRe.FindAllString(old, -1) {
+		known[m] = true
+	}
+	for _, m := range secureMacroRe.FindAllString(updated, -1) {
+		if !strings.HasPrefix(m, `\`) && !known[m] {
+			return true
+		}
+	}
+	return false
+}
+
 // ServerCrypto provides AES-256-GCM encryption using a single server key. The
 // CLI re-encrypt tool is the only runtime user — during normal edit/save all
 // crypto happens in the browser and the server never holds a key.

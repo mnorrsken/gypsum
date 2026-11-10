@@ -146,6 +146,10 @@ spec:
             - name: GYPSUM_MCP_ALLOWED_ORIGINS
               value: {{ if kindIs "slice" . }}{{ join "," . | quote }}{{ else }}{{ . | quote }}{{ end }}
             {{- end }}
+            {{- with .Values.trustedProxies }}
+            - name: GYPSUM_TRUSTED_PROXIES
+              value: {{ if kindIs "slice" . }}{{ join "," . | quote }}{{ else }}{{ . | quote }}{{ end }}
+            {{- end }}
             {{- with .Values.uploads }}
             {{- if .maxMb }}
             - name: GYPSUM_UPLOAD_MAX_MB

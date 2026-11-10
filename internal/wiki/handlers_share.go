@@ -102,6 +102,9 @@ func (h *Handler) handlePublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A share link is a secret: keep it out of search engines.
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+
 	token, image, isImage := strings.Cut(strings.TrimPrefix(r.URL.Path, "/public/"), "/")
 	if token == "" {
 		http.NotFound(w, r)
@@ -150,8 +153,18 @@ func (h *Handler) handlePublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Revalidate so a revoked link stops working at once. The policy lets only
+	// the wiki's own scripts run, as a second barrier behind the sanitizer;
+	// inline styles stay allowed because Mermaid and sized images need them.
+	nonce := oauthGenerateToken()[:32]
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self' 'nonce-"+nonce+"'; "+
+		"style-src 'self' 'unsafe-inline'; img-src * data:; font-src 'self' data:; manifest-src 'self'; "+
+		"base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
+
 	shareURL := buildShareURL(r, token)
 	data := TemplateData{
+		CSPNonce:      nonce,
 		Title:         displayTitle,
 		RenderedHTML:  content.html,
 		OGURL:         shareURL,

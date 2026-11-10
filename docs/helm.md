@@ -132,6 +132,7 @@ variables.
 | `auth.userHeader` | `""` | Header name for reverse proxy auth (e.g. `Remote-User`). Enables header auth when set |
 | `auth.groupHeader` | `Remote-Group` | Header containing comma-separated group names |
 | `auth.requiredGroup` | `""` | If set, requests without this group are rejected with 403 |
+| `trustedProxies` | `[]` | Reverse proxies in front of Gypsum, as IP addresses or CIDR ranges (`GYPSUM_TRUSTED_PROXIES`). Used to find the client address for rate limits and login lockout. Accepts a list or a comma-separated string |
 
 ### Uploads
 
