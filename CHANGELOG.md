@@ -2,7 +2,7 @@
 
 All notable changes to Gypsum are documented in this file.
 
-## Unreleased
+## v0.64.0
 
 ### Added
 - **Feature modules** — the optional sidebar sections (`notes`, `files`, `secrets`, `graph`, `skills`, `scan`), page sharing (`sharing`) and the MCP endpoint (`mcp`) can be turned on and off with `GYPSUM_MODULES` or Helm `modules.*`. A module that is off is hidden from the sidebar and bottom bar, its routes return 404 and its MCP tools are not listed. Modules apply on top of `GYPSUM_MCP_SECTIONS`. Unknown names stop the server at start. See [Configuration](docs/configuration.md#feature-modules).
