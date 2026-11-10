@@ -138,6 +138,14 @@ spec:
               value: {{ .Values.oauth.tokenTtl | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.modules }}
+            {{- $enabled := list }}
+            {{- range $name, $on := . }}
+            {{- if $on }}{{ $enabled = append $enabled $name }}{{ end }}
+            {{- end }}
+            - name: GYPSUM_MODULES
+              value: {{ if $enabled }}{{ join "," $enabled | quote }}{{ else }}"none"{{ end }}
+            {{- end }}
             {{- with (.Values.mcp).sections }}
             - name: GYPSUM_MCP_SECTIONS
               value: {{ if kindIs "slice" . }}{{ join "," . | quote }}{{ else }}{{ . | quote }}{{ end }}

@@ -85,16 +85,16 @@
         <a class="nav-item" href="/pages"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#files"/></svg><span>All pages</span></a>
         <a class="nav-item" href="/recent-edits"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#clock"/></svg><span>Recent edits</span></a>
         <a class="nav-item" href="/search"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#search"/></svg><span>Search</span></a>
-        <a class="nav-item" href="/notes"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#sticky-note"/></svg><span>Quick notes</span></a>
-        <a class="nav-item" href="/images"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#folder-open"/></svg><span>Files</span></a>
-        <a class="nav-item" href="/secrets"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#key-round"/></svg><span>Secrets</span></a>
-        <a class="nav-item" href="/graph"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#network"/></svg><span>Link graph</span></a>
-        <a class="nav-item" href="/skills"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#graduation-cap"/></svg><span>Skills</span></a>
+        {{if .Modules.Has "notes"}}<a class="nav-item" href="/notes"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#sticky-note"/></svg><span>Quick notes</span></a>{{end}}
+        {{if .Modules.Has "files"}}<a class="nav-item" href="/images"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#folder-open"/></svg><span>Files</span></a>{{end}}
+        {{if .Modules.Has "secrets"}}<a class="nav-item" href="/secrets"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#key-round"/></svg><span>Secrets</span></a>{{end}}
+        {{if .Modules.Has "graph"}}<a class="nav-item" href="/graph"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#network"/></svg><span>Link graph</span></a>{{end}}
+        {{if .Modules.Has "skills"}}<a class="nav-item" href="/skills"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#graduation-cap"/></svg><span>Skills</span></a>{{end}}
         {{if .ScanEnabled}}<a class="nav-item" href="/scan"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#camera"/></svg><span>Scan a photo</span></a>{{end}}
       </nav>
       <div class="nav-actions">
         <a class="button nav-new" href="/edit/New_Page"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#plus"/></svg><span>New page</span></a>
-        <a class="button secondary nav-new" href="/new-skill"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#plus"/></svg><span>New skill</span></a>
+        {{if .Modules.Has "skills"}}<a class="button secondary nav-new" href="/new-skill"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#plus"/></svg><span>New skill</span></a>{{end}}
       </div>
 
       <div class="nav-group">
@@ -145,7 +145,11 @@
     {{else}}
     <a href="/edit/New_Page" class="bottom-nav-primary" aria-label="New page"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#plus"/></svg><span>New</span></a>
     {{end}}
+    {{if .Modules.Has "notes"}}
     <a href="/notes"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#sticky-note"/></svg><span>Notes</span></a>
+    {{else}}
+    <a href="/search"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#search"/></svg><span>Search</span></a>
+    {{end}}
     <button type="button" @click="sidebarOpen = true" aria-label="More"><svg class="icon" aria-hidden="true"><use href="{{asset "icons.svg"}}#ellipsis"/></svg><span>More</span></button>
   </nav>
 

@@ -7,13 +7,13 @@
       <a href="/wiki/{{.Page.Slug}}">Page</a>
       <a href="/edit/{{.Page.Slug}}" class="active">Edit</a>
       {{if not .IsNew}}
-      <a href="/share/{{.Page.Slug}}">Share</a>
+      {{if .Modules.Has "sharing"}}<a href="/share/{{.Page.Slug}}">Share</a>{{end}}
       <a href="/history/{{.Page.Slug}}">History</a>
       {{end}}
     </div>
   </div>
   {{if .Query}}<p class="error">{{.Query}}</p>{{end}}
-  <p class="hint">{{if .IsNew}}Creating a new page.{{else}}Editing page.{{end}} Secure blocks: <code>{{"{{secure:your secret}}"}}</code>. Paste or drop images or files (PDF, text, Office) to upload.</p>
+  <p class="hint">{{if .IsNew}}Creating a new page.{{else}}Editing page.{{end}} Secure blocks: <code>{{"{{secure:your secret}}"}}</code>. {{if .Modules.Has "files"}}Paste or drop images or files (PDF, text, Office) to upload.{{end}}</p>
   <div class="editor-layout">
     <form method="post" action="/edit/{{.Page.Slug}}" class="editor-form">
       <textarea id="editor" name="content" rows="28">{{.RawContent}}</textarea>
@@ -22,7 +22,7 @@
       <div class="page-actions">
         <button type="submit">Save</button>
         <a class="button secondary" href="/wiki/{{.Page.Slug}}">Cancel</a>
-        <button type="button" class="button secondary" @click="$dispatch('image-picker-open')">Images</button>
+        {{if .Modules.Has "files"}}<button type="button" class="button secondary" @click="$dispatch('image-picker-open')">Images</button>{{end}}
         <button type="button" class="button secondary" id="table-editor-toggle">Insert Table</button>
         <button type="button" class="button secondary" id="mediawiki-import-toggle">Import MediaWiki</button>
         <button type="button" class="button secondary" id="help-toggle">Help</button>
@@ -71,12 +71,15 @@ password: s3cret
       </table>
       <p class="help-note">Encrypted with AES-256-GCM on save. Multiline blocks require <code>{{"{{secure:"}}</code> and <code>{{"}}"}}</code> on their own lines.</p>
 
+      {{if .Modules.Has "files"}}
       <h3>Images</h3>
       <p class="help-note">Paste from clipboard, drag &amp; drop a file, or click <strong>Images</strong> to browse and insert uploaded images. Dropped PDFs and other documents are uploaded and linked.</p>
+      {{end}}
     </aside>
   </div>
 </article>
 
+{{if .Modules.Has "files"}}
 <!-- Image picker modal (outside form) -->
 <div id="image-picker" class="image-picker-overlay"
      x-data="{ open: false }" x-show="open" x-cloak
@@ -103,6 +106,7 @@ password: s3cret
     </div>
   </div>
 </div>
+{{end}}
 
 <!-- Table editor modal (outside form) -->
 <div id="table-editor" class="table-editor-overlay" hidden>
@@ -311,6 +315,7 @@ password: s3cret
     }
   }
 
+  {{if .Modules.Has "files"}}
   // --- Paste handler ---
   textarea.addEventListener("paste", async (e) => {
     const items = Array.from(e.clipboardData.items);
@@ -387,6 +392,7 @@ password: s3cret
     }
     e.target.value = "";
   });
+  {{end}}
 
   // --- Table Editor ---
 

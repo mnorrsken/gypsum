@@ -117,7 +117,7 @@ func (h *Handler) handlePublic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	share, err := h.db.GetShareByToken(token)
-	if err != nil || share == nil {
+	if err != nil || share == nil || (share.Kind == KindSkill && !h.modules.Has(ModuleSkills)) {
 		http.NotFound(w, r)
 		return
 	}

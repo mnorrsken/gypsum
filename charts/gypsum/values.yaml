@@ -104,6 +104,30 @@ oauth:
   # The secret must contain a key named "oauth-password".
   existingSecret: ""
 
+# Feature modules (the sections in the sidebar menu, page sharing and MCP). A
+# module that is off has no menu entry, no routes and no MCP tools. Pages, search, history and recent
+# edits are always on. Set as GYPSUM_MODULES.
+modules:
+  # Quick notes board and the notes MCP tools. Deprecated, will be removed.
+  notes: false
+  # File manager, image and file uploads, and the file MCP tools. Files that
+  # pages already show are still served when this is off.
+  files: true
+  # Secrets vault.
+  secrets: true
+  # Link graph view.
+  graph: true
+  # Skills and the skills MCP tools.
+  skills: true
+  # Photo scanning. Also needs scan.apiKeySecret.
+  scan: true
+  # Public share links for pages and skills. Existing links stop working
+  # (404) while this is off.
+  sharing: true
+  # MCP endpoint (/mcp, /mcp/external) and its OAuth routes. Settings are under
+  # oauth and mcp below.
+  mcp: true
+
 # MCP endpoint settings.
 mcp:
   # Tool sections to expose to AI assistants: read, edit, delete, skills, notes.

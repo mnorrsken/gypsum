@@ -2,14 +2,14 @@
 
 ## Layout and navigation
 
-On a desktop screen there is a top bar (logo, search field, sync status dot, scan camera when scanning is on, lock, theme toggle) and a sidebar on the left. The sidebar has icon links to Home, All pages, Recent edits, Search, Quick notes, Files, Secrets, Link graph, Skills and Scan a photo, the **New page** and **New skill** buttons, your Favorites, Recently edited pages, and a collapsible **Documentation** group. The current page is highlighted. Page tabs (Page, Edit, Share, History) are a segmented control above the content.
+On a desktop screen there is a top bar (logo, search field, sync status dot, scan camera when scanning is on, lock, theme toggle) and a sidebar on the left. The sidebar has icon links to Home, All pages, Recent edits, Search, and, when their [modules](configuration.md#feature-modules) are on, Quick notes (off by default, deprecated), Files, Secrets, Link graph, Skills and Scan a photo, the **New page** button, the **New skill** button (with the `skills` module), your Favorites, Recently edited pages, and a collapsible **Documentation** group. The current page is highlighted. Page tabs (Page, Edit, Share, History; Share only with the `sharing` module) are a segmented control above the content.
 
 ### Phones
 
 On screens up to 768px wide:
 
 - The sidebar is a drawer. Open it with the menu button; close it with Escape or by tapping outside it. It also has a Dark/Light mode switch.
-- A bottom tab bar has **Home**, **Pages**, a round centre button, **Notes** and **More** (opens the drawer). The centre button is **Scan** when scanning is enabled, otherwise **New page**.
+- A bottom tab bar has **Home**, **Pages**, a round centre button, **Notes** (**Search** when the notes module is off, the default) and **More** (opens the drawer). The centre button is **Scan** when scanning is enabled, otherwise **New page**.
 - Content uses the full screen width and dialogs open as bottom sheets.
 
 ### Theme
@@ -105,6 +105,8 @@ To show `mermaid` syntax literally instead of rendering it, wrap the example in 
 
 ## Images
 
+Uploading and the image picker need the `files` [module](configuration.md#feature-modules) (on by default). With it off, images that pages already show still load.
+
 Three ways to upload images:
 
 - **Paste** — copy an image to the clipboard and paste into the editor
@@ -135,6 +137,8 @@ JPEG uploads are always re-encoded: the EXIF orientation is applied and EXIF dat
 
 ## Files and photos
 
+File uploads need the `files` [module](configuration.md#feature-modules), like images.
+
 Besides images, you can upload PDF, TXT, MD, CSV, JSON, DOCX, XLSX, PPTX, ODT, ODS and ODP files. They are stored in `files/` in the git repo and committed as `wiki: upload file <name>`. The content must match the extension. Names get a date and random suffix, e.g. `report-20261012-1a2b3c4d.pdf`.
 
 In the editor, drag and drop a non-image file onto the textarea. It is uploaded and a `[name](/files/...)` link is inserted.
@@ -151,7 +155,7 @@ Behind Authelia or another proxy, an upload link works as long as the browser th
 
 ## Photo scans
 
-With `ANTHROPIC_API_KEY` set (see [Configuration](configuration.md)), a camera button appears (in the top bar on a desktop, as the round centre button of the bottom bar on a phone) and each page gets an **Add scan** tab. Both open `/scan`. Use **Take photo** to open the phone camera, or **Choose photo** to pick a file, and add an optional note for Claude. JPEG, PNG and WebP work; HEIC is rejected. The size limit is `GYPSUM_UPLOAD_MAX_MB`.
+With `ANTHROPIC_API_KEY` set and the `scan` [module](configuration.md#feature-modules) on (see [Configuration](configuration.md)), a camera button appears (in the top bar on a desktop, as the round centre button of the bottom bar on a phone) and each page gets an **Add scan** tab. Both open `/scan`. Use **Take photo** to open the phone camera, or **Choose photo** to pick a file, and add an optional note for Claude. JPEG, PNG and WebP work; HEIC is rejected. The size limit is `GYPSUM_UPLOAD_MAX_MB`.
 
 **The photo is sent to Anthropic.** Do not scan anything you cannot send there. Each scan is one Claude API call billed to your key (about 5k image tokens plus the output).
 
@@ -214,7 +218,7 @@ Click **Insert Table** (or **Edit Table** when the cursor is inside a table) to 
 
 ## Link Graph
 
-Visit `/graph` for an interactive force-directed graph showing how pages connect via `[[wiki links]]`. Double-click a node to navigate to that page.
+Visit `/graph` for an interactive force-directed graph showing how pages connect via `[[wiki links]]`. Double-click a node to navigate to that page. The view is the `graph` [module](configuration.md#feature-modules).
 
 ## MediaWiki Import
 
@@ -222,7 +226,7 @@ Click "Import MediaWiki" in the editor to paste MediaWiki wikitext and convert i
 
 ## Public Page Sharing
 
-Share any page or [skill](skills.md) via the **Share** tab. Public pages are rendered in a minimal read-only layout without sidebars, editing, or navigation. Wiki links become plain text and encrypted fields are hidden. Links can be revoked or regenerated at any time. A `{{secure:...}}` block that is still unencrypted is never shown on a public page: it is removed from the page and from the link preview, also inside code blocks and diagrams.
+Share any page or [skill](skills.md) via the **Share** tab. Sharing is the `sharing` [module](configuration.md#feature-modules); with it off the tab is hidden and existing links return 404. Public pages are rendered in a minimal read-only layout without sidebars, editing, or navigation. Wiki links become plain text and encrypted fields are hidden. Links can be revoked or regenerated at any time. A `{{secure:...}}` block that is still unencrypted is never shown on a public page: it is removed from the page and from the link preview, also inside code blocks and diagrams.
 
 Responses under `/public/` send `X-Robots-Tag: noindex, nofollow`, `Cache-Control: no-cache` (a revoked link stops working at once, also for cached copies) and a Content-Security-Policy that only lets the wiki's own scripts run. If a reverse proxy also sets a CSP on these paths, both apply.
 

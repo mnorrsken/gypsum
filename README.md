@@ -60,7 +60,8 @@ MCP tool usage is tracked via Prometheus — call counts, errors, and characters
 - Click an image or a diagram to open it full screen (lightbox); click or press Escape to close
 - Full-text search with FTS5 indexing, BM25 ranking, and highlighted snippets
 - Optional [semantic search](#semantic-search) that also finds pages by meaning and across languages, via any OpenAI-compatible embeddings API or a CPU embeddings server deployed by the Helm chart
-- Quick Notes — a whiteboard-style board of always-editable sticky notes with autosave, title-hashed colors, and archive; stored as plain markdown in git
+- Quick Notes (deprecated, off by default; enable with `GYPSUM_MODULES`) — a whiteboard-style board of always-editable sticky notes with autosave, title-hashed colors, and archive; stored as plain markdown in git
+- Feature modules — turn the optional sidebar sections (notes, files, secrets, graph, skills, scan), page sharing and the MCP endpoint on or off with `GYPSUM_MODULES` or Helm `modules.*`; a module that is off is hidden and its routes and MCP tools are gone
 - Secrets vault — a searchable list of credentials with click-to-reveal (60s) and copy-without-showing; tiles use the linked site's own picture or a title-hashed two-letter mnemonic. Encrypted in the browser, stored as markdown in git, never exposed over MCP. Secrets can have tags; tag chips filter the list (all selected tags must match). Compact two-column card layout.
 - Interactive link graph
 - Page history with revision diffs and one-click restore of any older revision; MCP edits are committed under the calling client's name (e.g. `claude-code (MCP)`)
@@ -99,6 +100,7 @@ Open [http://localhost:8080](http://localhost:8080). See [Docker](docs/docker.md
 | `GYPSUM_METRICS_PORT` | `:9090` | Prometheus metrics server listen address |
 | `GYPSUM_PROBE_PORT` | `:9091` | Health probe listen address |
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills,notes` | Comma-separated MCP tool sections to enable |
+| `GYPSUM_MODULES` | `files,secrets,graph,skills,scan,sharing,mcp` | Comma-separated optional feature modules to enable (`notes`, `files`, `secrets`, `graph`, `skills`, `scan`, `sharing`, `mcp`); `none` disables all |
 | `GYPSUM_MCP_ALLOWED_ORIGINS` | _(empty)_ | Extra browser origins allowed to call `/mcp`; external URL and loopback always allowed, `*` disables the check |
 | `GYPSUM_SECURE_SALT` | _(auto-generated)_ | Base64 PBKDF2 salt for `{{secure:...}}` fields; auto-generated and persisted if unset |
 | `GYPSUM_EMBED_URL` | _(empty)_ | OpenAI-compatible embeddings API (e.g. `http://localhost:11434/v1`); turns on [semantic search](#semantic-search) |
@@ -119,7 +121,7 @@ OAuth, auth, and Docker-specific variables are documented in [Configuration](doc
 - [Authentication](docs/authentication.md) — header auth and Authelia setup
 - [MCP Server](docs/mcp.md) — connecting AI assistants to your wiki
 - [Skills](docs/skills.md) — procedural knowledge for LLMs
-- [Quick Notes](docs/notes.md) — the sticky-note board
+- [Quick Notes](docs/notes.md) — the sticky-note board (deprecated)
 - [Secrets](docs/secrets.md) — the credential vault
 - [Docker](docs/docker.md) — container build, run, and compose
 - [Helm Chart](docs/helm.md) — Kubernetes deployment

@@ -11,6 +11,7 @@
 | `GYPSUM_AUTH_REQUIRED_GROUP` | _(empty)_ | If set, the group header must contain this group or the request is rejected with 403. |
 | `GYPSUM_PROBE_PORT` | `:9091` | Listen address for the health-probe server (`/healthz`, `/readyz`). |
 | `GYPSUM_MCP_SECTIONS` | `read,edit,delete,skills,notes` | Comma-separated list of MCP tool sections to enable. Omit a section to hide those tools from AI assistants. |
+| `GYPSUM_MODULES` | `files,secrets,graph,skills,scan,sharing,mcp` | Comma-separated optional [feature modules](configuration.md#feature-modules) to enable: `notes`, `files`, `secrets`, `graph`, `skills`, `scan`, `sharing`, `mcp`. `none` disables all. |
 | `GYPSUM_MCP_ALLOWED_ORIGINS` | _(empty)_ | Extra browser origins permitted to call `/mcp`, comma-separated (e.g. `https://app.example.com`). `GYPSUM_EXTERNAL_URL` and loopback are always allowed. Set to `*` to disable Origin checking. See [Origin validation](#origin-validation). |
 | `GYPSUM_METRICS_PORT` | `:9090` | Listen address for the Prometheus metrics server (`/metrics`). Exposes per-tool MCP call counters. |
 | `GYPSUM_SECURE_SALT` | _(auto-generated)_ | Base64-encoded PBKDF2 salt for `{{secure:...}}` fields. If unset, a random salt is generated on first run and persisted in `gypsum.db`. The salt is not secret, but it must stay stable — see [Encryption](#encryption). |
@@ -22,6 +23,31 @@
 | `ANTHROPIC_API_KEY` | _(empty)_ | Anthropic API key. Setting it turns on [photo scans](usage.md#photo-scans). Each scan is one API call billed to this key, and the photo is sent to Anthropic. |
 | `GYPSUM_SCAN_MODEL` | `claude-opus-5-5` | Claude model used for photo scans. Only used when `ANTHROPIC_API_KEY` is set. |
 | `GYPSUM_SCAN_CORNER_MODEL` | `claude-haiku-5-5` | Claude model that finds the page's corners so a document photographed at an angle is straightened before it is read; `off` skips that step. Only used when `ANTHROPIC_API_KEY` is set. |
+
+### Feature modules
+
+The optional parts of the sidebar menu, page sharing and the MCP endpoint are modules. Set `GYPSUM_MODULES` to a comma-separated list (case-insensitive). Unset or empty means `files,secrets,graph,skills,scan,sharing,mcp`, which is everything except `notes`. `none` turns all of them off. An unknown name stops the server at start.
+
+Always on: Home and pages, All pages, Recent edits, Search and page history.
+
+A module that is off has no sidebar entry (and no bottom-bar entry on phones), and its routes return 404.
+
+| Module | What it covers |
+|---|---|
+| `notes` | `/notes` board and the notes MCP tools. **Deprecated**, off by default; the server logs a warning when it is on. See [Quick Notes](notes.md). |
+| `files` | `/images` file manager, image and file uploads (including editor paste/drop and the Images picker), upload links, file results in search, and the tools list_images, list_files, get_file, create_upload_link, delete_image, delete_file. Images and files that pages already show are still served. |
+| `secrets` | `/secrets` vault. |
+| `graph` | `/graph` link graph view. The `link_graph` and `page_links` MCP tools stay. |
+| `skills` | `/skills` pages, the **New skill** button, skills on All pages, public share links of skills, and the skills MCP tools. |
+| `scan` | [Photo scanning](usage.md#photo-scans). Also needs `ANTHROPIC_API_KEY`. |
+| `sharing` | [Public share links](usage.md#public-page-sharing) for pages and skills: the **Share** tab, `/share/`, `/share-skill/` and `/public/`. Existing links return 404 while it is off and work again when it is back on. |
+| `mcp` | The [MCP endpoint](mcp.md) (`/mcp`, `/mcp/external`) and the OAuth routes that guard it. Also needs `GYPSUM_OAUTH_ENABLED`; the server logs a warning when OAuth is on but this module is off. |
+
+Modules apply on top of `GYPSUM_MCP_SECTIONS`: an MCP tool is listed only when both its section and its module are enabled.
+
+```bash
+GYPSUM_MODULES=files,skills,notes
+```
 
 ### MCP sections
 
@@ -164,7 +190,7 @@ These are required when enabling the OAuth-protected external MCP endpoint.
 
 | Variable | Default | Description |
 |---|---|---|
-| `GYPSUM_OAUTH_ENABLED` | _(empty)_ | Set to `true` to enable the `/mcp/external` endpoint. |
+| `GYPSUM_OAUTH_ENABLED` | _(empty)_ | Set to `true` to enable the `/mcp` and `/mcp/external` endpoints. Needs the `mcp` [module](#feature-modules). |
 | `GYPSUM_OAUTH_PASSWORD` | _(required)_ | Single-user password for the OAuth login page. |
 | `GYPSUM_EXTERNAL_URL` | _(required)_ | Public base URL with no trailing slash, e.g. `https://wiki.example.com`. Used for OAuth discovery documents, upload links, and the page URLs that `create_page` and `edit_page` return. |
 | `GYPSUM_TRUSTED_PROXIES` | _(empty)_ | Comma-separated IP addresses and CIDR ranges of the reverse proxies in front of Gypsum, e.g. `10.42.0.0/16` (the pod network when Traefik runs in the cluster). See [Trusted proxies](#trusted-proxies). An invalid value stops the server at startup. |

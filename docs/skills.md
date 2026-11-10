@@ -1,6 +1,6 @@
 # Skills
 
-Skills are procedural knowledge pages optimized for AI retrieval — build instructions, testing conventions, deployment steps, coding patterns. They live in a separate `skills/` directory alongside your wiki pages and have dedicated MCP tools with tag-boosted search.
+Skills are procedural knowledge pages optimized for AI retrieval — build instructions, testing conventions, deployment steps, coding patterns. They live in a separate `skills/` directory alongside your wiki pages and have dedicated MCP tools with tag-boosted search. Skills are the `skills` [module](configuration.md#feature-modules) (on by default); with it off the skills pages and MCP tools are gone.
 
 Unlike regular wiki pages (which document information for humans), skills tell an AI assistant **how** to do something. When an LLM connects to your wiki via MCP, it can search for relevant skills before starting a task and follow the instructions automatically.
 

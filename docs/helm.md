@@ -59,11 +59,26 @@ helm show values oci://ghcr.io/mnorrsken/charts/gypsum
 
 | Parameter | Default | Description |
 |---|---|---|
-| `oauth.enabled` | `false` | Enable the OAuth-protected `/mcp` endpoint |
+| `oauth.enabled` | `false` | Enable the OAuth-protected `/mcp` endpoint (needs `modules.mcp`) |
 | `oauth.password` | `""` | OAuth login password. If empty, auto-generated |
 | `oauth.externalUrl` | `""` | Public base URL (e.g. `https://wiki.example.com`). Required when `oauth.enabled` is true |
 | `oauth.tokenTtl` | `24h` | Access token lifetime |
 | `oauth.existingSecret` | `""` | Existing Secret with an `oauth-password` key |
+
+### Modules
+
+Turn the optional [feature modules](configuration.md#feature-modules) on or off. The chart always sets `GYPSUM_MODULES` from these values (enabled keys joined, or `none`).
+
+| Parameter | Default | Description |
+|---|---|---|
+| `modules.notes` | `false` | Quick notes board and notes MCP tools (deprecated) |
+| `modules.files` | `true` | File manager, uploads, upload links |
+| `modules.secrets` | `true` | Secrets vault |
+| `modules.graph` | `true` | Link graph view |
+| `modules.skills` | `true` | Skills pages, sharing and MCP tools |
+| `modules.scan` | `true` | Photo scanning (also needs an Anthropic API key) |
+| `modules.sharing` | `true` | Public share links for pages and skills |
+| `modules.mcp` | `true` | MCP endpoint and its OAuth routes (also needs `oauth.enabled`) |
 
 ### MCP
 
@@ -75,7 +90,9 @@ helm show values oci://ghcr.io/mnorrsken/charts/gypsum
 #### Tool sections
 
 Omitting a section hides those tools from AI assistants entirely — they are not
-advertised in `tools/list` and are refused if called anyway.
+advertised in `tools/list` and are refused if called anyway. A tool is also hidden
+when its [module](#modules) is off (for example the `notes` tools unless
+`modules.notes` is `true`).
 
 | Section | Tools |
 |---|---|

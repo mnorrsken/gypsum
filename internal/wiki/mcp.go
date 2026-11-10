@@ -200,6 +200,7 @@ type MCPHandler struct {
 	sessions       sync.Map            // sessionID → commit author (legacy era only)
 	oauth          *OAuthServer        // non-nil → Bearer token required
 	sections       map[MCPSection]bool // enabled tool sections
+	modules        ModuleSet           // enabled modules; nil = all
 	metrics        *MCPMetrics         // optional; nil = no metrics
 	allowedOrigins []string            // Origin allowlist; loopback always permitted
 	uploads        *UploadLinks        // nil = create_upload_link unavailable
@@ -210,6 +211,11 @@ type MCPHandler struct {
 func (m *MCPHandler) SetUploadLinks(links *UploadLinks, externalURL string) {
 	m.uploads = links
 	m.externalURL = strings.TrimRight(externalURL, "/")
+}
+
+// SetModules limits the tools to those of the enabled modules.
+func (m *MCPHandler) SetModules(modules ModuleSet) {
+	m.modules = modules
 }
 
 // SetAllowedOrigins sets the Origin allowlist enforced on the MCP endpoint.

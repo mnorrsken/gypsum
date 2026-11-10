@@ -77,11 +77,26 @@ const (
 	mcpCacheScopePublic = "public"
 )
 
-const mcpServerInstructions = "Gypsum is a git-backed personal wiki. Pages are markdown addressed by slug " +
-	"(spaces become underscores) and linked with [[Page Title]]. Prefer search_pages over list_pages to find a " +
-	"page, and never guess a slug. Skills hold procedural knowledge for AI retrieval and are found with " +
-	"search_skills; notes are short sticky-note jottings. {{secure_aes:...}} blocks are encrypted and must be " +
-	"passed through unchanged. A code block fenced as mermaid renders as a diagram, so prefer one over ASCII art."
+// serverInstructions describes the wiki to the client, mentioning skills and
+// notes only when their modules are enabled.
+func (m *MCPHandler) serverInstructions() string {
+	var b strings.Builder
+	b.WriteString("Gypsum is a git-backed personal wiki. Pages are markdown addressed by slug " +
+		"(spaces become underscores) and linked with [[Page Title]]. Prefer search_pages over list_pages to find a " +
+		"page, and never guess a slug. ")
+	skills, notes := m.modules.Has(ModuleSkills), m.modules.Has(ModuleNotes)
+	switch {
+	case skills && notes:
+		b.WriteString("Skills hold procedural knowledge for AI retrieval and are found with search_skills; notes are short sticky-note jottings. ")
+	case skills:
+		b.WriteString("Skills hold procedural knowledge for AI retrieval and are found with search_skills. ")
+	case notes:
+		b.WriteString("Notes are short sticky-note jottings. ")
+	}
+	b.WriteString("{{secure_aes:...}} blocks are encrypted and must be " +
+		"passed through unchanged. A code block fenced as mermaid renders as a diagram, so prefer one over ASCII art.")
+	return b.String()
+}
 
 // ── Per-request metadata ────────────────────────────────────────────────
 
@@ -229,7 +244,7 @@ func (m *MCPHandler) handleModernRPC(r *http.Request, req jsonRPCRequest, meta m
 				ResultType:        "complete",
 				SupportedVersions: supportedProtocolVersions,
 				Capabilities:      map[string]any{"tools": map[string]any{}},
-				Instructions:      mcpServerInstructions,
+				Instructions:      m.serverInstructions(),
 				TTLMs:             mcpCacheTTLMs,
 				CacheScope:        mcpCacheScopePublic,
 				Meta:              modernResultMeta(),

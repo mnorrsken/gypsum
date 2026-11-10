@@ -147,9 +147,18 @@ func main() {
 	wiki.SetAssetVersion(web.AssetVersion())
 	mcpSections := wiki.ParseMCPSections(os.Getenv("GYPSUM_MCP_SECTIONS"))
 	handler := wiki.NewHandler(store, renderer, web.Templates(), autoCommitter, oauthServer, db, mcpSections)
+	modules, err := wiki.ParseModules(os.Getenv("GYPSUM_MODULES"))
+	if err != nil {
+		log.Fatalf("invalid GYPSUM_MODULES: %v", err)
+	}
+	handler.SetModules(modules)
+	logModules(modules)
+	if oauthServer != nil && !modules.Has(wiki.ModuleMCP) {
+		log.Printf("WARNING: GYPSUM_OAUTH_ENABLED has no effect: the mcp module is off")
+	}
 	uploadCfg := uploadConfigFromEnv()
 	handler.SetUploadConfig(uploadCfg)
-	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
+	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" && modules.Has(wiki.ModuleScan) {
 		model := envOrDefault("GYPSUM_SCAN_MODEL", wiki.DefaultScanModel)
 		analyzer := wiki.NewClaudeAnalyzer(apiKey, model)
 		cornerModel := envOrDefault("GYPSUM_SCAN_CORNER_MODEL", wiki.DefaultScanCornerModel)
@@ -342,6 +351,24 @@ func uploadConfigFromEnv() wiki.UploadConfig {
 		}
 	}
 	return cfg
+}
+
+// logModules prints the enabled modules and warns that quick notes are
+// deprecated when they are on.
+func logModules(modules wiki.ModuleSet) {
+	var on []string
+	for _, m := range wiki.AllModules {
+		if modules.Has(m) {
+			on = append(on, string(m))
+		}
+	}
+	if len(on) == 0 {
+		on = append(on, "none")
+	}
+	log.Printf("modules enabled: %s", strings.Join(on, ","))
+	if modules.Has(wiki.ModuleNotes) {
+		log.Printf("WARNING: the notes module (quick notes) is deprecated and will be removed in a future release")
+	}
 }
 
 func envOrDefault(key, fallback string) string {

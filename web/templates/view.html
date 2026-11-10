@@ -6,7 +6,7 @@
     <div class="page-tabs">
       <a href="/wiki/{{.Page.Slug}}" class="active">Page</a>
       <a href="/edit/{{.Page.Slug}}">Edit</a>
-      <a href="/share/{{.Page.Slug}}">Share</a>
+      {{if .Modules.Has "sharing"}}<a href="/share/{{.Page.Slug}}">Share</a>{{end}}
       <a href="/history/{{.Page.Slug}}">History</a>
       {{if .ScanEnabled}}<a href="/scan?page={{.Page.Slug}}">Add scan</a>{{end}}
     </div>

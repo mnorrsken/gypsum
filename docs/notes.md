@@ -1,5 +1,7 @@
 # Quick Notes
 
+> **Deprecated.** Quick Notes is off by default and will be removed in a later version. To use it, add `notes` to `GYPSUM_MODULES` (for example `files,secrets,graph,skills,scan,sharing,mcp,notes`) or set `modules.notes: true` in the Helm chart. The server logs a deprecation warning while it is on. Existing notes stay in the database and show up again when the module is on. See [Feature modules](configuration.md#feature-modules).
+
 Quick Notes is a whiteboard-style board of short, sticky-note jottings — a middle ground between a full wiki page and a throwaway post-it. Open **Quick Notes** in the sidebar and just start typing; there is no separate "edit" mode and no save button.
 
 ## How it works

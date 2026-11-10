@@ -2,6 +2,17 @@
 
 All notable changes to Gypsum are documented in this file.
 
+## Unreleased
+
+### Added
+- **Feature modules** — the optional sidebar sections (`notes`, `files`, `secrets`, `graph`, `skills`, `scan`), page sharing (`sharing`) and the MCP endpoint (`mcp`) can be turned on and off with `GYPSUM_MODULES` or Helm `modules.*`. A module that is off is hidden from the sidebar and bottom bar, its routes return 404 and its MCP tools are not listed. Modules apply on top of `GYPSUM_MCP_SECTIONS`. Unknown names stop the server at start. See [Configuration](docs/configuration.md#feature-modules).
+
+### Changed
+- **Quick notes deprecated** — the notes module is off by default and the server logs a deprecation warning when it is on. On phones the bottom-bar Notes slot becomes Search when notes is off. See [Quick Notes](docs/notes.md).
+
+### Notes
+- Notes are now off unless enabled. Deployments that use quick notes must add `notes` to `GYPSUM_MODULES` or set Helm `modules.notes: true`. Existing notes stay in the database. The default MCP tool list loses the 6 notes tools.
+
 ## v0.63.1
 
 ### Fixed

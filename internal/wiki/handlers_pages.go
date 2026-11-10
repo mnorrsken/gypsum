@@ -222,9 +222,12 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileResults, err := h.store.SearchFiles(query)
-	if err != nil {
-		log.Printf("search: files: %v", err)
+	var fileResults []SearchResult
+	if h.modules.Has(ModuleFiles) {
+		fileResults, err = h.store.SearchFiles(query)
+		if err != nil {
+			log.Printf("search: files: %v", err)
+		}
 	}
 
 	data := TemplateData{

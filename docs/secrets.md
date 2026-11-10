@@ -4,7 +4,7 @@ The Secrets vault is an opinionated view for credentials: a searchable list wher
 each entry is a title, an encrypted block of text, and — optionally — a
 description, tags, a link, and a picture of the site it belongs to. Entries sit
 in two columns on wide screens and one on phones. Open **Secrets**
-in the sidebar.
+in the sidebar. The vault is the `secrets` [module](configuration.md#feature-modules) (on by default).
 
 It uses exactly the same encryption as inline [`{{secure:...}}`](usage.md) fields:
 AES-256-GCM with a PBKDF2-derived key, done entirely in the browser. The server

@@ -27,6 +27,7 @@ type Handler struct {
 	uploadCfg   UploadConfig // upload size limit and photo resizing
 	uploads     *UploadLinks // single-use upload links minted over MCP
 	scanner     *Scanner     // nil = photo scanning disabled
+	modules     ModuleSet    // enabled modules; nil = all
 	proxies     ProxyTrust   // reverse proxies whose X-Forwarded-For is believed
 }
 
@@ -38,6 +39,12 @@ func (h *Handler) SetTrustedProxies(proxies ProxyTrust) {
 	if h.oauth != nil {
 		h.oauth.proxies = proxies
 	}
+}
+
+// SetModules sets the enabled modules. Routes, menu entries and MCP tools of
+// disabled modules are left out. Call this before Routes.
+func (h *Handler) SetModules(modules ModuleSet) {
+	h.modules = modules
 }
 
 // SetMCPAllowedOrigins sets the Origin allowlist enforced on /mcp. Build it
@@ -101,6 +108,7 @@ type TemplateData struct {
 	CanRestore    bool             // history rows get a Restore button (pages only)
 	RestoreHash   string           // diff page: the older revision that can be restored
 	ScanEnabled   bool             // show the photo scan button
+	Modules       ModuleSet        // enabled modules, for menu entries and links
 	ScanJob       *ScanJob         // scan progress view
 	FormError     string           // error from the last form post, shown on the page
 	CSPNonce      string           // public view: nonce that lets the inline scripts run
@@ -226,51 +234,72 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/history/", h.handleHistory)
 	mux.HandleFunc("/history-diff/", h.handleHistoryDiff)
 	mux.HandleFunc("POST /restore/{slug}", h.handleRestore)
-	mux.HandleFunc("/images", h.handleImages)
-	mux.HandleFunc("/images/upload", h.handleImageUpload)
-	mux.HandleFunc("/images/delete", h.handleImageDelete)
-	mux.HandleFunc("/images/list", h.handleImageList)
+	// Uploaded images and files stay readable with the files module off, so
+	// pages that already show them keep working.
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(h.store.ImagesDir()))))
-	mux.HandleFunc("POST /files/upload", h.handleFileUpload)
-	mux.HandleFunc("POST /files/delete", h.handleFileDelete)
 	mux.HandleFunc("GET /files/{name}", h.handleFileServe)
-	mux.HandleFunc("/upload/{token}", h.handleUploadLink)
-	mux.HandleFunc("GET /scan", h.handleScanForm)
-	mux.HandleFunc("POST /scan", h.handleScanStart)
-	mux.HandleFunc("GET /scan/{id}", h.handleScanJob)
-	mux.HandleFunc("POST /scan/{id}/link", h.handleScanLink)
-	mux.HandleFunc("GET /scan/{id}/preview.jpg", h.handleScanPreview)
-	mux.HandleFunc("POST /scan/{id}/flat", h.handleScanRescanFlat)
-	mux.HandleFunc("POST /scan/{id}/save", h.handleScanSave)
-	mux.HandleFunc("POST /scan/{id}/discard", h.handleScanDiscard)
-	mux.HandleFunc("GET /scan/{id}/figure/{n}", h.handleScanFigure)
+	if h.modules.Has(ModuleFiles) {
+		mux.HandleFunc("/images", h.handleImages)
+		mux.HandleFunc("/images/upload", h.handleImageUpload)
+		mux.HandleFunc("/images/delete", h.handleImageDelete)
+		mux.HandleFunc("/images/list", h.handleImageList)
+		mux.HandleFunc("POST /files/upload", h.handleFileUpload)
+		mux.HandleFunc("POST /files/delete", h.handleFileDelete)
+		mux.HandleFunc("/upload/{token}", h.handleUploadLink)
+	} else {
+		// Without this the mux redirects /images to the /images/ file server.
+		mux.HandleFunc("/images", http.NotFound)
+	}
+	if h.modules.Has(ModuleScan) {
+		mux.HandleFunc("GET /scan", h.handleScanForm)
+		mux.HandleFunc("POST /scan", h.handleScanStart)
+		mux.HandleFunc("GET /scan/{id}", h.handleScanJob)
+		mux.HandleFunc("POST /scan/{id}/link", h.handleScanLink)
+		mux.HandleFunc("GET /scan/{id}/preview.jpg", h.handleScanPreview)
+		mux.HandleFunc("POST /scan/{id}/flat", h.handleScanRescanFlat)
+		mux.HandleFunc("POST /scan/{id}/save", h.handleScanSave)
+		mux.HandleFunc("POST /scan/{id}/discard", h.handleScanDiscard)
+		mux.HandleFunc("GET /scan/{id}/figure/{n}", h.handleScanFigure)
+	}
 	mux.HandleFunc("/delete/", h.handleDeletePage)
 	mux.HandleFunc("/toggle-checkbox/", h.handleToggleCheckbox)
-	mux.HandleFunc("/share/", h.handleShare)
-	mux.HandleFunc("/public/", h.handlePublic)
-	mux.HandleFunc("/graph", h.handleGraph)
+	if h.modules.Has(ModuleSharing) {
+		mux.HandleFunc("/share/", h.handleShare)
+		mux.HandleFunc("/public/", h.handlePublic)
+	}
+	if h.modules.Has(ModuleGraph) {
+		mux.HandleFunc("/graph", h.handleGraph)
+	}
 	mux.HandleFunc("/recent-edits", h.handleRecentEdits)
 	mux.HandleFunc("GET /git-status", h.handleGitStatus)
 	mux.HandleFunc("/convert/mediawiki", h.handleConvertMediaWiki)
-	mux.HandleFunc("/skills", h.handleSkillsList)
-	mux.HandleFunc("/skills/", h.handleSkillView)
-	mux.HandleFunc("/new-skill", h.handleNewSkill)
-	mux.HandleFunc("/edit-skill/", h.handleEditSkill)
-	mux.HandleFunc("/delete-skill/", h.handleDeleteSkill)
-	mux.HandleFunc("/skill-history/", h.handleSkillHistory)
-	mux.HandleFunc("/share-skill/", h.handleShareSkill)
-	mux.HandleFunc("GET /notes", h.handleNotesBoard)
-	mux.HandleFunc("GET /notes/archived", h.handleNotesBoard)
-	mux.HandleFunc("POST /notes/create", h.handleNoteCreate)
-	mux.HandleFunc("POST /notes/save/{id}", h.handleNoteSave)
-	mux.HandleFunc("POST /notes/archive/{id}", h.handleNoteArchive)
-	mux.HandleFunc("POST /notes/restore/{id}", h.handleNoteRestore)
-	mux.HandleFunc("POST /notes/delete/{id}", h.handleNoteDelete)
-	mux.HandleFunc("GET /secrets", h.handleSecretsVault)
-	mux.HandleFunc("POST /secrets/create", h.handleSecretCreate)
-	mux.HandleFunc("POST /secrets/save/{id}", h.handleSecretSave)
-	mux.HandleFunc("POST /secrets/delete/{id}", h.handleSecretDelete)
-	mux.HandleFunc("POST /secrets/image/{id}", h.handleSecretImage)
+	if h.modules.Has(ModuleSkills) {
+		mux.HandleFunc("/skills", h.handleSkillsList)
+		mux.HandleFunc("/skills/", h.handleSkillView)
+		mux.HandleFunc("/new-skill", h.handleNewSkill)
+		mux.HandleFunc("/edit-skill/", h.handleEditSkill)
+		mux.HandleFunc("/delete-skill/", h.handleDeleteSkill)
+		mux.HandleFunc("/skill-history/", h.handleSkillHistory)
+		if h.modules.Has(ModuleSharing) {
+			mux.HandleFunc("/share-skill/", h.handleShareSkill)
+		}
+	}
+	if h.modules.Has(ModuleNotes) {
+		mux.HandleFunc("GET /notes", h.handleNotesBoard)
+		mux.HandleFunc("GET /notes/archived", h.handleNotesBoard)
+		mux.HandleFunc("POST /notes/create", h.handleNoteCreate)
+		mux.HandleFunc("POST /notes/save/{id}", h.handleNoteSave)
+		mux.HandleFunc("POST /notes/archive/{id}", h.handleNoteArchive)
+		mux.HandleFunc("POST /notes/restore/{id}", h.handleNoteRestore)
+		mux.HandleFunc("POST /notes/delete/{id}", h.handleNoteDelete)
+	}
+	if h.modules.Has(ModuleSecrets) {
+		mux.HandleFunc("GET /secrets", h.handleSecretsVault)
+		mux.HandleFunc("POST /secrets/create", h.handleSecretCreate)
+		mux.HandleFunc("POST /secrets/save/{id}", h.handleSecretSave)
+		mux.HandleFunc("POST /secrets/delete/{id}", h.handleSecretDelete)
+		mux.HandleFunc("POST /secrets/image/{id}", h.handleSecretImage)
+	}
 	if h.docsDir != "" {
 		mux.HandleFunc("/docs", h.handleDocsList)
 		mux.HandleFunc("/docs/", h.handleDocs)
@@ -280,7 +309,8 @@ func (h *Handler) Routes() http.Handler {
 	mcpRL := NewRateLimiter(30, 60, time.Second)
 	mcpRL.proxies = h.proxies
 
-	if h.oauth != nil {
+	// OAuth only guards the MCP endpoint, so both go away with the mcp module.
+	if h.oauth != nil && h.modules.Has(ModuleMCP) {
 		// OAuth discovery endpoints (must be bypassed in Authelia / reverse proxy)
 		mux.HandleFunc("GET /.well-known/oauth-protected-resource", h.oauth.HandleProtectedResource)
 		mux.HandleFunc("GET /.well-known/oauth-authorization-server", h.oauth.HandleAuthServerMeta)
@@ -295,7 +325,10 @@ func (h *Handler) Routes() http.Handler {
 		mcpOAuth := NewMCPHandlerExternal(h.store, h.autoCommit, h.oauth, h.mcpSections)
 		mcpOAuth.SetMetrics(h.mcpMetrics)
 		mcpOAuth.SetAllowedOrigins(h.mcpOrigins)
-		mcpOAuth.SetUploadLinks(h.uploads, h.oauth.externalURL)
+		mcpOAuth.SetModules(h.modules)
+		if h.modules.Has(ModuleFiles) {
+			mcpOAuth.SetUploadLinks(h.uploads, h.oauth.externalURL)
+		}
 		mux.Handle("/mcp", RateLimit(mcpRL, mcpOAuth))
 		mux.Handle("/mcp/external", RateLimit(mcpRL, mcpOAuth))
 	}
@@ -340,12 +373,15 @@ func (h *Handler) render(w http.ResponseWriter, name string, data TemplateData) 
 		data.DocPages = h.listDocPages()
 	}
 
-	if skills, err := h.store.ListSkillEntries(); err == nil {
-		data.Skills = skills
+	if h.modules.Has(ModuleSkills) {
+		if skills, err := h.store.ListSkillEntries(); err == nil {
+			data.Skills = skills
+		}
 	}
 
 	data.SecureSalt = h.secureSalt
-	data.ScanEnabled = h.scanner != nil
+	data.ScanEnabled = h.scanner != nil && h.modules.Has(ModuleScan)
+	data.Modules = h.modules
 	data.SecureIters = SecurePBKDF2Iterations
 
 	tmpl := h.tmplCache[name]

@@ -13,7 +13,7 @@ Both endpoints are identical. `{{secure_aes:...}}` ciphertext is passed through 
 
 Only the web editor can encrypt a secret. `create_page`, `edit_page`, `create_skill` and `edit_skill` refuse content that adds a new `{{secure:...}}` block; the error asks the assistant to have you add the secret in the web editor. Blocks already in a page do not block edits, and an escaped `\{{secure:...}}` is still allowed as literal text.
 
-MCP is only exposed when OAuth is configured — if `GYPSUM_OAUTH_ENABLED` is not set, the `/mcp` endpoint is not registered.
+MCP is only exposed when OAuth is configured and the `mcp` [module](configuration.md#feature-modules) is on — if `GYPSUM_OAUTH_ENABLED` is not set, or `mcp` is left out of `GYPSUM_MODULES`, the `/mcp` endpoint is not registered.
 
 ## Protocol Versions
 
@@ -155,7 +155,7 @@ Tokens expire after 24 hours. Re-run `mcp-proxy auth` to get a fresh token and u
 
 ## Available Tools
 
-Tools are grouped into sections (read, edit, delete, skills, notes) that can be enabled independently. Several tools were consolidated in v0.47.0 — see the notes below the table.
+Tools are grouped into sections (read, edit, delete, skills, notes) that can be enabled independently. Tools also depend on [feature modules](configuration.md#feature-modules): a tool is listed only when both its section and its module are on. The notes tools need the `notes` module (off by default); file and upload tools need `files`; skills tools need `skills`. The server instructions mention skills and notes only when those modules are on. Several tools were consolidated in v0.47.0 — see the notes below the table.
 
 ### Page tools
 
@@ -194,7 +194,7 @@ See [Skills](skills.md) for how to create and use skills with LLMs.
 
 ### Note tools
 
-Quick notes are short, sticky-note-style jottings — a middle ground between a wiki page and a to-do item. They are stored as plain markdown under `notes/` in the git repo, with the first line acting as the title. See [Quick Notes](notes.md).
+Quick notes are short, sticky-note-style jottings — a middle ground between a wiki page and a to-do item. They are stored as plain markdown under `notes/` in the git repo, with the first line acting as the title. See [Quick Notes](notes.md). Quick notes are deprecated and off by default; these tools appear only when the `notes` module is enabled.
 
 | Tool | Section | Description |
 |---|---|---|
@@ -222,7 +222,7 @@ Section names are matched case-insensitively and leading `#` markers are ignored
 
 ## Uploading files
 
-An image attached in a Claude chat cannot be passed to a tool. Instead, ask Claude for an upload link: `create_upload_link` returns a URL on your wiki. Open it on your phone (the page offers the camera), pick or take a file, optionally add a caption, and send. The link works once, is valid for 30 minutes, and is kept in memory, so a server restart invalidates it. If a `page` was given, the file is appended to that page as markdown. Afterwards Claude can find the file with `list_files` and read it with `get_file`.
+Upload links need the `files` [module](configuration.md#feature-modules). An image attached in a Claude chat cannot be passed to a tool. Instead, ask Claude for an upload link: `create_upload_link` returns a URL on your wiki. Open it on your phone (the page offers the camera), pick or take a file, optionally add a caption, and send. The link works once, is valid for 30 minutes, and is kept in memory, so a server restart invalidates it. If a `page` was given, the file is appended to that page as markdown. Afterwards Claude can find the file with `list_files` and read it with `get_file`.
 
 To have Claude write a page about a photo (describe it, or read the text on it), take the photo through the link instead of attaching it in the chat:
 

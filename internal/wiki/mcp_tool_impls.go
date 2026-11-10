@@ -26,10 +26,30 @@ var toolSectionMap = map[string]MCPSection{
 	"archive_note": MCPSectionNotes, "delete_note": MCPSectionNotes,
 }
 
+// toolModuleMap maps tools that belong to an optional module to that module.
+// Tools not listed are core and always available.
+var toolModuleMap = map[string]Module{
+	"list_images": ModuleFiles, "list_files": ModuleFiles, "get_file": ModuleFiles,
+	"create_upload_link": ModuleFiles, "delete_image": ModuleFiles, "delete_file": ModuleFiles,
+	"list_skills": ModuleSkills, "get_skill": ModuleSkills, "create_skill": ModuleSkills,
+	"edit_skill": ModuleSkills, "delete_skill": ModuleSkills, "search_skills": ModuleSkills,
+	"list_notes": ModuleNotes, "get_note": ModuleNotes, "create_note": ModuleNotes,
+	"edit_note": ModuleNotes, "archive_note": ModuleNotes, "delete_note": ModuleNotes,
+}
+
+// toolEnabled reports whether a tool's module is enabled.
+func (m *MCPHandler) toolEnabled(name string) bool {
+	mod, ok := toolModuleMap[name]
+	return !ok || m.modules.Has(mod)
+}
+
 // ── Tool dispatch ───────────────────────────────────────────────────────
 
 func (m *MCPHandler) callTool(params mcpToolCallParams, author string) mcpCallToolResult {
 	if sec, ok := toolSectionMap[params.Name]; ok && !m.sections[sec] {
+		return mcpError("tool not available: " + params.Name)
+	}
+	if !m.toolEnabled(params.Name) {
 		return mcpError("tool not available: " + params.Name)
 	}
 	switch params.Name {
